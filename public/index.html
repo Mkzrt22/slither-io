@@ -237,6 +237,23 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
 .sup-price-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .sup-already{text-align:center;font-size:.72rem;color:#ffd700;font-family:'Orbitron',monospace;letter-spacing:2px;padding:8px 0}
 .sup-note{text-align:center;font-size:.62rem;color:var(--dim);margin-top:6px}
+/* ─ ELO / RANKED ─ */
+.mopt.ranked-opt{border-color:rgba(153,128,250,.3);color:#9980fa}
+.mopt.ranked-opt.active{border-color:#9980fa;color:#9980fa;background:rgba(153,128,250,.07)}
+#elo-hud{position:absolute;top:13px;left:50%;margin-left:158px;background:var(--panel);border:1px solid rgba(153,128,250,.3);border-radius:5px;padding:3px 9px;font-family:'Orbitron',monospace;font-size:.46rem;color:#9980fa;letter-spacing:2px;pointer-events:none;white-space:nowrap;display:none}
+#elo-hud.show{display:block}
+/* Map event overlay */
+#event-overlay{position:absolute;inset:0;pointer-events:none;z-index:4;display:none}
+#event-overlay.show{display:block}
+#event-banner{position:absolute;top:76px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.72);border:1px solid;border-radius:6px;padding:6px 18px;font-family:'Orbitron',monospace;font-size:.56rem;letter-spacing:3px;white-space:nowrap;text-align:center;opacity:0;transition:opacity .4s}
+#event-banner.show{opacity:1}
+/* Freeze flash */
+@keyframes freeze-pulse{0%,100%{opacity:.28}50%{opacity:.55}}
+#freeze-overlay{position:absolute;inset:0;background:rgba(100,200,255,.35);pointer-events:none;z-index:3;display:none}
+#freeze-overlay.show{display:block;animation:freeze-pulse .6s ease-in-out infinite}
+/* ELO result toast */
+#elo-toast{position:absolute;top:110px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.82);border:1px solid #9980fa;border-radius:6px;padding:8px 20px;font-family:'Orbitron',monospace;font-size:.6rem;color:#9980fa;letter-spacing:2px;opacity:0;transition:opacity .35s;pointer-events:none;white-space:nowrap;text-align:center}
+#elo-toast.show{opacity:1}
 /* Small supporter button in lobby */
 #sup-lobby-btn{background:linear-gradient(135deg,#ffd700,#ff9f43);border:none;border-radius:5px;color:#07091a;cursor:pointer;font-family:'Orbitron',monospace;font-size:.58rem;font-weight:700;letter-spacing:2px;padding:9px 14px;text-transform:uppercase;transition:transform .15s,box-shadow .15s;width:100%;margin-bottom:7px}
 #sup-lobby-btn:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(255,215,0,.3)}
@@ -284,11 +301,12 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
 
       <input class="inp" id="roomNameInput" type="text" placeholder="Room name (optional)" maxlength="20" autocomplete="off">
       <div class="ph">Game Mode</div>
-      <div class="msel" id="modeSel">
+      <div class="msel" id="modeSel" style="flex-wrap:wrap;gap:4px">
         <div class="mopt active" data-mode="classic"><span class="mi">🌍</span>Classic</div>
         <div class="mopt" data-mode="score"><span class="mi">🏆</span>Score</div>
         <div class="mopt" data-mode="teams"><span class="mi">👥</span>Teams</div>
         <div class="mopt" data-mode="tournament"><span class="mi">🥊</span>Tour</div>
+        <div class="mopt ranked-opt" data-mode="ranked" style="flex-basis:100%"><span class="mi">🎖</span>Ranked · ELO</div>
       </div>
       <button class="btn" id="createBtn">Create Room</button>
       <button id="sup-lobby-btn">⭐ Supporter Skin Pack — $3</button>
@@ -356,6 +374,12 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
   </div>
   <button id="sndbtn" class="on">🔊</button>
   <button id="pause-btn" title="Pause (Esc)">⏸</button>
+  <div id="elo-hud">🎖 ELO <span id="elo-val">1000</span> · <span id="elo-rank">Bronze</span></div>
+  <div id="elo-toast"></div>
+  <div id="freeze-overlay"></div>
+  <div id="event-overlay">
+    <div id="event-banner"></div>
+  </div>
 </div>
 
 <!-- PAUSE OVERLAY -->
@@ -783,7 +807,7 @@ document.querySelectorAll('.mopt').forEach(el=>el.addEventListener('click',()=>{
 // ═══ SOCKET & STATE ══════════════════════════════════════════════════════════
 const socket=io();
 let myId=null,W_world=4000,H_world=4000,currentMapId='classic';
-let state={players:[],food:[],powerups:[],obstacles:[],portals:[],leaderboard:[],killFeed:[],zone:null,mode:'classic',teamScores:{red:0,blue:0},chatMsgs:[],mapPings:[]};
+let state={players:[],food:[],powerups:[],obstacles:[],portals:[],leaderboard:[],killFeed:[],zone:null,mode:'classic',teamScores:{red:0,blue:0},chatMsgs:[],mapPings:[],activeEvent:null};
 let mouseX=window.innerWidth/2,mouseY=window.innerHeight/2,mouseDown=false;
 let myName='',mySkin='solid',myMode='classic',myTeam=null;
 let inGame=false,spectating=false,spectateTargetId=null;
@@ -791,6 +815,10 @@ let knownKillFeed=[],knownChat=[];
 let prevBoost=false;
 let shakeX=0,shakeY=0,shakeDur=0;
 const boostTrail=[];
+// Map event rendering state
+let activeEventOverlay=null; // {type, x, y, r, tick, duration}
+let myElo=1000,myRank='Bronze';
+let eloToastTimer=null;
 
 const gc=document.getElementById('gc');
 const ctx=gc.getContext('2d');
@@ -861,8 +889,9 @@ function runCountdown(cb){
 }
 
 // ═══ SOCKET EVENTS ════════════════════════════════════════════════════════════
-socket.on('joined',({id,W,H,roomId,roomName,mode,team,mapId})=>{
+socket.on('joined',({id,W,H,roomId,roomName,mode,team,mapId,elo,rank})=>{
   myId=id;W_world=W;H_world=H;myMode=mode;myTeam=team;currentMapId=mapId||'classic';
+  if(elo!=null){myElo=elo;myRank=rank?.name||'Bronze';}
   document.getElementById('rnt').textContent=roomName+' · '+mode.toUpperCase()+' · '+(mapId||'classic').toUpperCase();
   document.getElementById('ls').classList.add('hidden');
   ['ds','go','ts-screen'].forEach(id2=>document.getElementById(id2).classList.add('hidden'));
@@ -870,8 +899,14 @@ socket.on('joined',({id,W,H,roomId,roomName,mode,team,mapId})=>{
   document.getElementById('sd').style.display=mode==='teams'?'none':'';
   document.getElementById('thud').classList.toggle('visible',mode==='teams');
   document.getElementById('sb').classList.toggle('v',mode==='score');
+  const eloHud=document.getElementById('elo-hud');
+  if(mode==='ranked'){eloHud.classList.add('show');document.getElementById('elo-val').textContent=myElo;document.getElementById('elo-rank').textContent=myRank;}
+  else eloHud.classList.remove('show');
   if(isMobile())mcEl.classList.add('visible');
-  inGame=false;spectating=false;paused=false;document.getElementById('spb').classList.remove('show');
+  inGame=false;spectating=false;paused=false;activeEventOverlay=null;
+  document.getElementById('spb').classList.remove('show');
+  document.getElementById('event-overlay').classList.remove('show');
+  document.getElementById('freeze-overlay').classList.remove('show');
   if(mode==='tournament'){document.getElementById('ts-screen').classList.remove('hidden');}
   else runCountdown(()=>{inGame=true;});
 });
@@ -908,6 +943,55 @@ socket.on('levelUp',({level,ability})=>{showLvlToast(level,ability);});
 socket.on('error',msg=>alert(msg));
 socket.on('tournamentStart',b=>{renderBracket(b);document.getElementById('startTBtn').style.display='none';});
 
+// ── Map events ────────────────────────────────────────────────────────────────
+const EVENT_META={
+  meteor:  {label:'☄ METEOR INCOMING!',  color:'#ff7675'},
+  blizzard:{label:'❄ BLIZZARD ACTIVE',    color:'#88ddff'},
+  eruption:{label:'🌋 ERUPTION!',         color:'#ff6600'},
+  surge:   {label:'⚡ ENERGY SURGE!',     color:'#ffc312'},
+};
+socket.on('mapEvent',({type,duration,data})=>{
+  if(type==='end'){
+    activeEventOverlay=null;
+    const ov=document.getElementById('event-overlay');
+    const bn=document.getElementById('event-banner');
+    bn.classList.remove('show');
+    setTimeout(()=>ov.classList.remove('show'),600);
+    return;
+  }
+  const meta=EVENT_META[type]||{label:type.toUpperCase(),color:'#fff'};
+  activeEventOverlay={type,duration,tick:0,x:data?.x,y:data?.y,r:data?.r,speedMult:data?.speedMult};
+  const ov=document.getElementById('event-overlay');
+  const bn=document.getElementById('event-banner');
+  ov.classList.add('show');
+  bn.style.borderColor=meta.color;bn.style.color=meta.color;
+  bn.textContent=meta.label;bn.classList.add('show');
+  setTimeout(()=>bn.classList.remove('show'),3000);
+  beep({freq:660,type:'square',vol:.18,dur:.12});
+  beep({freq:440,type:'square',vol:.14,dur:.1,delay:.14});
+});
+socket.on('eventUpdate',({type,x,y,r})=>{
+  if(activeEventOverlay&&type==='meteor'){activeEventOverlay.x=x;activeEventOverlay.y=y;activeEventOverlay.r=r;}
+});
+
+// ── ELO / Ranked ──────────────────────────────────────────────────────────────
+socket.on('eloData',({elo,rank})=>{
+  myElo=elo;myRank=rank?.name||'Bronze';
+  document.getElementById('elo-val').textContent=elo;
+  document.getElementById('elo-rank').textContent=rank?.name||'Bronze';
+});
+socket.on('eloResult',({change,newElo,rank})=>{
+  myElo=newElo;myRank=rank?.name||'Bronze';
+  document.getElementById('elo-val').textContent=newElo;
+  document.getElementById('elo-rank').textContent=rank?.name||'Bronze';
+  const toast=document.getElementById('elo-toast');
+  const sign=typeof change==='number'&&change>0?'+':'';
+  toast.textContent=`ELO ${sign}${change} → ${newElo} (${rank?.name||'Bronze'})`;
+  toast.classList.add('show');
+  clearTimeout(eloToastTimer);
+  eloToastTimer=setTimeout(()=>toast.classList.remove('show'),3500);
+});
+
 document.getElementById('respawnBtn').addEventListener('click',()=>{
   document.getElementById('ds').classList.add('hidden');spectating=false;spectateTargetId=null;
   socket.emit('respawn',{name:myName,skin:mySkin,customSkin:getCustomSkinData()});
@@ -933,14 +1017,21 @@ function renderBracket(b){const el=document.getElementById('brDisplay');el.inner
 socket.on('state',s=>{
   state=s;
   if(s.W)W_world=s.W;if(s.H)H_world=s.H;
+  // Sync active event from state if no socket event received
+  if(s.activeEvent&&!activeEventOverlay){
+    activeEventOverlay={...s.activeEvent,...s.activeEvent.data};
+  } else if(!s.activeEvent){
+    activeEventOverlay=null;
+  }
   for(const k of(s.killFeed||[])){const key=k.killer+k.victim+k.t;if(!knownKillFeed.includes(key)){knownKillFeed.push(key);if(knownKillFeed.length>50)knownKillFeed.shift();addKFRow(k);}}
   for(const m of(s.chatMsgs||[])){const key=m.name+m.t;if(!knownChat.includes(key)){knownChat.push(key);if(knownChat.length>50)knownChat.shift();addChatMsg(m);}}
   const me=s.players.find(p=>p.id===myId);
   if(me?.powerup)showPowerupBar(me.powerup,me.powerupTick/me.powerupDuration);else document.getElementById('pub').classList.add('h');
+  // Freeze overlay
+  document.getElementById('freeze-overlay').classList.toggle('show',!!(me?.frozen));
   if(me&&s.zone){const h=me.segs[0];const d=Math.hypot(h.x-s.zone.x,h.y-s.zone.y);document.getElementById('zw').classList.toggle('show',d>s.zone.r-200);}
   if(me&&s.mode==='score'){const pct=Math.min(100,me.score/s.scoreWin*100);document.getElementById('sbf').style.width=pct+'%';document.getElementById('sbl').textContent=`${me.score}/${s.scoreWin}`;}
   if(s.mode==='teams'&&s.teamScores){document.getElementById('tRed').textContent=`🔴 ${s.teamScores.red||0}`;document.getElementById('tBlue').textContent=`🔵 ${s.teamScores.blue||0}`;}
-  // Level bar — use xp from server
   if(me){
     const lvl=me.level||1,xp=me.xp||0;
     document.getElementById('lvl-badge').textContent='LVL '+lvl;
@@ -1005,7 +1096,14 @@ function addChatMsg(m){
   div.innerHTML=`<span class="cn" style="color:${escHtml(m.color||'var(--acc)')}">${escHtml(m.name)}:</span> ${escHtml(m.msg)}`;
   el.prepend(div);setTimeout(()=>div.remove(),8000);
 }
-const PU_META={speed:{icon:'⚡',label:'SPEED',color:'#ffc312'},shield:{icon:'🛡',label:'SHIELD',color:'#00ffcc'},magnet:{icon:'🧲',label:'MAGNET',color:'#9980FA'}};
+const PU_META={
+  speed:  {icon:'⚡',label:'SPEED',   color:'#ffc312'},
+  shield: {icon:'🛡',label:'SHIELD',  color:'#00ffcc'},
+  magnet: {icon:'🧲',label:'MAGNET',  color:'#9980FA'},
+  freeze: {icon:'❄️',label:'FREEZE',  color:'#88ddff'},
+  clone:  {icon:'👥',label:'CLONE',   color:'#fda7df'},
+  ghost_pu:{icon:'👻',label:'GHOST',  color:'#b2bec3'},
+};
 function showPowerupBar(type,progress=0){
   const meta=PU_META[type]||{icon:'?',label:type.toUpperCase(),color:'#fff'};
   document.getElementById('pui').textContent=meta.icon;document.getElementById('pul').textContent=meta.label;
@@ -1201,6 +1299,9 @@ function hasPlayerCustomSkin(p){return p.customSkin&&p.customSkin.some(r=>r&&r.s
 function drawSnake(p,cam){
   if(!p.segs||p.segs.length<2)return;
   const isMe=p.id===myId,shielded=p.powerup==='shield';
+  const isGhost=p.powerup==='ghost_pu'||p.abilities?.includes('ghost');
+  const isClone=!!p.isClone;
+  const isFrozen=!!p.frozen;
   const h0=p.segs[0],vw=gc.width,vh=gc.height;
   if(h0.x-cam.x<-400||h0.x-cam.x>vw+400||h0.y-cam.y<-400||h0.y-cam.y>vh+400)return;
 
@@ -1213,8 +1314,15 @@ function drawSnake(p,cam){
 
   ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
 
+  // Ghost: translucent + faint blue tint
+  if(isGhost)ctx.globalAlpha=0.38;
+  // Clone: dashed semi-transparent
+  if(isClone){ctx.globalAlpha=0.45;ctx.setLineDash([8,5]);}
+  // Frozen: blue overlay tint applied after drawing
+
   // ── Pass 1: outer glow ───────────────────────────────────────────────────
-  const glowCol=shielded?'#00ffcc':p.powerup==='speed'?'#ffc312':p.color;
+  let glowCol=shielded?'#00ffcc':p.powerup==='speed'?'#ffc312':isFrozen?'#88ddff':p.color;
+  if(isGhost)glowCol='#b2bec3';
   ctx.shadowColor=glowCol;ctx.shadowBlur=shielded?22:14;
   ctx.strokeStyle=glowCol+'66';ctx.lineWidth=baseW+12;
   ctx.beginPath();ctx.moveTo(p.segs[0].x-cam.x,p.segs[0].y-cam.y);
@@ -1317,11 +1425,21 @@ function drawSnake(p,cam){
   // Name
   if(!isMe){
     ctx.font='600 11px Rajdhani,sans-serif';ctx.textAlign='center';
-    const lbl=(p.isBot?'🤖 ':'')+p.name;const tw=ctx.measureText(lbl).width;
+    const lbl=(isClone?'👥 ':p.isBot?'🤖 ':'')+p.name;const tw=ctx.measureText(lbl).width;
     ctx.fillStyle='rgba(0,0,0,.62)';ctx.fillRect(hx-tw/2-5,hy-headR-34,tw+10,14);
-    ctx.fillStyle=p.isBot?'#666':p.color;ctx.fillText(lbl,hx,hy-headR-23);
+    ctx.fillStyle=isClone?'rgba(253,167,223,.7)':p.isBot?'#666':p.color;ctx.fillText(lbl,hx,hy-headR-23);
   }
-  ctx.restore();
+
+  // Frozen ice overlay on body
+  if(isFrozen){
+    ctx.globalAlpha=0.28+0.12*Math.sin(Date.now()/150);
+    ctx.strokeStyle='rgba(136,221,255,.9)';ctx.lineWidth=baseW+6;
+    ctx.beginPath();ctx.moveTo(p.segs[0].x-cam.x,p.segs[0].y-cam.y);
+    for(let i=1;i<p.segs.length;i++)ctx.lineTo(p.segs[i].x-cam.x,p.segs[i].y-cam.y);
+    ctx.stroke();
+  }
+
+  ctx.setLineDash([]);ctx.restore();
 }
 
 function drawBoostTrail(cam){
@@ -1376,8 +1494,8 @@ function drawFood(food,cam){
   }
 }
 
-const PU_COLORS={speed:'#ffc312',shield:'#00ffcc',magnet:'#9980FA'};
-const PU_ICONS={speed:'⚡',shield:'🛡',magnet:'🧲'};
+const PU_COLORS={speed:'#ffc312',shield:'#00ffcc',magnet:'#9980FA',freeze:'#88ddff',clone:'#fda7df',ghost_pu:'#b2bec3'};
+const PU_ICONS={speed:'⚡',shield:'🛡',magnet:'🧲',freeze:'❄️',clone:'👥',ghost_pu:'👻'};
 function drawPowerups(pus,cam){
   const t=Date.now();
   for(const pu of pus){
@@ -1596,6 +1714,59 @@ function render(){
   drawObstacles(state.obstacles||[],cam);
   drawPortals(state.portals||[],cam);
   drawBoostTrail(cam);
+
+  // ── Map event canvas effects ──────────────────────────────────────────────
+  if(activeEventOverlay){
+    const ev=activeEventOverlay;
+    const t=Date.now();
+    if(ev.type==='meteor'&&ev.x!=null){
+      // Moving danger zone circle
+      const sx=ev.x-cam.x,sy=ev.y-cam.y;
+      ctx.save();
+      const pulse=0.88+0.12*Math.sin(t/120);
+      ctx.beginPath();ctx.arc(sx,sy,ev.r*pulse,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(255,120,70,${0.7+0.2*Math.sin(t/100)})`;ctx.lineWidth=3;
+      ctx.shadowColor='#ff7043';ctx.shadowBlur=22;ctx.stroke();ctx.shadowBlur=0;
+      // Fill tint
+      ctx.beginPath();ctx.arc(sx,sy,ev.r,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,80,30,.12)';ctx.fill();
+      // Warning label
+      ctx.font='bold 11px Orbitron,monospace';ctx.textAlign='center';
+      ctx.fillStyle='rgba(255,150,80,.85)';ctx.fillText('☄ DANGER',sx,sy-ev.r-8);
+      ctx.restore();
+    }
+    if(ev.type==='blizzard'){
+      // Blueish vignette + drifting snow specks over canvas
+      ctx.save();
+      ctx.fillStyle=`rgba(140,210,255,${0.06+0.03*Math.sin(t/400)})`;
+      ctx.fillRect(0,0,gc.width,gc.height);
+      // Snow specks across screen
+      const seed=(t/60)%1000;
+      for(let i=0;i<60;i++){
+        const sx=((i*137+seed*2.3)%gc.width+gc.width)%gc.width;
+        const sy=((i*97+seed*1.7)%gc.height+gc.height)%gc.height;
+        ctx.beginPath();ctx.arc(sx,sy,1.2+Math.sin(i)*0.7,0,Math.PI*2);
+        ctx.fillStyle=`rgba(200,230,255,${0.3+0.2*Math.sin(i+seed*.1)})`;ctx.fill();
+      }
+      ctx.restore();
+    }
+    if(ev.type==='eruption'){
+      // Red heat shimmer overlay
+      ctx.save();
+      ctx.fillStyle=`rgba(200,50,0,${0.04+0.03*Math.sin(t/180)})`;
+      ctx.fillRect(0,0,gc.width,gc.height);
+      ctx.restore();
+    }
+    if(ev.type==='surge'){
+      // Electric cyan pulse around screen edges
+      ctx.save();
+      const grad=ctx.createRadialGradient(gc.width/2,gc.height/2,gc.height*.3,gc.width/2,gc.height/2,gc.height*.9);
+      grad.addColorStop(0,'rgba(0,255,204,0)');
+      grad.addColorStop(1,`rgba(0,255,204,${0.06+0.05*Math.sin(t/100)})`);
+      ctx.fillStyle=grad;ctx.fillRect(0,0,gc.width,gc.height);
+      ctx.restore();
+    }
+  }
 
   // Death particles (world-space, already converted to screen in spawn)
   if(deathParticles.length){ctx.save();updateDeathParticles();ctx.restore();}
