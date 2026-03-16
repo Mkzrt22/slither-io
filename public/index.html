@@ -381,6 +381,29 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
 /* Supporter badge on skin options */
 .so.supporter-locked{opacity:.5;cursor:not-allowed}
 .so .sup-tag{font-size:.5rem;color:#ffd700;display:block;letter-spacing:0}
+
+/* ─ ACHIEVEMENTS GRID ──────────────────────────────────────── */
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;margin-top:4px}
+.ach-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px 7px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;cursor:default;transition:border-color .2s,background .2s;position:relative;min-height:74px}
+.ach-item.got{border-color:rgba(0,229,255,.28);background:rgba(0,229,255,.05)}
+.ach-item:hover{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.05)}
+.ach-item.got:hover{border-color:rgba(0,229,255,.5)}
+.ach-icon{font-size:1.35rem;line-height:1;filter:grayscale(1) brightness(.4);transition:filter .25s}
+.ach-item.got .ach-icon{filter:grayscale(0) brightness(1)}
+.ach-name{font-size:.4rem;font-family:'Orbitron',monospace;text-align:center;color:rgba(255,255,255,.2);letter-spacing:.5px;line-height:1.3;padding:0 2px}
+.ach-item.got .ach-name{color:rgba(0,229,255,.8)}
+/* Tooltip — hidden by default, shown on hover */
+.ach-tip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(8,12,30,.97);border:1px solid rgba(0,229,255,.2);border-radius:8px;padding:7px 10px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .18s;z-index:50;min-width:140px;max-width:200px;white-space:normal;text-align:center}
+.ach-item:hover .ach-tip{opacity:1}
+.ach-tip strong{display:block;color:#00e5ff;font-family:'Orbitron',monospace;font-size:.46rem;letter-spacing:1px;margin-bottom:3px}
+.ach-tip span{font-size:.64rem;color:var(--dim);line-height:1.4}
+/* ─ ACHIEVEMENT IN-GAME TOAST ───────────────────────────────── */
+#ach-toast{position:absolute;top:14px;left:50%;transform:translateX(-50%) translateY(-90px);background:rgba(7,9,28,.96);border:1.5px solid #00e5ff;border-radius:10px;padding:9px 18px;display:flex;align-items:center;gap:10px;pointer-events:none;transition:transform .38s cubic-bezier(.34,1.56,.64,1);z-index:28;min-width:220px;max-width:360px}
+#ach-toast.show{transform:translateX(-50%) translateY(0)}
+.acht-icon{font-size:1.4rem;flex-shrink:0}
+.acht-label{font-family:'Orbitron',monospace;font-size:.44rem;letter-spacing:3px;color:rgba(0,229,255,.6);margin-bottom:1px}
+.acht-name{font-family:'Orbitron',monospace;font-size:.72rem;font-weight:700;color:#fff}
+.acht-desc{font-size:.64rem;color:var(--dim);margin-top:1px}
 </style>
 </head>
 <body>
@@ -2748,13 +2771,14 @@ function renderAchievements() {
   const unlocked = new Set(currentUser?.achievements || []);
   const total = allAchievements.length;
   const got = allAchievements.filter(a => unlocked.has(a.id)).length;
-  document.getElementById('ach-count').textContent = got + ' / ' + total;
+  const countEl = document.getElementById('ach-count');
+  if(countEl) countEl.textContent = got + ' / ' + total;
   grid.innerHTML = allAchievements.map(a => {
     const has = unlocked.has(a.id);
-    return `<div class="ach-item${has?' got':''}" title="">
+    return `<div class="ach-item${has?' got':''}">
       <div class="ach-icon">${escHtml(a.icon)}</div>
       <div class="ach-name">${escHtml(a.name)}</div>
-      <div class="ach-tip"><strong>${escHtml(a.name)}</strong>${escHtml(a.desc)}</div>
+      <div class="ach-tip"><strong>${escHtml(a.name)}</strong><span>${escHtml(a.desc)}</span></div>
     </div>`;
   }).join('');
 }
