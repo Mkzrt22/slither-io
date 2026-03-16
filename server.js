@@ -62,11 +62,111 @@ const TEAM_COLORS = { red:'#FF4757', blue:'#1E90FF' };
 const BOT_NAMES   = ['Slinky','Viper','Cobra','Mamba','Rattler','Anaconda','Fangs','Bolt','Slick','Coil','Hydra','Fang'];
 const GAME_MODES  = ['classic','score','teams','tournament','ranked'];
 
-const globalScores = [];
+// ── Daily Challenge ───────────────────────────────────────────────────────────
+// 8 challenge types rotate daily. Seeded deterministically from UTC date.
+const DAILY_CHALLENGES = [
+  { id:'score',      icon:'🏆', label:'High Scorer',     desc:'Reach a score of 150 in one life',           goal:150,  unit:'pts'  },
+  { id:'kills',      icon:'💀', label:'Predator',         desc:'Get 5 kills in one game',                    goal:5,    unit:'kills'},
+  { id:'no_boost',   icon:'🐢', label:'Pacifist Run',     desc:'Score 80 without ever boosting',             goal:80,   unit:'pts'  },
+  { id:'powerups',   icon:'⚡', label:'Power Collector',  desc:'Collect 8 power-ups in one game',            goal:8,    unit:'PUs'  },
+  { id:'survive',    icon:'⏱', label:'Survivor',         desc:'Stay alive for 90 seconds',                  goal:90,   unit:'sec'  },
+  { id:'eat_streak', icon:'🍎', label:'Glutton',          desc:'Eat 40 food items without dying',            goal:40,   unit:'food' },
+  { id:'length',     icon:'📏', label:'Mega Snake',       desc:'Reach a length of 70 segments',              goal:70,   unit:'segs' },
+  { id:'multi_kill', icon:'🔥', label:'Double Kill',      desc:'Get 2 kills within 8 seconds',               goal:2,    unit:'kills'},
+];
+
+function getDailyChallenge(){
+  const d=new Date();
+  const dayNum=Math.floor(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())/86400000);
+  const ch=DAILY_CHALLENGES[dayNum%DAILY_CHALLENGES.length];
+  const dateStr=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+  return{...ch,date:dateStr};
+}
+
+// Track per-player challenge state (keyed by socketId)
+const challengeState={}; // {socketId:{value,done,violatedNoBoost,killTimes,spawnTick}}
+function getChallengeState(id){
+  return challengeState[id]||(challengeState[id]={value:0,done:false,violatedNoBoost:false,killTimes:[],spawnTick:0});
+}
+
+function tickChallengePlayer(p,room,ch){
+  if(!p||p.isBot||p.isClone)return;
+  const cs=getChallengeState(p.id);
+  if(cs.done)return;
+  const head=p.segs[0];
+  let newVal=cs.value;
+
+  if(ch.id==='score')        newVal=p.score;
+  if(ch.id==='kills')        newVal=p.killCount;
+  if(ch.id==='no_boost')     newVal=(!cs.violatedNoBoost)?p.score:0;
+  if(ch.id==='powerups')     newVal=cs.value; // incremented on pickup
+  if(ch.id==='survive')      newVal=Math.floor((room.tickCount-cs.spawnTick)/25);
+  if(ch.id==='eat_streak')   newVal=cs.value; // incremented on eat
+  if(ch.id==='length')       newVal=p.segs.length;
+  if(ch.id==='multi_kill'){
+    // Prune old kill timestamps
+    const now8=room.tickCount-200; // 8 sec × 25tps
+    cs.killTimes=cs.killTimes.filter(t=>t>now8);
+    newVal=cs.killTimes.length;
+  }
+
+  if(p.boosting&&ch.id==='no_boost')cs.violatedNoBoost=true;
+
+  const changed=newVal!==cs.value;
+  cs.value=newVal;
+
+  // Clamp to goal for progress bar
+  const clamped=Math.min(newVal,ch.goal);
+  const wasDone=cs.done;
+  if(clamped>=ch.goal){cs.done=true;}
+
+  if(changed||(!wasDone&&cs.done)){
+    io.to(p.id).emit('challengeProgress',{value:clamped,goal:ch.goal,done:cs.done,id:ch.id});
+  }
+}
+
+
+const globalScores=[];
 function addGlobalScore(name,score){
   globalScores.push({name,score,date:new Date().toLocaleDateString()});
   globalScores.sort((a,b)=>b.score-a.score);
   if(globalScores.length>10)globalScores.length=10;
+}
+
+// ── Weekly leaderboard + Hall of Fame ─────────────────────────────────────────
+// Resets every Monday 00:00 UTC. Hall of fame archives top-3 per week.
+const weeklyScores=[];
+const hallOfFame=[];    // [{week:'2025-W22', entries:[{name,score}]}], max 5
+
+function getISOWeek(){
+  const d=new Date();const day=d.getUTCDay()||7;
+  d.setUTCDate(d.getUTCDate()+4-day);
+  const yr=new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  return Math.ceil((((d-yr)/86400000)+1)/7);
+}
+function getWeekKey(){return `${new Date().getUTCFullYear()}-W${String(getISOWeek()).padStart(2,'0')}`;}
+let currentWeekKey=getWeekKey();
+
+function checkWeeklyReset(){
+  const wk=getWeekKey();
+  if(wk!==currentWeekKey){
+    if(weeklyScores.length){
+      hallOfFame.unshift({week:currentWeekKey,entries:weeklyScores.slice(0,3)});
+      if(hallOfFame.length>5)hallOfFame.length=5;
+    }
+    weeklyScores.length=0;
+    currentWeekKey=wk;
+  }
+}
+setInterval(checkWeeklyReset,60000);
+
+function addWeeklyScore(name,score){
+  checkWeeklyReset();
+  const ex=weeklyScores.find(s=>s.name===name);
+  if(ex){if(score>ex.score)ex.score=score;}
+  else weeklyScores.push({name,score});
+  weeklyScores.sort((a,b)=>b.score-a.score);
+  if(weeklyScores.length>10)weeklyScores.length=10;
 }
 
 let rooms={}, socketToRoom={}, idCounter=0;
@@ -102,6 +202,7 @@ function mkPlayer(id,name,isBot,skin,team,customSkin,map){
     botWanderTick:0,botState:'forage',botDodgeTick:0,
     xp:0,level:1,abilities:[],emote:null,emoteTick:0,portalCooldown:0,
     cloneId:null,frozen:0,_respawnTick:0,
+    replayBuf:[],  // ring buffer of last 75 head positions for death replay
   };
 }
 
@@ -126,6 +227,7 @@ function mkRoom(id,name,mode,mapId){
     tickCount:0,intervalId:null,zoneTimer:null,
     winner:null,teamScores:{red:0,blue:0},tournamentBracket:null,
     activeEvent:null,eventCooldown:0,
+    password:null,  // set after creation for private rooms
   };
 }
 
@@ -414,6 +516,8 @@ function tickRoom(room){
       else p.segs.pop();
     }else p.segs.pop();
     if(p.powerup==='magnet'){const mr2=220*220;for(const f of room.food)if(dist2({x:nx,y:ny},f)<mr2){f.x+=(nx-f.x)*.07;f.y+=(ny-f.y)*.07;}}
+    // Record head position for death replay (ring buffer, max 75 ticks = 3 s)
+    if(!p.isBot){p.replayBuf.push({x:nx,y:ny});if(p.replayBuf.length>75)p.replayBuf.shift();}
     const eatR2=((SEG_R+9)*(p.abilities.includes('wide_eat')?1.7:1))**2;
     for(let i=room.food.length-1;i>=0;i--){
       if(wrapDist2({x:nx,y:ny},room.food[i],W,H)<eatR2){
@@ -423,6 +527,8 @@ function tickRoom(room){
         const nl=getLevel(p.xp);
         if(nl>p.level){p.level=nl;const ab=LEVEL_ABILITY[nl];if(ab&&!p.abilities.includes(ab))p.abilities.push(ab);if(!p.isBot){io.to(p.id).emit('levelUp',{level:nl,ability:ab||null});io.to(p.id).emit('sfx','levelup');}}
         if(!p.isBot)io.to(p.id).emit('sfx','eat');
+        // Challenge: eat_streak
+        if(!p.isBot&&!p.isClone){const cs=getChallengeState(p.id);if(!cs.done)cs.value++;}
       }
     }
     for(let i=room.powerups.length-1;i>=0;i--){
@@ -444,6 +550,8 @@ function tickRoom(room){
         }
         if(pu.type==='clone')spawnClone(p,room);
         if(!p.isBot){io.to(p.id).emit('sfx','powerup');io.to(p.id).emit('powerup',pu.type);}
+        // Challenge: powerups
+        if(!p.isBot&&!p.isClone){const cs=getChallengeState(p.id);if(!cs.done&&getDailyChallenge().id==='powerups')cs.value++;}
       }
     }
     if(p.powerup){p.powerupTick++;if(p.powerupTick>=p.powerupDuration){p.powerup=null;if(p.cloneId){delete room.clones[p.cloneId];p.cloneId=null;}}}
@@ -473,8 +581,17 @@ function tickRoom(room){
       for(let i=skip;i<checkTo;i++){
         if(wrapDist2(head,other.segs[i],W,H)<colR2){
           dead.add(p.id);
-          if(!isSelf&&!dead.has(other.id)){other.killCount++;other.xp+=30;addKill(room,other.name,p.name,other.color,head);if(!other.isBot)io.to(other.id).emit('sfx','kill');}
-          break;
+          if(!isSelf&&!dead.has(other.id)){
+            other.killCount++;other.xp+=30;
+            addKill(room,other.name,p.name,other.color,head);
+            if(!other.isBot)io.to(other.id).emit('sfx','kill');
+            // Challenge: kills / multi_kill
+            if(!other.isBot){
+              const cs=getChallengeState(other.id);
+              const ch=getDailyChallenge();
+              if(ch.id==='kills'||ch.id==='multi_kill'){cs.killTimes=cs.killTimes||[];cs.killTimes.push(room.tickCount);}
+            }
+          }          break;
         }
       }
       if(dead.has(p.id))break;
@@ -485,8 +602,20 @@ function tickRoom(room){
     const p=all[id];if(!p)continue;p.alive=false;
     if(p.cloneId){delete room.clones[p.cloneId];p.cloneId=null;}
     for(let i=0;i<p.segs.length;i+=2)room.food.push(mkFood(map,p.segs[i].x,p.segs[i].y,7+Math.random()*5,p.color));
-    if(!p.isBot){addGlobalScore(p.name,p.score);io.to(id).emit('died',{score:p.score,kills:p.killCount,level:p.level,xp:p.xp});}
+    if(!p.isBot){
+      addGlobalScore(p.name,p.score);
+      addWeeklyScore(p.name,p.score);
+      // Emit died with replay buffer for 3-second camera flyback
+      io.to(id).emit('diedWithReplay',{score:p.score,kills:p.killCount,level:p.level,xp:p.xp,replay:p.replayBuf.slice()});
+      // Reset challenge tracking for next life
+      const cs=challengeState[id];
+      if(cs){cs.value=0;cs.violatedNoBoost=false;cs.killTimes=[];cs.spawnTick=room.tickCount;}
+    }
   }
+
+  // ── Challenge progress tick ────────────────────────────────────────────────
+  const ch=getDailyChallenge();
+  for(const p of Object.values(room.players).filter(p=>p.alive)){tickChallengePlayer(p,room,ch);}
 
   checkWin(room,all);
   while(room.food.length<FOOD_TARGET)room.food.push(mkFood(map));
@@ -531,21 +660,27 @@ function tickRoom(room){
 // ── Socket ────────────────────────────────────────────────────────────────────
 io.on('connection',socket=>{
   socket.on('getRooms',()=>{
-    socket.emit('roomList',Object.values(rooms).map(r=>({id:r.id,name:r.name,players:Object.keys(r.players).length,mode:r.mode,mapId:r.map.id})));
+    checkWeeklyReset();
+    socket.emit('roomList',Object.values(rooms).map(r=>({id:r.id,name:r.name,players:Object.keys(r.players).length,mode:r.mode,mapId:r.map.id,locked:!!r.password})));
     socket.emit('globalScores',globalScores.slice(0,10));
+    socket.emit('weeklyScores',{scores:weeklyScores.slice(0,10),hallOfFame,week:currentWeekKey});
     socket.emit('mapList',Object.values(MAPS).map(m=>({id:m.id,name:m.name,unlockLevel:m.unlockLevel})));
     const ed=eloStore[socket.id];
     if(ed)socket.emit('eloData',{...ed,rank:getRank(ed.elo)});
+    socket.emit('dailyChallenge',getDailyChallenge());
   });
-  socket.on('createRoom',({name,roomName,skin,mode,mapId,customSkin})=>{
+  socket.on('createRoom',({name,roomName,skin,mode,mapId,customSkin,password})=>{
     const roomId='r'+idCounter++;const m=GAME_MODES.includes(mode)?mode:'classic';
-    const room=mkRoom(roomId,roomName,m,mapId||'classic');rooms[roomId]=room;
+    const room=mkRoom(roomId,roomName,m,mapId||'classic');
+    if(password&&password.trim())room.password=password.trim().slice(0,32);
+    rooms[roomId]=room;
     room.intervalId=setInterval(()=>tickRoom(room),TICK);
     if(['classic','score','ranked'].includes(m))startZone(room);
     joinRoom(socket,room,name,skin,m,customSkin);
   });
-  socket.on('joinRoom',({roomId,name,skin,customSkin})=>{
+  socket.on('joinRoom',({roomId,name,skin,customSkin,password})=>{
     const room=rooms[roomId];if(!room)return socket.emit('error','Room not found');
+    if(room.password&&room.password!==(password||'').trim())return socket.emit('passwordRequired',{roomId,roomName:room.name});
     joinRoom(socket,room,name,skin,room.mode,customSkin);
   });
   socket.on('input',({angle,boosting})=>{
@@ -572,8 +707,11 @@ function joinRoom(socket,room,name,skin,mode,customSkin){
   const team=mode==='teams'?(Object.values(room.players).filter(p=>p.team==='red').length<=Object.values(room.players).filter(p=>p.team==='blue').length?'red':'blue'):null;
   socket.join(room.id);socketToRoom[socket.id]=room.id;
   room.players[socket.id]=mkPlayer(socket.id,name,false,skin||'solid',team,customSkin||null,room.map);
+  const cs=getChallengeState(socket.id);
+  cs.spawnTick=room.tickCount;cs.value=0;cs.violatedNoBoost=false;cs.killTimes=[];
   const ed=getElo(socket.id);
-  socket.emit('joined',{id:socket.id,W:room.W,H:room.H,roomId:room.id,roomName:room.name,mode:room.mode,team,mapId:room.map.id,elo:ed.elo,rank:getRank(ed.elo)});
+  const inviteUrl=`${PUBLIC_URL}/?room=${room.id}`;
+  socket.emit('joined',{id:socket.id,W:room.W,H:room.H,roomId:room.id,roomName:room.name,mode:room.mode,team,mapId:room.map.id,elo:ed.elo,rank:getRank(ed.elo),inviteUrl});
 }
 
 // ── Stripe ────────────────────────────────────────────────────────────────────

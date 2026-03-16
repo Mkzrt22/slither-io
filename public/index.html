@@ -237,7 +237,52 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
 .sup-price-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .sup-already{text-align:center;font-size:.72rem;color:#ffd700;font-family:'Orbitron',monospace;letter-spacing:2px;padding:8px 0}
 .sup-note{text-align:center;font-size:.62rem;color:var(--dim);margin-top:6px}
-/* ─ ELO / RANKED ─ */
+/* ─ INVITE LINK ─ */
+#invite-btn{position:absolute;top:13px;left:50%;margin-left:160px;background:var(--panel);border:1px solid var(--bdr);border-radius:5px;color:var(--dim);font-size:.72rem;cursor:pointer;padding:4px 10px;pointer-events:all;transition:color .2s,border-color .2s;white-space:nowrap;z-index:6;display:none}
+#invite-btn.show{display:block}
+#invite-btn:hover{color:var(--acc);border-color:var(--acc)}
+/* ─ PASSWORD MODAL ─ */
+#pass-modal{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;background:rgba(7,9,28,.85);backdrop-filter:blur(12px)}
+#pass-modal.show{display:flex}
+.pass-box{background:#07091a;border:1px solid var(--bdr);border-radius:14px;padding:28px 32px;max-width:340px;width:90%;box-shadow:0 0 60px rgba(0,255,204,.08);text-align:center}
+.pass-title{font-family:'Orbitron',monospace;font-size:.9rem;font-weight:700;color:#fff;letter-spacing:2px;margin-bottom:6px}
+.pass-sub{font-size:.76rem;color:var(--dim);margin-bottom:16px}
+/* ─ REPLAY OVERLAY ─ */
+#replay-overlay{position:absolute;inset:0;z-index:20;pointer-events:none;display:none}
+#replay-overlay.show{display:block}
+#replay-bar{position:absolute;bottom:90px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.72);border:1px solid var(--a2);border-radius:6px;padding:5px 18px;font-family:'Orbitron',monospace;font-size:.52rem;letter-spacing:3px;color:var(--a2);white-space:nowrap}
+/* ─ HALL OF FAME ─ */
+.hof-week{font-family:'Orbitron',monospace;font-size:.46rem;letter-spacing:3px;color:var(--acc);margin:6px 0 3px;text-transform:uppercase}
+.hof-entry{display:flex;justify-content:space-between;padding:2px 0;font-size:.74rem;border-bottom:1px solid rgba(255,255,255,.04)}
+.hof-entry:last-child{border-bottom:none}
+.hof-gold{color:#ffd700}.hof-silver{color:#c0c0c0}.hof-bronze{color:#cd7f32}
+/* ─ DAILY CHALLENGE ─ */
+.ch-card{background:linear-gradient(135deg,rgba(255,195,0,.06),rgba(255,100,0,.04));border:1px solid rgba(255,195,0,.28);border-radius:10px;padding:13px 15px;margin-bottom:11px;position:relative;overflow:hidden}
+.ch-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,195,0,.04),transparent);pointer-events:none}
+.ch-date{font-family:'Orbitron',monospace;font-size:.44rem;letter-spacing:3px;color:rgba(255,195,0,.6);text-transform:uppercase;margin-bottom:5px}
+.ch-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ch-icon{font-size:1.4rem;line-height:1}
+.ch-title{font-family:'Orbitron',monospace;font-size:.7rem;font-weight:700;color:#ffc312;letter-spacing:1px}
+.ch-desc{font-size:.76rem;color:var(--text);margin-bottom:10px;line-height:1.4}
+.ch-track{height:5px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin-bottom:5px}
+.ch-fill{height:100%;background:linear-gradient(90deg,#ffc312,#ff9f43);border-radius:3px;transition:width .4s}
+.ch-status{font-size:.65rem;color:var(--dim);display:flex;justify-content:space-between;align-items:center}
+.ch-done-badge{background:linear-gradient(135deg,#ffc312,#ff9f43);color:#07091a;font-family:'Orbitron',monospace;font-size:.48rem;font-weight:700;letter-spacing:2px;padding:2px 8px;border-radius:20px}
+/* In-game challenge HUD */
+#ch-hud{position:absolute;bottom:135px;right:13px;background:var(--panel);border:1px solid rgba(255,195,0,.25);border-radius:8px;padding:9px 12px;min-width:150px;backdrop-filter:blur(10px);pointer-events:none;display:none}
+#ch-hud.show{display:block}
+#ch-hud .ch-hud-label{font-family:'Orbitron',monospace;font-size:.44rem;letter-spacing:3px;color:rgba(255,195,0,.6);text-transform:uppercase;margin-bottom:4px}
+#ch-hud .ch-hud-obj{font-size:.74rem;font-weight:600;color:var(--text);margin-bottom:6px;line-height:1.3}
+#ch-hud .ch-hud-bar{height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;margin-bottom:4px}
+#ch-hud .ch-hud-fill{height:100%;background:linear-gradient(90deg,#ffc312,#ff9f43);border-radius:2px;transition:width .3s}
+#ch-hud .ch-hud-val{font-family:'Orbitron',monospace;font-size:.55rem;color:#ffc312;text-align:right}
+/* Challenge complete toast */
+#ch-toast{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(.85);background:rgba(7,9,28,.96);border:2px solid #ffc312;border-radius:12px;padding:22px 36px;text-align:center;pointer-events:none;opacity:0;transition:opacity .3s,transform .3s;z-index:25}
+#ch-toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.ch-toast-emoji{font-size:2.4rem;margin-bottom:6px}
+.ch-toast-title{font-family:'Orbitron',monospace;font-size:1.1rem;font-weight:900;color:#ffc312;letter-spacing:3px;margin-bottom:4px}
+.ch-toast-sub{font-size:.8rem;color:var(--dim)}
+/* ELO / RANKED */
 .mopt.ranked-opt{border-color:rgba(153,128,250,.3);color:#9980fa}
 .mopt.ranked-opt.active{border-color:#9980fa;color:#9980fa;background:rgba(153,128,250,.07)}
 #elo-hud{position:absolute;top:13px;left:50%;margin-left:158px;background:var(--panel);border:1px solid rgba(153,128,250,.3);border-radius:5px;padding:3px 9px;font-family:'Orbitron',monospace;font-size:.46rem;color:#9980fa;letter-spacing:2px;pointer-events:none;white-space:nowrap;display:none}
@@ -300,6 +345,7 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
       </div>
 
       <input class="inp" id="roomNameInput" type="text" placeholder="Room name (optional)" maxlength="20" autocomplete="off">
+      <input class="inp" id="roomPassInput" type="password" placeholder="🔒 Password (optional)" maxlength="32" autocomplete="off">
       <div class="ph">Game Mode</div>
       <div class="msel" id="modeSel" style="flex-wrap:wrap;gap:4px">
         <div class="mopt active" data-mode="classic"><span class="mi">🌍</span>Classic</div>
@@ -323,10 +369,28 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
       <button class="btng" id="refreshBtn">↻ Refresh</button>
       <div class="ph" style="margin-top:10px">Global Top 10</div>
       <div id="globalScores"><div class="noroom">No scores yet</div></div>
+      <div class="ph" style="margin-top:10px">🏅 This Week</div>
+      <div id="weeklyScores"><div class="noroom">No scores yet</div></div>
+      <div class="ph" style="margin-top:10px">🏆 Hall of Fame</div>
+      <div id="hallOfFame"><div class="noroom">No records yet</div></div>
     </div>
 
-    <!-- Column 3: Stats + Level progression -->
+    <!-- Column 3: Stats + Level progression + Daily Challenge -->
     <div class="panel">
+      <div class="ph">Daily Challenge</div>
+      <div id="ch-lobby-card" class="ch-card">
+        <div class="ch-date" id="ch-date">Loading…</div>
+        <div class="ch-header">
+          <span class="ch-icon" id="ch-icon">🏆</span>
+          <span class="ch-title" id="ch-title">—</span>
+        </div>
+        <div class="ch-desc" id="ch-desc">Fetching today's challenge…</div>
+        <div class="ch-track"><div class="ch-fill" id="ch-fill" style="width:0%"></div></div>
+        <div class="ch-status">
+          <span id="ch-progress-lbl">0 / —</span>
+          <span id="ch-done-badge" class="ch-done-badge" style="display:none">✓ DONE</span>
+        </div>
+      </div>
       <div class="ph">Your Stats</div>
       <div class="stat-grid" style="margin-bottom:14px">
         <div class="stat-box"><div class="stat-val" id="stBest">0</div><div class="stat-lbl">Best Score</div></div>
@@ -374,15 +438,42 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
   </div>
   <button id="sndbtn" class="on">🔊</button>
   <button id="pause-btn" title="Pause (Esc)">⏸</button>
+  <button id="invite-btn" title="Copy invite link">🔗 Invite</button>
   <div id="elo-hud">🎖 ELO <span id="elo-val">1000</span> · <span id="elo-rank">Bronze</span></div>
   <div id="elo-toast"></div>
   <div id="freeze-overlay"></div>
   <div id="event-overlay">
     <div id="event-banner"></div>
   </div>
+  <!-- Daily challenge in-game HUD -->
+  <div id="ch-hud">
+    <div class="ch-hud-label">Daily Challenge</div>
+    <div class="ch-hud-obj" id="ch-hud-obj">—</div>
+    <div class="ch-hud-bar"><div class="ch-hud-fill" id="ch-hud-fill" style="width:0%"></div></div>
+    <div class="ch-hud-val" id="ch-hud-val">0 / —</div>
+  </div>
+  <!-- Challenge complete toast -->
+  <div id="ch-toast">
+    <div class="ch-toast-emoji">🏆</div>
+    <div class="ch-toast-title">CHALLENGE COMPLETE!</div>
+    <div class="ch-toast-sub" id="ch-toast-sub">Come back tomorrow for a new one</div>
+  </div>
+  <!-- Replay overlay -->
+  <div id="replay-overlay">
+    <div id="replay-bar">⏮ REPLAYING LAST 3 SECONDS…</div>
+  </div>
 </div>
 
-<!-- PAUSE OVERLAY -->
+<!-- PASSWORD MODAL -->
+<div id="pass-modal">
+  <div class="pass-box">
+    <div class="pass-title">🔒 Private Room</div>
+    <div class="pass-sub" id="pass-room-name">Enter password to join</div>
+    <input class="inp" id="pass-input" type="password" placeholder="Password" maxlength="32" autocomplete="off" style="text-align:center">
+    <button class="btn" id="pass-confirm-btn" style="margin-bottom:0">JOIN</button>
+    <button class="btng" id="pass-cancel-btn" style="margin-top:6px">Cancel</button>
+  </div>
+</div>
 <div id="pause-overlay">
   <div class="pause-box">
     <div class="pause-title">PAUSED</div>
@@ -819,6 +910,7 @@ const boostTrail=[];
 let activeEventOverlay=null; // {type, x, y, r, tick, duration}
 let myElo=1000,myRank='Bronze';
 let eloToastTimer=null;
+let replayCamPos=null; // override camera during death replay
 
 const gc=document.getElementById('gc');
 const ctx=gc.getContext('2d');
@@ -855,13 +947,23 @@ function sendChat(){const inp=document.getElementById('chat-input');const msg=in
 // ═══ LOBBY ════════════════════════════════════════════════════════════════════
 function loadRooms(){socket.emit('getRooms');}
 socket.on('mapList',maps=>{serverMaps=maps;myBestLevel=loadStats().level||1;buildMapGrid();});
+let pendingJoinRoomId=null;
 socket.on('roomList',rooms=>{
   const el=document.getElementById('roomList');
   if(!rooms.length){el.innerHTML='<div class="noroom">No rooms yet</div>';return;}
-  el.innerHTML=rooms.map(r=>`<div class="rrow" data-id="${r.id}"><span class="rn">${escHtml(r.name)}</span><span class="rm"><span>${r.players}p</span><span class="mbadge mc2">${r.mode}</span><span class="mbadge" style="background:rgba(255,255,255,.06);color:var(--dim)">${r.mapId||'classic'}</span></span></div>`).join('');
+  el.innerHTML=rooms.map(r=>`<div class="rrow" data-id="${r.id}" data-locked="${r.locked?'1':''}"><span class="rn">${r.locked?'🔒 ':''}${escHtml(r.name)}</span><span class="rm"><span>${r.players}p</span><span class="mbadge mc2">${r.mode}</span><span class="mbadge" style="background:rgba(255,255,255,.06);color:var(--dim)">${r.mapId||'classic'}</span></span></div>`).join('');
   el.querySelectorAll('.rrow').forEach(row=>row.addEventListener('click',()=>{
     myName=document.getElementById('nameInput').value.trim()||'Anonymous';mySkin=selectedSkin;
-    socket.emit('joinRoom',{roomId:row.dataset.id,name:myName,skin:mySkin,customSkin:getCustomSkinData()});
+    if(row.dataset.locked==='1'){
+      // Show password modal
+      pendingJoinRoomId=row.dataset.id;
+      document.getElementById('pass-room-name').textContent='🔒 '+row.querySelector('.rn').textContent;
+      document.getElementById('pass-input').value='';
+      document.getElementById('pass-modal').classList.add('show');
+      setTimeout(()=>document.getElementById('pass-input').focus(),80);
+    } else {
+      socket.emit('joinRoom',{roomId:row.dataset.id,name:myName,skin:mySkin,customSkin:getCustomSkinData()});
+    }
   }));
 });
 socket.on('globalScores',scores=>{
@@ -869,11 +971,40 @@ socket.on('globalScores',scores=>{
   if(!scores.length){el.innerHTML='<div class="noroom">No scores yet</div>';return;}
   el.innerHTML=scores.map((s,i)=>`<div class="gsrow"><span class="gsrank">${i+1}</span><span class="gsname">${escHtml(s.name)}</span><span class="gsscore">${s.score}</span></div>`).join('');
 });
+socket.on('weeklyScores',({scores,hallOfFame:hof,week})=>{
+  const wEl=document.getElementById('weeklyScores');
+  const medals=['hof-gold','hof-silver','hof-bronze'];
+  if(!scores.length){wEl.innerHTML='<div class="noroom">No scores this week yet</div>';}
+  else wEl.innerHTML=scores.map((s,i)=>`<div class="gsrow"><span class="gsrank">${i+1}</span><span class="gsname ${medals[i]||''}">${escHtml(s.name)}</span><span class="gsscore">${s.score}</span></div>`).join('');
+  const hEl=document.getElementById('hallOfFame');
+  if(!hof||!hof.length){hEl.innerHTML='<div class="noroom">No records yet</div>';return;}
+  hEl.innerHTML=hof.map(entry=>`<div class="hof-week">${entry.week}</div>`+entry.entries.map((s,i)=>`<div class="hof-entry"><span class="${medals[i]||''}">${['🥇','🥈','🥉'][i]||''} ${escHtml(s.name)}</span><span style="color:var(--acc);font-family:'Orbitron',monospace;font-size:.65rem">${s.score}</span></div>`).join('')).join('');
+});
 document.getElementById('refreshBtn').addEventListener('click',loadRooms);
 document.getElementById('createBtn').addEventListener('click',()=>{
   myName=document.getElementById('nameInput').value.trim()||'Anonymous';mySkin=selectedSkin;
   const rn=document.getElementById('roomNameInput').value.trim()||myName+"'s Room";
-  socket.emit('createRoom',{name:myName,roomName:rn,skin:mySkin,mode:selectedMode,mapId:selectedMap,customSkin:getCustomSkinData()});
+  const pw=document.getElementById('roomPassInput').value.trim();
+  socket.emit('createRoom',{name:myName,roomName:rn,skin:mySkin,mode:selectedMode,mapId:selectedMap,customSkin:getCustomSkinData(),password:pw||undefined});
+});
+
+// ── Password modal ────────────────────────────────────────────────────────────
+function submitPassword(){
+  const pw=document.getElementById('pass-input').value.trim();
+  if(!pw||!pendingJoinRoomId)return;
+  document.getElementById('pass-modal').classList.remove('show');
+  socket.emit('joinRoom',{roomId:pendingJoinRoomId,name:myName,skin:mySkin,customSkin:getCustomSkinData(),password:pw});
+  pendingJoinRoomId=null;
+}
+document.getElementById('pass-confirm-btn').addEventListener('click',submitPassword);
+document.getElementById('pass-cancel-btn').addEventListener('click',()=>{document.getElementById('pass-modal').classList.remove('show');pendingJoinRoomId=null;});
+document.getElementById('pass-input').addEventListener('keydown',e=>{if(e.key==='Enter')submitPassword();});
+socket.on('passwordRequired',({roomId,roomName})=>{
+  pendingJoinRoomId=roomId;
+  document.getElementById('pass-room-name').textContent='🔒 '+escHtml(roomName);
+  document.getElementById('pass-input').value='';
+  document.getElementById('pass-modal').classList.add('show');
+  setTimeout(()=>document.getElementById('pass-input').focus(),80);
 });
 loadRooms();setInterval(loadRooms,5000);
 
@@ -888,9 +1019,23 @@ function runCountdown(cb){
   step();
 }
 
+// ── Auto-join from invite URL ──────────────────────────────────────────────────
+let currentInviteUrl=null;
+(function checkInviteParam(){
+  const rId=new URLSearchParams(window.location.search).get('room');
+  if(rId){
+    // Wait for socket to connect then auto-join
+    socket.on('connect',()=>{
+      const n=document.getElementById('nameInput').value.trim()||'Anonymous';
+      socket.emit('joinRoom',{roomId:rId,name:n,skin:'solid',customSkin:null});
+    });
+  }
+})();
+
 // ═══ SOCKET EVENTS ════════════════════════════════════════════════════════════
-socket.on('joined',({id,W,H,roomId,roomName,mode,team,mapId,elo,rank})=>{
+socket.on('joined',({id,W,H,roomId,roomName,mode,team,mapId,elo,rank,inviteUrl})=>{
   myId=id;W_world=W;H_world=H;myMode=mode;myTeam=team;currentMapId=mapId||'classic';
+  currentInviteUrl=inviteUrl||null;
   if(elo!=null){myElo=elo;myRank=rank?.name||'Bronze';}
   document.getElementById('rnt').textContent=roomName+' · '+mode.toUpperCase()+' · '+(mapId||'classic').toUpperCase();
   document.getElementById('ls').classList.add('hidden');
@@ -902,25 +1047,85 @@ socket.on('joined',({id,W,H,roomId,roomName,mode,team,mapId,elo,rank})=>{
   const eloHud=document.getElementById('elo-hud');
   if(mode==='ranked'){eloHud.classList.add('show');document.getElementById('elo-val').textContent=myElo;document.getElementById('elo-rank').textContent=myRank;}
   else eloHud.classList.remove('show');
+  // Show invite button
+  const invBtn=document.getElementById('invite-btn');
+  invBtn.classList.add('show');invBtn.textContent='🔗 Invite';
   if(isMobile())mcEl.classList.add('visible');
   inGame=false;spectating=false;paused=false;activeEventOverlay=null;
   document.getElementById('spb').classList.remove('show');
   document.getElementById('event-overlay').classList.remove('show');
   document.getElementById('freeze-overlay').classList.remove('show');
+  document.getElementById('replay-overlay').classList.remove('show');
+  const _stored=getDailyChallengeStorage();
+  const _chDone=currentChallenge&&_stored.date===currentChallenge.date&&_stored.done;
+  const chHud=document.getElementById('ch-hud');
+  if(currentChallenge&&!_chDone)chHud.classList.add('show');
+  else chHud.classList.remove('show');
   if(mode==='tournament'){document.getElementById('ts-screen').classList.remove('hidden');}
   else runCountdown(()=>{inGame=true;});
 });
 
-socket.on('died',({score,kills,level,xp})=>{
+// ── Invite button copy ─────────────────────────────────────────────────────────
+document.getElementById('invite-btn').addEventListener('click',()=>{
+  const url=currentInviteUrl||window.location.href;
+  navigator.clipboard.writeText(url).then(()=>{
+    const btn=document.getElementById('invite-btn');
+    btn.textContent='✓ Copied!';btn.style.color='var(--acc)';btn.style.borderColor='var(--acc)';
+    setTimeout(()=>{btn.textContent='🔗 Invite';btn.style.color='';btn.style.borderColor='';},2000);
+  }).catch(()=>{prompt('Copy this link:',url);});
+});
+
+socket.on('diedWithReplay',({score,kills,level,xp,replay})=>{
   inGame=false;paused=false;setPause(false);
-  // Spawn death explosion at last known head position
+  SFX.die();shakeX=12;shakeY=12;shakeDur=18;
+  document.getElementById('dsc').textContent=score;
+  document.getElementById('dkl').textContent=kills;
+  document.getElementById('dlv').textContent=level||1;
+  const s=loadStats();s.best=Math.max(s.best,score);s.kills+=kills;s.games++;
+  s.level=Math.max(s.level,level||1);s.xp=Math.max(s.xp||0,xp||0);
+  saveStats(s);updateStatsUI();myBestLevel=s.level;buildMapGrid();
+
+  // Spawn death explosion at last known position
   const me=state.players.find(p=>p.id===myId);
   if(me?.segs?.length){
-    let cam={x:0,y:0};
     const head=me.segs[0];
-    cam.x=head.x-gc.width/2;cam.y=head.y-gc.height/2;
+    const cam={x:head.x-gc.width/2,y:head.y-gc.height/2};
     spawnDeathExplosion(head.x,head.y,me.color,cam);
   }
+
+  // ── 3-second death replay camera flyback ─────────────────────────────────
+  if(replay&&replay.length>1){
+    const replayOv=document.getElementById('replay-overlay');
+    replayOv.classList.add('show');
+    spectating=true; // keep render loop alive
+    let ri=replay.length-1; // walk backwards through positions
+    const REPLAY_MS=3000;
+    const start=performance.now();
+    function replayStep(now){
+      const elapsed=now-start;
+      const t=Math.min(elapsed/REPLAY_MS,1);
+      // interpolate camera along stored path (reverse = flyback)
+      const idx=Math.floor((1-t)*(replay.length-1));
+      const pos=replay[Math.max(0,idx)];
+      // Directly override camera in next render by pinning spectate target position
+      replayCamPos={x:pos.x,y:pos.y};
+      if(t<1){requestAnimationFrame(replayStep);}
+      else{
+        replayCamPos=null;spectating=false;
+        replayOv.classList.remove('show');
+        document.getElementById('ds').classList.remove('hidden');
+      }
+    }
+    requestAnimationFrame(replayStep);
+  } else {
+    document.getElementById('ds').classList.remove('hidden');
+  }
+});
+
+// Fallback for servers that still emit 'died'
+socket.on('died',({score,kills,level,xp})=>{
+  socket.emit('__noop__'); // handled by diedWithReplay; this is a safety net
+  inGame=false;paused=false;setPause(false);
   document.getElementById('dsc').textContent=score;document.getElementById('dkl').textContent=kills;document.getElementById('dlv').textContent=level||1;
   document.getElementById('ds').classList.remove('hidden');
   SFX.die();shakeX=12;shakeY=12;shakeDur=18;
@@ -992,6 +1197,70 @@ socket.on('eloResult',({change,newElo,rank})=>{
   eloToastTimer=setTimeout(()=>toast.classList.remove('show'),3500);
 });
 
+// ── Daily Challenge ────────────────────────────────────────────────────────────
+const CHALLENGE_KEY='slither_daily_challenge_v1';
+let currentChallenge=null;
+let chToastTimer=null;
+
+function getDailyChallengeStorage(){
+  try{return JSON.parse(localStorage.getItem(CHALLENGE_KEY)||'{}');}catch(e){return{};}
+}
+function saveDailyChallengeStorage(obj){
+  try{localStorage.setItem(CHALLENGE_KEY,JSON.stringify(obj));}catch(e){}
+}
+
+function renderLobbyChallenge(ch,progress,done){
+  document.getElementById('ch-date').textContent=`📅 ${ch.date} · Today's Challenge`;
+  document.getElementById('ch-icon').textContent=ch.icon;
+  document.getElementById('ch-title').textContent=ch.label;
+  document.getElementById('ch-desc').textContent=ch.desc;
+  const pct=done?100:Math.min(100,Math.round((progress/ch.goal)*100));
+  document.getElementById('ch-fill').style.width=pct+'%';
+  document.getElementById('ch-progress-lbl').textContent=done?`${ch.goal} / ${ch.goal} ${ch.unit}`:`${progress} / ${ch.goal} ${ch.unit}`;
+  const badge=document.getElementById('ch-done-badge');
+  badge.style.display=done?'inline-block':'none';
+}
+
+socket.on('dailyChallenge',ch=>{
+  currentChallenge=ch;
+  // Check localStorage for already-completed today
+  const stored=getDailyChallengeStorage();
+  const done=stored.date===ch.date&&stored.done===true;
+  const progress=stored.date===ch.date?(stored.progress||0):0;
+  renderLobbyChallenge(ch,progress,done);
+  // Show in-game HUD objective text
+  document.getElementById('ch-hud-obj').textContent=`${ch.icon} ${ch.desc}`;
+  document.getElementById('ch-hud-val').textContent=`${progress} / ${ch.goal} ${ch.unit}`;
+  document.getElementById('ch-hud-fill').style.width=(done?100:Math.min(100,(progress/ch.goal)*100))+'%';
+  if(done)document.getElementById('ch-hud').classList.remove('show'); // hide if already done today
+});
+
+socket.on('challengeProgress',({value,goal,done,id})=>{
+  if(!currentChallenge||currentChallenge.id!==id)return;
+  // Update in-game HUD
+  const pct=Math.min(100,Math.round((value/goal)*100));
+  document.getElementById('ch-hud-fill').style.width=pct+'%';
+  document.getElementById('ch-hud-val').textContent=`${value} / ${goal} ${currentChallenge.unit}`;
+  // Save progress
+  const stored=getDailyChallengeStorage();
+  stored.date=currentChallenge.date;stored.progress=value;
+  if(done)stored.done=true;
+  saveDailyChallengeStorage(stored);
+  // Update lobby card too
+  renderLobbyChallenge(currentChallenge,value,done);
+  if(done){
+    // Hide progress HUD, show toast
+    document.getElementById('ch-hud').classList.remove('show');
+    document.getElementById('ch-toast-sub').textContent=`${currentChallenge.icon} ${currentChallenge.label} — Come back tomorrow!`;
+    const toast=document.getElementById('ch-toast');
+    toast.classList.add('show');
+    clearTimeout(chToastTimer);
+    chToastTimer=setTimeout(()=>toast.classList.remove('show'),4500);
+    // Celebration SFX
+    [523,659,784,880,1047].forEach((f,i)=>beep({freq:f,type:'square',vol:.16,dur:.15,delay:i*.12}));
+  }
+});
+
 document.getElementById('respawnBtn').addEventListener('click',()=>{
   document.getElementById('ds').classList.add('hidden');spectating=false;spectateTargetId=null;
   socket.emit('respawn',{name:myName,skin:mySkin,customSkin:getCustomSkinData()});
@@ -1005,15 +1274,35 @@ document.getElementById('spectateBtn').addEventListener('click',()=>{
 });
 document.getElementById('newGameBtn').addEventListener('click',()=>{
   document.getElementById('go').classList.add('hidden');document.getElementById('ls').classList.remove('hidden');
-  gc.style.display='none';document.getElementById('hud').classList.remove('visible');mcEl.classList.remove('visible');loadRooms();
+  gc.style.display='none';document.getElementById('hud').classList.remove('visible');mcEl.classList.remove('visible');
+  document.getElementById('invite-btn').classList.remove('show');
+  loadRooms();
 });
 document.getElementById('startTBtn').addEventListener('click',()=>{
   socket.emit('startTournament');document.getElementById('ts-screen').classList.add('hidden');runCountdown(()=>{inGame=true;});
 });
-function updateSpBanner(){const t=state.players.find(p=>p.id===spectateTargetId);document.getElementById('spb').textContent=t?`SPECTATING: ${t.name} (click)`:' SPECTATING';}
+function updateSpBanner(){const t=state.players.find(p=>p.id===spectateTargetId);document.getElementById('spb').textContent=t?`SPECTATING: ${t.name} (click)`:'SPECTATING';}
 function renderBracket(b){const el=document.getElementById('brDisplay');el.innerHTML='';(b.rounds||[]).forEach(round=>round.forEach(match=>{const div=document.createElement('div');div.className='br-match';div.innerHTML=`<span class="br-p">${match[0]?match[0].slice(0,8):'BYE'}</span><span class="br-vs">VS</span><span class="br-p">${match[1]?match[1].slice(0,8):'BYE'}</span>`;el.appendChild(div);}));}
 
-// ═══ STATE ════════════════════════════════════════════════════════════════════
+// ═══ PAUSE ═══════════════════════════════════════════════════════════════════
+let paused=false;
+const pauseOverlay=document.getElementById('pause-overlay');
+function setPause(val){paused=val;pauseOverlay.classList.toggle('show',val);document.getElementById('pause-btn').textContent=val?'▶':'⏸';if(val)mouseDown=false;}
+document.getElementById('pause-btn').addEventListener('click',()=>{if(inGame||spectating)setPause(!paused);});
+document.getElementById('resumeBtn').addEventListener('click',()=>setPause(false));
+document.getElementById('leaveBtn').addEventListener('click',()=>{
+  setPause(false);inGame=false;spectating=false;paused=false;replayCamPos=null;
+  document.getElementById('go').classList.add('hidden');document.getElementById('ds').classList.add('hidden');
+  document.getElementById('ls').classList.remove('hidden');gc.style.display='none';
+  document.getElementById('hud').classList.remove('visible');document.getElementById('mc').classList.remove('visible');
+  document.getElementById('invite-btn').classList.remove('show');loadRooms();
+});
+window.addEventListener('keydown',e=>{
+  if(e.key==='Escape'||e.key==='p'||e.key==='P'){
+    if(document.activeElement===document.getElementById('chat-input'))return;
+    if(inGame||spectating)setPause(!paused);
+  }
+});
 socket.on('state',s=>{
   state=s;
   if(s.W)W_world=s.W;if(s.H)H_world=s.H;
@@ -1048,40 +1337,6 @@ setInterval(()=>{
   if(mouseDown&&!prevBoost)SFX.boost();prevBoost=mouseDown;
   socket.emit('input',{angle:Math.atan2(mouseY-gc.height/2,mouseX-gc.width/2),boosting:mouseDown});
 },1000/30);
-
-// ═══ PAUSE ═══════════════════════════════════════════════════════════════════
-let paused=false;
-const pauseOverlay=document.getElementById('pause-overlay');
-
-function setPause(val){
-  paused=val;
-  pauseOverlay.classList.toggle('show',val);
-  document.getElementById('pause-btn').textContent=val?'▶':'⏸';
-  if(val) mouseDown=false; // release boost when pausing
-}
-
-document.getElementById('pause-btn').addEventListener('click',()=>{
-  if(inGame||spectating) setPause(!paused);
-});
-document.getElementById('resumeBtn').addEventListener('click',()=>setPause(false));
-document.getElementById('leaveBtn').addEventListener('click',()=>{
-  setPause(false);
-  inGame=false;spectating=false;paused=false;
-  document.getElementById('go').classList.add('hidden');
-  document.getElementById('ds').classList.add('hidden');
-  document.getElementById('ls').classList.remove('hidden');
-  gc.style.display='none';
-  document.getElementById('hud').classList.remove('visible');
-  document.getElementById('mc').classList.remove('visible');
-  loadRooms();
-});
-
-window.addEventListener('keydown',e=>{
-  if(e.key==='Escape'||e.key==='p'||e.key==='P'){
-    if(document.activeElement===document.getElementById('chat-input'))return;
-    if(inGame||spectating) setPause(!paused);
-  }
-});
 
 // ═══ UI HELPERS ══════════════════════════════════════════════════════════════
 function addKFRow(k){
@@ -1690,7 +1945,8 @@ function render(){
   let camTarget=spectating&&spectateTargetId?state.players.find(p=>p.id===spectateTargetId):state.players.find(p=>p.id===myId);
   if(!camTarget&&state.players.length){camTarget=state.players[0];spectateTargetId=state.players[0].id;}
   let cam={x:0,y:0};
-  if(camTarget?.segs?.length){cam.x=camTarget.segs[0].x-vw/2;cam.y=camTarget.segs[0].y-vh/2;}
+  if(replayCamPos){cam.x=replayCamPos.x-vw/2;cam.y=replayCamPos.y-vh/2;}
+  else if(camTarget?.segs?.length){cam.x=camTarget.segs[0].x-vw/2;cam.y=camTarget.segs[0].y-vh/2;}
   if(shakeDur>0){cam.x+=(Math.random()-.5)*shakeX;cam.y+=(Math.random()-.5)*shakeY;shakeX*=.82;shakeY*=.82;shakeDur--;}
 
   const m=getMapMeta();
