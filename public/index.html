@@ -256,6 +256,77 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
 .hof-entry{display:flex;justify-content:space-between;padding:2px 0;font-size:.74rem;border-bottom:1px solid rgba(255,255,255,.04)}
 .hof-entry:last-child{border-bottom:none}
 .hof-gold{color:#ffd700}.hof-silver{color:#c0c0c0}.hof-bronze{color:#cd7f32}
+/* ─ BATTLE PASS ─────────────────────────────── */
+#bp-banner{display:flex;align-items:center;gap:14px;background:rgba(108,92,231,.1);border:1px solid rgba(168,85,247,.25);border-radius:10px;padding:10px 16px;margin-bottom:12px;flex-wrap:wrap}
+.bp-banner-info{display:flex;align-items:center;gap:10px;flex:1;min-width:180px;flex-wrap:wrap}
+.bp-banner-s1{font-family:'Orbitron',monospace;font-size:.52rem;font-weight:700;letter-spacing:3px;color:#a855f7;white-space:nowrap}
+#bp-banner-tier{font-family:'Orbitron',monospace;font-size:.5rem;color:var(--dim);white-space:nowrap}
+.bp-bnr-bar{flex:1;min-width:80px;height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden}
+#bp-banner-bar{height:100%;background:linear-gradient(90deg,#6c5ce7,#a855f7);border-radius:3px;transition:width .4s;width:0%}
+#bp-banner-days{font-size:.6rem;color:var(--dim);white-space:nowrap}
+#bp-btn{background:linear-gradient(135deg,#6c5ce7,#a855f7);border:none;border-radius:7px;color:#fff;cursor:pointer;font-family:'Orbitron',monospace;font-size:.58rem;font-weight:700;letter-spacing:2px;padding:9px 16px;white-space:nowrap;transition:transform .15s,box-shadow .15s;flex-shrink:0}
+#bp-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(168,85,247,.4)}
+#bp-overlay{position:fixed;inset:0;z-index:90;display:none;align-items:flex-start;justify-content:center;padding:3vh 1vw;background:rgba(7,9,28,.93);backdrop-filter:blur(16px);overflow-y:auto}
+#bp-overlay.show{display:flex}
+.bp-panel{width:min(980px,97vw);background:#0d0f2b;border:1px solid rgba(168,85,247,.3);border-radius:16px;padding:22px 20px;position:relative}
+.bp-x{position:absolute;top:12px;right:14px;background:none;border:none;color:var(--dim);font-size:1.1rem;cursor:pointer;padding:4px 9px;border-radius:4px;line-height:1}
+.bp-x:hover{color:#fff;background:rgba(255,255,255,.07)}
+.bp-head{display:flex;align-items:center;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.bp-badge{background:linear-gradient(135deg,#6c5ce7,#a855f7);border-radius:8px;padding:8px 14px;flex-shrink:0}
+.bp-badge-s{font-family:'Orbitron',monospace;font-size:.64rem;font-weight:900;letter-spacing:3px;color:#fff;display:block}
+.bp-badge-sub{font-family:'Orbitron',monospace;font-size:.42rem;letter-spacing:4px;color:rgba(255,255,255,.6);display:block}
+#bp-days-txt{font-family:'Orbitron',monospace;font-size:.56rem;color:var(--dim);white-space:nowrap}
+.bp-xp-area{flex:1;min-width:200px}
+.bp-tier-txt{font-family:'Orbitron',monospace;font-size:.52rem;letter-spacing:2px;color:var(--dim);margin-bottom:5px;display:flex;justify-content:space-between}
+.bp-xp-wrap{height:8px;background:rgba(255,255,255,.07);border-radius:4px;overflow:hidden;margin-bottom:4px}
+#bp-xp-fill{height:100%;background:linear-gradient(90deg,#6c5ce7,#a855f7);border-radius:4px;transition:width .4s;width:0%}
+#bp-xp-lbl{font-size:.62rem;color:var(--dim);text-align:right}
+#bp-prem-btn{background:linear-gradient(135deg,#ffd700,#ff9f43);border:none;border-radius:7px;color:#07091a;cursor:pointer;font-family:'Orbitron',monospace;font-size:.54rem;font-weight:700;letter-spacing:2px;padding:9px 14px;white-space:nowrap;transition:transform .15s;flex-shrink:0}
+#bp-prem-btn:hover{transform:translateY(-1px)}
+#bp-prem-btn.active{background:linear-gradient(135deg,#a855f7,#6c5ce7);color:#fff}
+.bp-track-outer{overflow-x:auto;overflow-y:visible;padding:4px 2px 10px;scrollbar-width:thin;scrollbar-color:rgba(168,85,247,.3) transparent}
+.bp-track-outer::-webkit-scrollbar{height:4px}
+.bp-track-outer::-webkit-scrollbar-thumb{background:rgba(168,85,247,.3);border-radius:2px}
+.bp-track{display:flex;align-items:center;position:relative;min-width:max-content;padding:2px 4px}
+.bp-col{display:flex;flex-direction:column;align-items:center;gap:4px;width:68px;flex-shrink:0}
+.bp-card{width:62px;height:68px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;transition:border-color .2s,box-shadow .2s}
+.bp-card:hover{border-color:rgba(255,255,255,.2)}
+.bp-card.unlk{border-color:rgba(0,229,255,.45);background:rgba(0,229,255,.07);box-shadow:0 0 8px rgba(0,229,255,.1)}
+.bp-card.unlk-p{border-color:rgba(255,215,0,.45);background:rgba(255,215,0,.07);box-shadow:0 0 8px rgba(255,215,0,.1)}
+.bp-card.dim-p{opacity:.28}
+.bp-ci{font-size:1.25rem;line-height:1}
+.bp-ct{width:38px;height:5px;border-radius:3px}
+.bp-cb{width:26px;height:26px;border-radius:4px;border:3px solid;background:transparent}
+.bp-cl{font-size:.4rem;font-family:'Orbitron',monospace;letter-spacing:.5px;text-align:center;color:rgba(255,255,255,.35);padding:0 3px;line-height:1.3;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bp-card.unlk .bp-cl{color:#00e5ff}
+.bp-card.unlk-p .bp-cl{color:#ffd700}
+.bp-tnum{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-family:'Orbitron',monospace;font-size:.42rem;font-weight:700;color:rgba(255,255,255,.3);transition:all .25s;flex-shrink:0;position:relative;z-index:2}
+.bp-tnum.done{background:rgba(168,85,247,.2);border-color:#a855f7;color:#c4b5fd}
+.bp-tnum.cur{background:linear-gradient(135deg,#6c5ce7,#a855f7);border-color:#fff;color:#fff;box-shadow:0 0 14px rgba(168,85,247,.7);animation:bpp 1.5s ease-in-out infinite}
+@keyframes bpp{0%,100%{box-shadow:0 0 14px rgba(168,85,247,.7)}50%{box-shadow:0 0 22px rgba(168,85,247,1)}}
+.bp-conn{height:3px;background:rgba(255,255,255,.06);border-radius:2px;width:3px;flex-shrink:0;align-self:center;margin-bottom:28px}
+.bp-conn.done{background:linear-gradient(90deg,#6c5ce7,#a855f7)}
+.bp-eq-wrap{margin-top:14px;border-top:1px solid rgba(255,255,255,.06);padding-top:13px}
+.bp-eq-title{font-family:'Orbitron',monospace;font-size:.5rem;letter-spacing:3px;color:var(--dim);margin-bottom:9px}
+.bp-eq-row{display:flex;gap:8px;flex-wrap:wrap}
+.bp-eq-slot{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:7px 11px;cursor:pointer;transition:border-color .2s;min-width:95px}
+.bp-eq-slot:hover{border-color:rgba(168,85,247,.5)}
+.bp-eq-slot.on{border-color:#a855f7;background:rgba(168,85,247,.1)}
+.bp-eq-slot .esl{font-size:.44rem;color:var(--dim);letter-spacing:1px;text-transform:uppercase;font-family:'Orbitron',monospace;margin-bottom:2px}
+.bp-eq-slot .esv{font-size:.76rem;color:var(--text);font-weight:600}
+#bp-hud{position:absolute;bottom:238px;right:13px;background:var(--panel);border:1px solid rgba(168,85,247,.2);border-radius:6px;padding:5px 10px;min-width:128px;pointer-events:none;display:none;backdrop-filter:blur(10px)}
+#bp-hud.show{display:block}
+.bph-lbl{font-family:'Orbitron',monospace;font-size:.4rem;letter-spacing:3px;color:rgba(168,85,247,.55);text-transform:uppercase;margin-bottom:2px}
+.bph-tier{font-family:'Orbitron',monospace;font-size:.6rem;color:#a855f7;margin-bottom:3px}
+.bph-bar{height:3px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden}
+.bph-fill{height:100%;background:linear-gradient(90deg,#6c5ce7,#a855f7);border-radius:2px;transition:width .5s;width:0%}
+#bp-toast{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(.88);background:rgba(13,15,43,.97);border:2px solid #a855f7;border-radius:14px;padding:18px 28px;text-align:center;pointer-events:none;opacity:0;transition:opacity .28s,transform .28s;z-index:29;min-width:230px}
+#bp-toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.bpt-tier{font-family:'Orbitron',monospace;font-size:.48rem;letter-spacing:4px;color:rgba(168,85,247,.65);margin-bottom:3px}
+.bpt-title{font-family:'Orbitron',monospace;font-size:1rem;font-weight:900;color:#fff;margin-bottom:8px;letter-spacing:2px}
+.bpt-r{font-size:.74rem;color:var(--dim);margin:2px 0}
+.bpt-r.fr{color:#00e5ff}
+.bpt-r.pr{color:#ffd700}
 /* ─ DAILY CHALLENGE ─ */
 .ch-card{background:linear-gradient(135deg,rgba(255,195,0,.06),rgba(255,100,0,.04));border:1px solid rgba(255,195,0,.28);border-radius:10px;padding:13px 15px;margin-bottom:11px;position:relative;overflow:hidden}
 .ch-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,195,0,.04),transparent);pointer-events:none}
@@ -325,6 +396,17 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
   </div>
 
   <div class="cols">
+
+    <!-- Battle Pass banner -->
+    <div id="bp-banner" style="width:100%;box-sizing:border-box">
+      <div class="bp-banner-info">
+        <span class="bp-banner-s1">SEASON 1</span>
+        <span id="bp-banner-tier">Tier 0 / 30</span>
+        <div class="bp-bnr-bar"><div id="bp-banner-bar"></div></div>
+        <span id="bp-banner-days">· — days left</span>
+      </div>
+      <button id="bp-btn" onclick="openBp()">🎫 Battle Pass</button>
+    </div>
 
     <!-- Column 1: Setup -->
     <div class="panel">
@@ -408,6 +490,36 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
 <!-- GAME CANVAS -->
 <canvas id="gc"></canvas>
 
+<!-- BATTLE PASS OVERLAY -->
+<div id="bp-overlay">
+  <div class="bp-panel">
+    <button class="bp-x" id="bp-close">✕</button>
+    <div class="bp-head">
+      <div class="bp-badge"><span class="bp-badge-s">SEASON 1</span><span class="bp-badge-sub">Battle Pass</span></div>
+      <span id="bp-days-txt">— days left</span>
+      <div class="bp-xp-area">
+        <div class="bp-tier-txt"><span id="bp-tier-txt">Tier 0 / 30</span><span id="bp-xp-lbl">0 / 100 XP</span></div>
+        <div class="bp-xp-wrap"><div id="bp-xp-fill"></div></div>
+      </div>
+      <button id="bp-prem-btn">⭐ Go Premium (Free Beta)</button>
+    </div>
+    <!-- Row labels -->
+    <div style="display:flex;gap:3px;padding:0 4px;margin-bottom:2px">
+      <div style="width:68px;text-align:center;font-family:'Orbitron',monospace;font-size:.44rem;letter-spacing:2px;color:rgba(0,229,255,.55)">FREE</div>
+    </div>
+    <div class="bp-track-outer">
+      <div class="bp-track" id="bp-track"></div>
+    </div>
+    <div style="display:flex;gap:3px;padding:0 4px;margin-top:2px">
+      <div style="width:68px;text-align:center;font-family:'Orbitron',monospace;font-size:.44rem;letter-spacing:2px;color:rgba(255,215,0,.55)">PREMIUM</div>
+    </div>
+    <div class="bp-eq-wrap">
+      <div class="bp-eq-title">Equipped Cosmetics</div>
+      <div class="bp-eq-row" id="bp-eq-row"></div>
+    </div>
+  </div>
+</div>
+
 <!-- HUD -->
 <div id="hud">
   <div id="rnt"></div>
@@ -457,6 +569,18 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
     <div class="ch-toast-emoji">🏆</div>
     <div class="ch-toast-title">CHALLENGE COMPLETE!</div>
     <div class="ch-toast-sub" id="ch-toast-sub">Come back tomorrow for a new one</div>
+  </div>
+  <!-- BP in-game XP tracker -->
+  <div id="bp-hud">
+    <div class="bph-lbl">Battle Pass</div>
+    <div class="bph-tier" id="bph-tier">Tier 0 / 30</div>
+    <div class="bph-bar"><div class="bph-fill" id="bph-fill"></div></div>
+  </div>
+  <!-- BP tier unlock toast -->
+  <div id="bp-toast">
+    <div class="bpt-tier" id="bpt-tier">TIER 1 UNLOCKED</div>
+    <div class="bpt-title">LEVEL UP!</div>
+    <div id="bpt-rewards"></div>
   </div>
   <!-- Replay overlay -->
   <div id="replay-overlay">
@@ -1061,6 +1185,7 @@ socket.on('joined',({id,W,H,roomId,roomName,mode,team,mapId,elo,rank,inviteUrl})
   const chHud=document.getElementById('ch-hud');
   if(currentChallenge&&!_chDone)chHud.classList.add('show');
   else chHud.classList.remove('show');
+  updateBpHud();
   if(mode==='tournament'){document.getElementById('ts-screen').classList.remove('hidden');}
   else runCountdown(()=>{inGame=true;});
 });
@@ -1084,6 +1209,7 @@ socket.on('diedWithReplay',({score,kills,level,xp,replay})=>{
   const s=loadStats();s.best=Math.max(s.best,score);s.kills+=kills;s.games++;
   s.level=Math.max(s.level,level||1);s.xp=Math.max(s.xp||0,xp||0);
   saveStats(s);updateStatsUI();myBestLevel=s.level;buildMapGrid();
+  updateBpBanner();updateBpHud();
 
   // Spawn death explosion at last known position
   const me=state.players.find(p=>p.id===myId);
@@ -1131,6 +1257,7 @@ socket.on('died',({score,kills,level,xp})=>{
   SFX.die();shakeX=12;shakeY=12;shakeDur=18;
   const s=loadStats();s.best=Math.max(s.best,score);s.kills+=kills;s.games++;s.level=Math.max(s.level,level||1);s.xp=Math.max(s.xp||0,xp||0);
   saveStats(s);updateStatsUI();myBestLevel=s.level;buildMapGrid();
+  updateBpBanner();updateBpHud();
 });
 
 socket.on('gameOver',data=>{
@@ -1564,8 +1691,12 @@ function drawSnake(p,cam){
   const baseW=isMe?18:16;
   const usePerSeg=p.skin==='striped'||p.skin==='rainbow'||p.skin==='dotted'||p.skin==='glow'||SUPPORTER_SKINS.includes(p.skin)||hasPlayerCustomSkin(p);
 
-  // Boost trail
-  if(isMe&&mouseDown){boostTrail.push({x:h0.x,y:h0.y,life:1,color:p.color});if(boostTrail.length>55)boostTrail.shift();}
+  // Boost trail — use BP equipped trail color if available
+  if(isMe&&mouseDown){
+    const _trailCol=getBpEquipped().trail||p.color;
+    boostTrail.push({x:h0.x,y:h0.y,life:1,color:_trailCol});
+    if(boostTrail.length>55)boostTrail.shift();
+  }
 
   ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
 
@@ -1669,6 +1800,18 @@ function drawSnake(p,cam){
   // Team dot
   if(p.team){ctx.beginPath();ctx.arc(hx,hy-headR-6,4,0,Math.PI*2);ctx.fillStyle=p.team==='red'?'#FF4757':'#1E90FF';ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=6;ctx.fill();ctx.shadowBlur=0;}
 
+  // ── BP Border Ring (equipped cosmetic, own snake only) ───────────────────
+  if(isMe){
+    const _bpBorder=getBpEquipped().border;
+    if(_bpBorder){
+      const spin2=Date.now()/600;
+      ctx.save();ctx.translate(hx,hy);ctx.rotate(spin2);
+      ctx.strokeStyle=_bpBorder;ctx.lineWidth=2;ctx.globalAlpha=0.75;
+      ctx.setLineDash([4,6]);ctx.beginPath();ctx.arc(0,0,headR+10,0,Math.PI*2);ctx.stroke();
+      ctx.setLineDash([]);ctx.globalAlpha=1;ctx.restore();
+    }
+  }
+
   // Level badge
   if((p.level||1)>1){
     ctx.font='bold 9px Orbitron,monospace';ctx.textAlign='center';
@@ -1677,12 +1820,20 @@ function drawSnake(p,cam){
   }
   // Emote
   if(p.emote){ctx.font='18px sans-serif';ctx.textAlign='center';ctx.shadowBlur=0;ctx.fillText(p.emote,hx,hy-headR-22);}
-  // Name
+  // Name — prepend BP title for own snake, show normally for others
   if(!isMe){
     ctx.font='600 11px Rajdhani,sans-serif';ctx.textAlign='center';
     const lbl=(isClone?'👥 ':p.isBot?'🤖 ':'')+p.name;const tw=ctx.measureText(lbl).width;
     ctx.fillStyle='rgba(0,0,0,.62)';ctx.fillRect(hx-tw/2-5,hy-headR-34,tw+10,14);
     ctx.fillStyle=isClone?'rgba(253,167,223,.7)':p.isBot?'#666':p.color;ctx.fillText(lbl,hx,hy-headR-23);
+  } else {
+    // Own snake: show BP title above name if equipped
+    const _title=getBpEquipped().title;
+    if(_title){
+      ctx.font='600 9px Orbitron,monospace';ctx.textAlign='center';
+      ctx.fillStyle='rgba(0,0,0,.62)';ctx.fillRect(hx-30,hy-headR-48,60,11);
+      ctx.fillStyle='#a855f7';ctx.fillText(_title.slice(0,12),hx,hy-headR-39);
+    }
   }
 
   // Frozen ice overlay on body
@@ -2043,6 +2194,300 @@ function render(){
   frame++;if(frame%3===0){updateLeaderboard();drawMinimap();}
   if(paused){ctx.fillStyle='rgba(3,8,15,.5)';ctx.fillRect(0,0,vw,vh);}
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// BATTLE PASS SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════
+const BP_SEASON_START = new Date('2026-03-01T00:00:00Z').getTime();
+const BP_SEASON_DAYS  = 30;
+const BP_XP_PER_TIER  = 100;
+const BP_TOTAL_TIERS  = 30;
+
+// 30-tier reward table: [freeReward, premiumReward]
+// types: 't'=title, 'r'=trail color, 'b'=border color, 'e'=emote emoji
+const BP_TIERS=[
+  [{t:'t',v:'Rookie',l:'Rookie'},         {t:'r',v:'#00e5ff',l:'Cyan Trail'}],
+  [{t:'r',v:'#00e5ff',l:'Cyan Trail'},    {t:'t',v:'Viper',l:'Viper'}],
+  [{t:'e',v:'🎯',l:'Dart Emote'},         {t:'b',v:'#a855f7',l:'Purple Ring'}],
+  [{t:'b',v:'#ff9f43',l:'Ember Ring'},    {t:'e',v:'💫',l:'Sparkle Emote'}],
+  [{t:'t',v:'Hunter',l:'Hunter'},         {t:'r',v:'#ffd700',l:'Gold Trail'}],
+  [{t:'r',v:'#ff4757',l:'Crimson Trail'}, {t:'t',v:'Shadow',l:'Shadow'}],
+  [{t:'e',v:'⚡',l:'Bolt Emote'},         {t:'b',v:'#00b894',l:'Teal Ring'}],
+  [{t:'b',v:'#ffd700',l:'Gold Ring'},     {t:'e',v:'🔥',l:'Fire Emote'}],
+  [{t:'t',v:'Veteran',l:'Veteran'},       {t:'r',v:'#9b59b6',l:'Amethyst Trail'}],
+  [{t:'r',v:'#2ecc71',l:'Emerald Trail'},{t:'t',v:'Elite',l:'Elite'}],
+  [{t:'e',v:'🌙',l:'Moon Emote'},         {t:'b',v:'#74b9ff',l:'Sky Ring'}],
+  [{t:'b',v:'#74b9ff',l:'Ice Ring'},      {t:'e',v:'😈',l:'Devil Emote'}],
+  [{t:'t',v:'Phantom',l:'Phantom'},       {t:'r',v:'#e17055',l:'Lava Trail'}],
+  [{t:'r',v:'#fdcb6e',l:'Solar Trail'},   {t:'t',v:'Apex',l:'Apex'}],
+  [{t:'e',v:'💀',l:'Skull Emote'},        {t:'b',v:'#a29bfe',l:'Void Ring'}],
+  [{t:'b',v:'#6c5ce7',l:'Indigo Ring'},  {t:'r',v:'#e84393',l:'Neon Trail'}],
+  [{t:'t',v:'Legend',l:'Legend'},        {t:'e',v:'👑',l:'Crown Emote'}],
+  [{t:'r',v:'#e84393',l:'Pink Trail'},   {t:'t',v:'Warlord',l:'Warlord'}],
+  [{t:'e',v:'🌟',l:'Star Emote'},        {t:'b',v:'#55efc4',l:'Mint Ring'}],
+  [{t:'b',v:'#e17055',l:'Volcano Ring'}, {t:'r',v:'#d63031',l:'Blood Trail'}],
+  [{t:'t',v:'Specter',l:'Specter'},      {t:'e',v:'🎮',l:'Game Emote'}],
+  [{t:'r',v:'#00b894',l:'Mint Trail'},   {t:'t',v:'Immortal',l:'Immortal'}],
+  [{t:'e',v:'⚔️',l:'Swords Emote'},      {t:'b',v:'#6c5ce7',l:'Cosmic Ring'}],
+  [{t:'b',v:'#b2bec3',l:'Chrome Ring'},  {t:'r',v:'#fdcb6e',l:'Sunburst Trail'}],
+  [{t:'t',v:'Apex Predator',l:'Apex Predator'},{t:'e',v:'🏆',l:'Trophy Emote'}],
+  [{t:'r',v:'#9980fa',l:'Cosmic Trail'}, {t:'t',v:'Sovereign',l:'Sovereign'}],
+  [{t:'e',v:'💎',l:'Diamond Emote'},     {t:'b',v:'#ffd700',l:'Champion Ring'}],
+  [{t:'b',v:'#dfe6e9',l:'Chrome Ring II'},{t:'r',v:'#fd79a8',l:'Cherry Trail'}],
+  [{t:'t',v:'NeonSlither Pro',l:'NSP'},  {t:'e',v:'🌌',l:'Galaxy Emote'}],
+  [{t:'t',v:'S1 Champion',l:'S1 Champion'},{t:'b',v:'#ffd700',l:'Crown Ring'}],
+];
+
+// ── localStorage persistence ───────────────────────────────────────────────
+const BP_KEY='slither_bp_v1';
+function loadBp(){
+  try{
+    const raw=localStorage.getItem(BP_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return{xp:0,tier:0,tierXp:0,premium:false,
+    equipped:{title:null,trail:null,border:null},
+    unlocked:{titles:[],trails:[],borders:[],emotes:[]}};
+}
+function saveBp(bp){try{localStorage.setItem(BP_KEY,JSON.stringify(bp));}catch(e){}}
+
+let bpData=loadBp();
+
+function getBpSeason(){
+  const now=Date.now();
+  const elapsed=now-BP_SEASON_START;
+  const dayElapsed=Math.floor(elapsed/86400000);
+  const dayLeft=Math.max(0,BP_SEASON_DAYS-dayElapsed);
+  return{active:dayElapsed>=0&&dayLeft>0,dayLeft,
+    pct:Math.min(100,Math.max(0,dayElapsed/BP_SEASON_DAYS*100))};
+}
+
+// ── Add XP and handle tier-ups ─────────────────────────────────────────────
+function addBpXp(amount){
+  const season=getBpSeason();
+  if(!season.active) return;
+  bpData.xp+=amount;
+  const newTier=Math.min(BP_TOTAL_TIERS,Math.floor(bpData.xp/BP_XP_PER_TIER));
+  const gained=[];
+  if(newTier>bpData.tier){
+    for(let t=bpData.tier+1;t<=newTier;t++){
+      const td=BP_TIERS[t-1];
+      if(!td) continue;
+      // Unlock free reward
+      const fr=td[0];
+      if(fr.t==='t')bpData.unlocked.titles.push(fr.v);
+      else if(fr.t==='r')bpData.unlocked.trails.push(fr.v);
+      else if(fr.t==='b')bpData.unlocked.borders.push(fr.v);
+      else if(fr.t==='e')bpData.unlocked.emotes.push(fr.v);
+      gained.push({tier:t,reward:fr,isPrem:false});
+      // Unlock premium reward if player has premium
+      if(bpData.premium&&td[1]){
+        const pr=td[1];
+        if(pr.t==='t')bpData.unlocked.titles.push(pr.v);
+        else if(pr.t==='r')bpData.unlocked.trails.push(pr.v);
+        else if(pr.t==='b')bpData.unlocked.borders.push(pr.v);
+        else if(pr.t==='e')bpData.unlocked.emotes.push(pr.v);
+        gained.push({tier:t,reward:pr,isPrem:true});
+      }
+    }
+    bpData.tier=newTier;
+  }
+  bpData.tierXp=bpData.xp-(bpData.tier*BP_XP_PER_TIER);
+  saveBp(bpData);
+  updateBpHud();
+  updateBpBanner();
+  if(gained.length) showBpToast(newTier,gained);
+  if(document.getElementById('bp-overlay').classList.contains('show')) renderBpTrack();
+}
+
+// ── BP socket events ───────────────────────────────────────────────────────
+socket.on('bpXpEarned',({amount,source})=>{
+  addBpXp(amount);
+  // Quick XP earned flash on HUD
+  const hud=document.getElementById('bp-hud');
+  if(hud){
+    const flash=document.createElement('div');
+    flash.style.cssText='position:absolute;right:8px;top:-16px;font-family:Orbitron,monospace;font-size:.52rem;color:#a855f7;animation:bpxpfl .9s ease forwards;pointer-events:none';
+    flash.textContent='+'+amount+' BP';
+    hud.appendChild(flash);
+    setTimeout(()=>flash.remove(),950);
+  }
+});
+
+// ── Banner update ──────────────────────────────────────────────────────────
+function updateBpBanner(){
+  const s=getBpSeason();
+  document.getElementById('bp-banner-tier').textContent='Tier '+bpData.tier+' / '+BP_TOTAL_TIERS;
+  const pct=s.active?(bpData.tierXp/BP_XP_PER_TIER*100):0;
+  document.getElementById('bp-banner-bar').style.width=pct+'%';
+  document.getElementById('bp-banner-days').textContent=s.active?'· '+s.dayLeft+' days left':'· Season ended';
+}
+
+// ── In-game HUD update ─────────────────────────────────────────────────────
+function updateBpHud(){
+  const hud=document.getElementById('bp-hud');
+  document.getElementById('bph-tier').textContent='Tier '+bpData.tier+' / '+BP_TOTAL_TIERS;
+  const pct=bpData.tierXp/BP_XP_PER_TIER*100;
+  document.getElementById('bph-fill').style.width=pct+'%';
+  if(getBpSeason().active) hud.classList.add('show');
+  else hud.classList.remove('show');
+}
+
+// ── Tier-up toast (in-game) ────────────────────────────────────────────────
+let bpToastTimer=null;
+function showBpToast(tier,gained){
+  const toast=document.getElementById('bp-toast');
+  document.getElementById('bpt-tier').textContent='TIER '+tier+' UNLOCKED';
+  const rDiv=document.getElementById('bpt-rewards');
+  rDiv.innerHTML=gained.map(g=>`<div class="bpt-r ${g.isPrem?'pr':'fr'}">${g.isPrem?'⭐ ':'✦ '}${escHtml(g.reward.l)}</div>`).join('');
+  toast.classList.add('show');
+  if(bpToastTimer) clearTimeout(bpToastTimer);
+  bpToastTimer=setTimeout(()=>toast.classList.remove('show'),4000);
+}
+
+// ── Open/close overlay ────────────────────────────────────────────────────
+function openBp(){
+  document.getElementById('bp-overlay').classList.add('show');
+  renderBpTrack();
+  renderBpEquip();
+  // Scroll to current tier
+  setTimeout(()=>{
+    const col=document.querySelector('.bp-col[data-tier="'+bpData.tier+'"]');
+    if(col) col.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+  },80);
+}
+function closeBp(){document.getElementById('bp-overlay').classList.remove('show');}
+document.getElementById('bp-close').addEventListener('click',closeBp);
+document.getElementById('bp-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('bp-overlay'))closeBp();});
+
+// ── Premium toggle ─────────────────────────────────────────────────────────
+document.getElementById('bp-prem-btn').addEventListener('click',()=>{
+  bpData.premium=!bpData.premium;
+  if(bpData.premium){
+    // Retroactively unlock premium rewards for already-reached tiers
+    for(let t=1;t<=bpData.tier;t++){
+      const td=BP_TIERS[t-1];
+      if(!td||!td[1]) continue;
+      const pr=td[1];
+      const arr=pr.t==='t'?bpData.unlocked.titles:pr.t==='r'?bpData.unlocked.trails:pr.t==='b'?bpData.unlocked.borders:bpData.unlocked.emotes;
+      if(!arr.includes(pr.v)) arr.push(pr.v);
+    }
+  }
+  saveBp(bpData);
+  const btn=document.getElementById('bp-prem-btn');
+  btn.classList.toggle('active',bpData.premium);
+  btn.textContent=bpData.premium?'⭐ Premium Active':'⭐ Go Premium (Free Beta)';
+  renderBpTrack();
+  renderBpEquip();
+});
+
+// ── Render tier track ──────────────────────────────────────────────────────
+function mkRewardHtml(r,cls){
+  if(!r) return '<div class="bp-cl">—</div>';
+  if(r.t==='e') return '<div class="bp-ci">'+escHtml(r.v)+'</div><div class="bp-cl">'+escHtml(r.l)+'</div>';
+  if(r.t==='r') return '<div class="bp-ct" style="background:'+escHtml(r.v)+'"></div><div class="bp-cl">'+escHtml(r.l)+'</div>';
+  if(r.t==='b') return '<div class="bp-cb" style="border-color:'+escHtml(r.v)+'"></div><div class="bp-cl">'+escHtml(r.l)+'</div>';
+  if(r.t==='t') return '<div class="bp-ci" style="font-size:.7rem;font-family:Orbitron,monospace;color:inherit">'+escHtml(r.v)+'</div><div class="bp-cl">'+escHtml(r.l)+'</div>';
+  return '';
+}
+
+function renderBpTrack(){
+  const track=document.getElementById('bp-track');
+  const season=getBpSeason();
+  // Update head
+  document.getElementById('bp-tier-txt').textContent='Tier '+bpData.tier+' / '+BP_TOTAL_TIERS;
+  document.getElementById('bp-xp-lbl').textContent=bpData.tierXp+' / '+BP_XP_PER_TIER+' XP';
+  document.getElementById('bp-xp-fill').style.width=(bpData.tierXp/BP_XP_PER_TIER*100)+'%';
+  document.getElementById('bp-days-txt').textContent=season.dayLeft+' days left in Season 1';
+  const btn=document.getElementById('bp-prem-btn');
+  btn.classList.toggle('active',bpData.premium);
+  btn.textContent=bpData.premium?'⭐ Premium Active':'⭐ Go Premium (Free Beta)';
+
+  let html='';
+  for(let i=0;i<BP_TOTAL_TIERS;i++){
+    const tier=i+1;
+    const td=BP_TIERS[i];
+    const fr=td[0],pr=td[1]||null;
+    const reached=tier<=bpData.tier;
+    const isCur=tier===bpData.tier;
+    const freeUnlk=reached;
+    const premUnlk=reached&&bpData.premium;
+    const fCls='bp-card'+(freeUnlk?' unlk':'');
+    const pCls='bp-card'+(premUnlk?' unlk-p':(!bpData.premium?' dim-p':''));
+    const nCls='bp-tnum'+(reached?(isCur?' cur':' done'):'');
+
+    html+=`<div class="bp-col" data-tier="${tier}">
+      <div class="${fCls}" title="${escHtml(fr.l)}">${mkRewardHtml(fr,fCls)}</div>
+      <div class="${nCls}">${tier}</div>
+      <div class="${pCls}" title="${pr?escHtml(pr.l):'No premium reward'}">${mkRewardHtml(pr,pCls)}</div>
+    </div>`;
+    // connector
+    if(i<BP_TOTAL_TIERS-1){
+      const connDone=tier<bpData.tier;
+      html+=`<div class="bp-conn${connDone?' done':''}" style="width:3px"></div>`;
+    }
+  }
+  track.innerHTML=html;
+  // Attach click handlers for equip
+  track.querySelectorAll('.bp-col').forEach(col=>{
+    col.addEventListener('click',()=>{
+      const t=parseInt(col.dataset.tier);
+      if(t>bpData.tier) return; // locked
+      // Show equip options for unlocked rewards
+      const td2=BP_TIERS[t-1];
+      if(td2[0]){equipReward(td2[0],false);}
+      if(bpData.premium&&td2[1]){equipReward(td2[1],true);}
+    });
+  });
+}
+
+// ── Equip a reward ────────────────────────────────────────────────────────
+function equipReward(r,isPrem){
+  if(r.t==='t') bpData.equipped.title=bpData.equipped.title===r.v?null:r.v;
+  else if(r.t==='r') bpData.equipped.trail=bpData.equipped.trail===r.v?null:r.v;
+  else if(r.t==='b') bpData.equipped.border=bpData.equipped.border===r.v?null:r.v;
+  saveBp(bpData);
+  renderBpEquip();
+  if(document.getElementById('bp-overlay').classList.contains('show')) renderBpTrack();
+}
+
+// ── Render equip panel ────────────────────────────────────────────────────
+function renderBpEquip(){
+  const eq=bpData.equipped;
+  const slots=[
+    {key:'title',lbl:'Title',val:eq.title||'None',icon:''},
+    {key:'trail',lbl:'Trail',val:eq.trail||'Default',icon:eq.trail?`<span style="display:inline-block;width:18px;height:4px;border-radius:2px;background:${escHtml(eq.trail)};vertical-align:middle;margin-right:4px"></span>`:''},
+    {key:'border',lbl:'Ring',val:eq.border||'None',icon:eq.border?`<span style="display:inline-block;width:12px;height:12px;border-radius:3px;border:2px solid ${escHtml(eq.border)};vertical-align:middle;margin-right:4px"></span>`:''},
+  ];
+  document.getElementById('bp-eq-row').innerHTML=slots.map(s=>`
+    <div class="bp-eq-slot ${s.key==='title'&&eq.title?'on':s.key==='trail'&&eq.trail?'on':s.key==='border'&&eq.border?'on':''}" data-key="${s.key}">
+      <div class="esl">${s.lbl}</div>
+      <div class="esv">${s.icon}${escHtml(s.val)}</div>
+    </div>`).join('');
+  document.querySelectorAll('.bp-eq-slot').forEach(sl=>{
+    sl.addEventListener('click',()=>{
+      // Deselect if clicked
+      const k=sl.dataset.key;
+      if(k==='title') bpData.equipped.title=null;
+      else if(k==='trail') bpData.equipped.trail=null;
+      else if(k==='border') bpData.equipped.border=null;
+      saveBp(bpData);renderBpEquip();
+    });
+  });
+}
+
+// ── Style injections for equipped cosmetics ───────────────────────────────
+// These are applied in the render loop. We expose bpEquipped for the renderer.
+function getBpEquipped(){return bpData.equipped;}
+
+// Flash animation keyframe
+const _bpStyle=document.createElement('style');
+_bpStyle.textContent='@keyframes bpxpfl{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-18px)}}';
+document.head.appendChild(_bpStyle);
+
+// Init on page load
+updateBpBanner();
+updateBpHud();
+
 render();
 
 

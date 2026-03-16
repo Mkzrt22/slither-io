@@ -122,6 +122,8 @@ function tickChallengePlayer(p,room,ch){
 
   if(changed||(!wasDone&&cs.done)){
     io.to(p.id).emit('challengeProgress',{value:clamped,goal:ch.goal,done:cs.done,id:ch.id});
+    // Battle pass bonus XP on challenge completion
+    if(!wasDone&&cs.done) io.to(p.id).emit('bpXpEarned',{amount:50,source:'challenge'});
   }
 }
 
@@ -605,6 +607,9 @@ function tickRoom(room){
     if(!p.isBot){
       addGlobalScore(p.name,p.score);
       addWeeklyScore(p.name,p.score);
+      // Battle pass XP: 1 XP per 5 score + 10 XP per kill
+      const _bpAmt=Math.floor(p.score/5)+p.killCount*10;
+      if(_bpAmt>0) io.to(id).emit('bpXpEarned',{amount:_bpAmt,source:'game'});
       // Emit died with replay buffer for 3-second camera flyback
       io.to(id).emit('diedWithReplay',{score:p.score,kills:p.killCount,level:p.level,xp:p.xp,replay:p.replayBuf.slice()});
       // Reset challenge tracking for next life
