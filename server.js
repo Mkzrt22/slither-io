@@ -8,7 +8,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-// ── Database (SQLite) ─────────────────────────────────────────────────────────
+// ── Database (SQLite — optional, graceful fallback to in-memory) ──────────────
 let db = null;
 try {
   const Database = require('better-sqlite3');
@@ -46,7 +46,8 @@ try {
   `);
   console.log('✅ SQLite DB ready');
 } catch(e) {
-  console.warn('⚠️  SQLite not available — running without persistence:', e.message);
+  console.warn('⚠️  SQLite unavailable — running without persistence. Install better-sqlite3 for accounts.', e.message);
+  db = null;
 }
 
 // ── Bcrypt (pure-JS fallback if native addon fails) ───────────────────────────
