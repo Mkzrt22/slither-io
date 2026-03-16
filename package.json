@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "Multiplayer Slither.io clone",
   "main": "server.js",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
@@ -11,7 +13,9 @@
   "dependencies": {
     "express": "^4.18.2",
     "socket.io": "^4.6.1",
-    "stripe": "^14.0.0"
+    "stripe": "^14.0.0",
+    "better-sqlite3": "^9.4.3",
+    "bcryptjs": "^2.4.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

@@ -2,12 +2,170 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Database (SQLite) ─────────────────────────────────────────────────────────
+let db = null;
+try {
+  const Database = require('better-sqlite3');
+  db = new Database(path.join(__dirname, 'data.db'));
+  db.pragma('journal_mode = WAL');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+      password_hash TEXT NOT NULL,
+      created_at INTEGER DEFAULT (strftime('%s','now'))
+    );
+    CREATE TABLE IF NOT EXISTS stats (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id),
+      games INTEGER DEFAULT 0,
+      best_score INTEGER DEFAULT 0,
+      total_kills INTEGER DEFAULT 0,
+      total_food INTEGER DEFAULT 0,
+      best_level INTEGER DEFAULT 0,
+      total_xp INTEGER DEFAULT 0,
+      maps_played TEXT DEFAULT '{}',
+      powerups_collected INTEGER DEFAULT 0,
+      ghost_count INTEGER DEFAULT 0,
+      ranked_games INTEGER DEFAULT 0,
+      teams_wins INTEGER DEFAULT 0,
+      max_kills_game INTEGER DEFAULT 0,
+      total_survive_ticks INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS achievements (
+      user_id INTEGER REFERENCES users(id),
+      achievement_id TEXT NOT NULL,
+      unlocked_at INTEGER DEFAULT (strftime('%s','now')),
+      PRIMARY KEY(user_id, achievement_id)
+    );
+  `);
+  console.log('✅ SQLite DB ready');
+} catch(e) {
+  console.warn('⚠️  SQLite not available — running without persistence:', e.message);
+}
+
+// ── Bcrypt (pure-JS fallback if native addon fails) ───────────────────────────
+let bcrypt = null;
+try { bcrypt = require('bcryptjs'); } catch(e) { console.warn('bcryptjs missing'); }
+
+// ── Achievement definitions ───────────────────────────────────────────────────
+const ACHIEVEMENTS = [
+  { id:'first_blood',   icon:'🩸', name:'First Blood',      desc:'Get your first kill',               secret:false },
+  { id:'hatchling',     icon:'🐣', name:'Hatchling',        desc:'Reach a score of 50',               secret:false },
+  { id:'serpent',       icon:'🐍', name:'Serpent',          desc:'Reach a score of 150',              secret:false },
+  { id:'titan',         icon:'🦕', name:'Titan',            desc:'Reach a score of 300',              secret:false },
+  { id:'speed_demon',   icon:'⚡', name:'Speed Demon',      desc:'Collect 5 speed power-ups',         secret:false },
+  { id:'survivor',      icon:'⏱', name:'Survivor',         desc:'Stay alive for 3 minutes in one game', secret:false },
+  { id:'glutton',       icon:'🍎', name:'Glutton',          desc:'Eat 100 food items total',          secret:false },
+  { id:'predator',      icon:'💀', name:'Predator',         desc:'Get 10 kills total',                secret:false },
+  { id:'apex',          icon:'👑', name:'Apex',             desc:'Get 50 kills total',                secret:false },
+  { id:'pacifist',      icon:'🐢', name:'Pacifist Run',     desc:'Score 80 without boosting',         secret:false },
+  { id:'power_hungry',  icon:'🔋', name:'Power Hungry',     desc:'Collect 50 power-ups total',        secret:false },
+  { id:'explorer',      icon:'🗺️',  name:'Explorer',         desc:'Play on all 4 maps',                secret:false },
+  { id:'veteran',       icon:'🎖', name:'Veteran',          desc:'Play 25 games',                     secret:false },
+  { id:'centurion',     icon:'💯', name:'Centurion',        desc:'Play 100 games',                    secret:false },
+  { id:'ranked_player', icon:'🏅', name:'Ranked Player',    desc:'Play a ranked game',                secret:false },
+  { id:'team_player',   icon:'🤝', name:'Team Player',      desc:'Win a teams game',                  secret:false },
+  { id:'ghost_rider',   icon:'👻', name:'Ghost Rider',      desc:'Collect the ghost power-up 5 times',secret:false },
+  { id:'chain_killer',  icon:'🔥', name:'Chain Killer',     desc:'Get 3 kills in a single game',      secret:false },
+  { id:'comeback',      icon:'💪', name:'Comeback',         desc:'Score 100 after being below length 30', secret:true  },
+  { id:'season1',       icon:'🎫', name:'Season 1 Veteran', desc:'Reach Battle Pass tier 10',         secret:false },
+];
+
+// ── Session tokens (HMAC, same pattern as Stripe tokens) ─────────────────────
+const TOKEN_SECRET_AUTH = process.env.TOKEN_SECRET || 'change-me-in-production';
+function makeSessionToken(userId) {
+  const payload = `uid:${userId}:${Date.now()}`;
+  const sig = crypto.createHmac('sha256', TOKEN_SECRET_AUTH).update(payload).digest('hex');
+  return `${payload}:${sig}`;
+}
+function verifySessionToken(token) {
+  if (!token) return null;
+  const parts = token.split(':');
+  if (parts.length < 4) return null;
+  const sig = parts.pop();
+  const payload = parts.join(':');
+  const expected = crypto.createHmac('sha256', TOKEN_SECRET_AUTH).update(payload).digest('hex');
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'))) return null;
+  } catch { return null; }
+  const uid = parseInt(parts[1]);
+  return isNaN(uid) ? null : uid;
+}
+
+// ── DB helpers ────────────────────────────────────────────────────────────────
+function dbGetUser(username)   { return db?.prepare('SELECT * FROM users WHERE username=?').get(username); }
+function dbGetUserById(id)     { return db?.prepare('SELECT * FROM users WHERE id=?').get(id); }
+function dbGetStats(userId)    {
+  if (!db) return null;
+  let s = db.prepare('SELECT * FROM stats WHERE user_id=?').get(userId);
+  if (!s) { db.prepare('INSERT OR IGNORE INTO stats(user_id) VALUES(?)').run(userId); s = db.prepare('SELECT * FROM stats WHERE user_id=?').get(userId); }
+  return s;
+}
+function dbSaveStats(userId, patch) {
+  if (!db) return;
+  const cols = Object.keys(patch).map(k => `${k}=?`).join(',');
+  db.prepare(`UPDATE stats SET ${cols} WHERE user_id=?`).run(...Object.values(patch), userId);
+}
+function dbGetAchievements(userId) {
+  return db?.prepare('SELECT achievement_id FROM achievements WHERE user_id=?').all(userId).map(r=>r.achievement_id) || [];
+}
+function dbUnlockAchievement(userId, id) {
+  if (!db) return false;
+  const r = db.prepare('INSERT OR IGNORE INTO achievements(user_id,achievement_id) VALUES(?,?)').run(userId, id);
+  return r.changes > 0;
+}
+
+// ── In-memory userId map (socketId → userId) ──────────────────────────────────
+const socketToUser = {}; // socketId → userId
+
+// ── Achievement checker ───────────────────────────────────────────────────────
+function checkAchievements(socketId, userId, p, stats, patch) {
+  if (!db || !userId) return;
+  const unlocked = dbGetAchievements(userId);
+  const earned = [];
+  const merged = { ...stats, ...patch };
+
+  function try_(id) {
+    if (unlocked.includes(id)) return false;
+    if (dbUnlockAchievement(userId, id)) { earned.push(id); return true; }
+    return false;
+  }
+
+  if (patch.total_kills >= 1  && merged.total_kills >= 1)  try_('first_blood');
+  if (patch.total_kills >= 10 && merged.total_kills >= 10) try_('predator');
+  if (patch.total_kills >= 50 && merged.total_kills >= 50) try_('apex');
+  if (merged.max_kills_game >= 3)  try_('chain_killer');
+  if (p.score >= 50)   try_('hatchling');
+  if (p.score >= 150)  try_('serpent');
+  if (p.score >= 300)  try_('titan');
+  if (merged.total_food >= 100) try_('glutton');
+  if (merged.powerups_collected >= 50) try_('power_hungry');
+  if (merged.ghost_count >= 5)  try_('ghost_rider');
+  if (merged.games >= 25)  try_('veteran');
+  if (merged.games >= 100) try_('centurion');
+  if (merged.ranked_games >= 1) try_('ranked_player');
+  if (p._pacifist && p.score >= 80)  try_('pacifist');
+  if (merged.total_survive_ticks >= 25*180) try_('survivor'); // 3 min @ 25tps
+
+  // Explorer: all 4 maps played
+  try {
+    const maps = JSON.parse(merged.maps_played || '{}');
+    if (Object.keys(maps).length >= 4) try_('explorer');
+  } catch {}
+
+  if (earned.length) {
+    const defs = earned.map(id => ACHIEVEMENTS.find(a=>a.id===id)).filter(Boolean);
+    io.to(socketId).emit('achievements', defs);
+  }
+}
+
+
 const TICK                = 1000 / 25;
 const SEG_R               = 9;
 const MOVE_SPEED          = 2.8;
@@ -205,6 +363,7 @@ function mkPlayer(id,name,isBot,skin,team,customSkin,map){
     xp:0,level:1,abilities:[],emote:null,emoteTick:0,portalCooldown:0,
     cloneId:null,frozen:0,_respawnTick:0,
     replayBuf:[],  // ring buffer of last 75 head positions for death replay
+    _pacifist:true, // cleared if player ever boosts
   };
 }
 
@@ -513,6 +672,7 @@ function tickRoom(room){
     const ny=((head.y+Math.sin(p.angle)*spd)%H+H)%H;
     p.segs.unshift({x:nx,y:ny});
     if(p.boosting&&p.segs.length>INIT_SEGS+2){
+      if(!p.isBot) p._pacifist=false;
       p.boostTick++;
       if(p.boostTick>=BOOST_SHRINK_INTERVAL){p.boostTick=0;const d=p.segs.pop();room.food.push(mkFood(map,d.x,d.y,6,p.color));p.score=Math.max(INIT_SEGS,p.score-1);}
       else p.segs.pop();
@@ -554,6 +714,19 @@ function tickRoom(room){
         if(!p.isBot){io.to(p.id).emit('sfx','powerup');io.to(p.id).emit('powerup',pu.type);}
         // Challenge: powerups
         if(!p.isBot&&!p.isClone){const cs=getChallengeState(p.id);if(!cs.done&&getDailyChallenge().id==='powerups')cs.value++;}
+        // Persist powerup stats for achievements
+        if(!p.isBot){
+          const uid=socketToUser[p.id];
+          if(db&&uid){
+            const st=dbGetStats(uid);
+            if(st){
+              const patch={powerups_collected:st.powerups_collected+1};
+              if(pu.type==='ghost_pu') patch.ghost_count=st.ghost_count+1;
+              dbSaveStats(uid,patch);
+              checkAchievements(p.id,uid,p,st,patch);
+            }
+          }
+        }
       }
     }
     if(p.powerup){p.powerupTick++;if(p.powerupTick>=p.powerupDuration){p.powerup=null;if(p.cloneId){delete room.clones[p.cloneId];p.cloneId=null;}}}
@@ -610,6 +783,35 @@ function tickRoom(room){
       // Battle pass XP: 1 XP per 5 score + 10 XP per kill
       const _bpAmt=Math.floor(p.score/5)+p.killCount*10;
       if(_bpAmt>0) io.to(id).emit('bpXpEarned',{amount:_bpAmt,source:'game'});
+
+      // ── Persist stats to DB ──────────────────────────────────────────────
+      const userId = socketToUser[id];
+      if (db && userId) {
+        const st = dbGetStats(userId);
+        if (st) {
+          const surviveTicks = room.tickCount - (challengeState[id]?.spawnTick||0);
+          let mapsPlayed = {};
+          try { mapsPlayed = JSON.parse(st.maps_played||'{}'); } catch {}
+          mapsPlayed[room.map.id] = (mapsPlayed[room.map.id]||0) + 1;
+          const patch = {
+            games: st.games + 1,
+            best_score: Math.max(st.best_score, p.score),
+            total_kills: st.total_kills + p.killCount,
+            total_food: st.total_food + Math.max(0, p.score - 24), // approx food eaten
+            best_level: Math.max(st.best_level, p.level||1),
+            total_xp: st.total_xp + (p.xp||0),
+            maps_played: JSON.stringify(mapsPlayed),
+            max_kills_game: Math.max(st.max_kills_game, p.killCount),
+            total_survive_ticks: st.total_survive_ticks + surviveTicks,
+            ranked_games: st.ranked_games + (room.mode==='ranked'?1:0),
+          };
+          dbSaveStats(userId, patch);
+          checkAchievements(id, userId, p, st, patch);
+          // Send updated profile back
+          io.to(id).emit('profileUpdate', { stats: { ...st, ...patch }, achievements: dbGetAchievements(userId) });
+        }
+      }
+
       // Emit died with replay buffer for 3-second camera flyback
       io.to(id).emit('diedWithReplay',{score:p.score,kills:p.killCount,level:p.level,xp:p.xp,replay:p.replayBuf.slice()});
       // Reset challenge tracking for next life
@@ -705,13 +907,71 @@ io.on('connection',socket=>{
     const roomId=socketToRoom[socket.id];
     if(roomId&&rooms[roomId]){delete rooms[roomId].players[socket.id];setTimeout(()=>{const r=rooms[roomId];if(r&&Object.keys(r.players).length===0){clearInterval(r.intervalId);clearInterval(r.zoneTimer);delete rooms[roomId];}},60000);}
     delete socketToRoom[socket.id];
+    delete socketToUser[socket.id];
+  });
+
+  // ── Auth ─────────────────────────────────────────────────────────────────────
+  socket.on('authRegister', async ({username, password}) => {
+    if (!db || !bcrypt) return socket.emit('authResult', {ok:false, error:'Server auth unavailable'});
+    const u = (username||'').trim().slice(0,20);
+    const p = (password||'').trim();
+    if (u.length < 2) return socket.emit('authResult', {ok:false, error:'Username too short (min 2)'});
+    if (p.length < 4) return socket.emit('authResult', {ok:false, error:'Password too short (min 4)'});
+    if (dbGetUser(u)) return socket.emit('authResult', {ok:false, error:'Username already taken'});
+    const hash = await bcrypt.hash(p, 10);
+    try {
+      const r = db.prepare('INSERT INTO users(username,password_hash) VALUES(?,?)').run(u, hash);
+      const userId = r.lastInsertRowid;
+      dbGetStats(userId); // initialise stats row
+      socketToUser[socket.id] = userId;
+      const token = makeSessionToken(userId);
+      socket.emit('authResult', {ok:true, token, username:u, userId,
+        stats: dbGetStats(userId), achievements: []});
+    } catch(e) { socket.emit('authResult', {ok:false, error:'Registration failed'}); }
+  });
+
+  socket.on('authLogin', async ({username, password, token}) => {
+    // Token-based re-auth (returning user)
+    if (token) {
+      const uid = verifySessionToken(token);
+      if (uid) {
+        const user = dbGetUserById(uid);
+        if (user) {
+          socketToUser[socket.id] = uid;
+          return socket.emit('authResult', {ok:true, token, username:user.username, userId:uid,
+            stats: dbGetStats(uid), achievements: dbGetAchievements(uid)});
+        }
+      }
+      return socket.emit('authResult', {ok:false, error:'Session expired — please log in'});
+    }
+    // Username+password login
+    if (!db || !bcrypt) return socket.emit('authResult', {ok:false, error:'Server auth unavailable'});
+    const u = (username||'').trim();
+    const user = dbGetUser(u);
+    if (!user) return socket.emit('authResult', {ok:false, error:'Username not found'});
+    const ok = await bcrypt.compare((password||'').trim(), user.password_hash);
+    if (!ok) return socket.emit('authResult', {ok:false, error:'Wrong password'});
+    socketToUser[socket.id] = user.id;
+    const newToken = makeSessionToken(user.id);
+    socket.emit('authResult', {ok:true, token:newToken, username:user.username, userId:user.id,
+      stats: dbGetStats(user.id), achievements: dbGetAchievements(user.id)});
+  });
+
+  socket.on('getAchievements', () => {
+    socket.emit('achievementsList', ACHIEVEMENTS);
+    const uid = socketToUser[socket.id];
+    if (uid) socket.emit('profileUpdate', {stats: dbGetStats(uid), achievements: dbGetAchievements(uid)});
   });
 });
 
 function joinRoom(socket,room,name,skin,mode,customSkin){
   const team=mode==='teams'?(Object.values(room.players).filter(p=>p.team==='red').length<=Object.values(room.players).filter(p=>p.team==='blue').length?'red':'blue'):null;
   socket.join(room.id);socketToRoom[socket.id]=room.id;
-  room.players[socket.id]=mkPlayer(socket.id,name,false,skin||'solid',team,customSkin||null,room.map);
+  // Use account username if logged in
+  const uid=socketToUser[socket.id];
+  const accountUser=uid?dbGetUserById(uid):null;
+  const displayName=accountUser?accountUser.username:(name||'Anonymous').slice(0,16);
+  room.players[socket.id]=mkPlayer(socket.id,displayName,false,skin||'solid',team,customSkin||null,room.map);
   const cs=getChallengeState(socket.id);
   cs.spawnTick=room.tickCount;cs.value=0;cs.violatedNoBoost=false;cs.killTimes=[];
   const ed=getElo(socket.id);
@@ -720,7 +980,6 @@ function joinRoom(socket,room,name,skin,mode,customSkin){
 }
 
 // ── Stripe ────────────────────────────────────────────────────────────────────
-const crypto=require('crypto');
 const STRIPE_SECRET  = process.env.STRIPE_SECRET_KEY||'';
 const STRIPE_WEBHOOK = process.env.STRIPE_WEBHOOK_SECRET||'';
 const TOKEN_SECRET   = process.env.TOKEN_SECRET||'change-me-in-production';

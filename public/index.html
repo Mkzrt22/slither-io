@@ -380,10 +380,29 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
 </head>
 <body>
 
+<!-- AUTH MODAL -->
+<div id="auth-modal">
+  <div class="auth-box">
+    <div class="auth-logo">NEON<span>SLITHER</span></div>
+    <div class="auth-sub">MULTIPLAYER · NEON · ARENA</div>
+    <div class="auth-tabs">
+      <button class="auth-tab on" id="tab-login" onclick="switchAuthTab('login')">LOG IN</button>
+      <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">REGISTER</button>
+    </div>
+    <div id="auth-err" class="auth-err"></div>
+    <div id="auth-ok" class="auth-ok"></div>
+    <input class="auth-inp" id="auth-user" type="text" placeholder="Username" maxlength="20" autocomplete="username">
+    <input class="auth-inp" id="auth-pass" type="password" placeholder="Password" maxlength="64" autocomplete="current-password">
+    <button class="auth-btn" id="auth-submit">LOG IN</button>
+    <button class="auth-guest" id="auth-guest-btn">Continue as Guest</button>
+  </div>
+</div>
+
 <!-- LOBBY -->
 <div id="ls" class="screen">
   <div class="logo">NEON<span style="color:#ff3d71">SLITHER</span></div>
   <div class="logo-sub">Multiplayer · Neon · Arena</div>
+  <div style="display:flex;justify-content:center;margin-top:8px;margin-bottom:2px"><div id="acct-badge" onclick="openAuthModal()"><div class="acct-av" id="acct-av">?</div><div><div class="acct-name" id="acct-name">Not logged in</div><div class="acct-guest" id="acct-tagline">Click to log in</div></div></div></div>
 
   <!-- ── AdSense Lobby Banner ── Replace data-ad-client and data-ad-slot with your values -->
   <div id="ad-lobby" class="ad-slot">
@@ -482,6 +501,8 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
       </div>
       <div class="ph">Level Progression</div>
       <div id="levelPanel"></div>
+      <div class="ph" style="margin-top:12px">🏅 Achievements <span id="ach-count" style="color:var(--dim);font-size:.55rem"></span></div>
+      <div class="ach-grid" id="achGrid"></div>
     </div>
 
   </div>
@@ -582,6 +603,15 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
     <div class="bpt-title">LEVEL UP!</div>
     <div id="bpt-rewards"></div>
   </div>
+  <!-- Achievement toast -->
+  <div id="ach-toast">
+    <div class="acht-icon" id="acht-icon">🏅</div>
+    <div class="acht-body">
+      <div class="acht-label">ACHIEVEMENT UNLOCKED</div>
+      <div class="acht-name" id="acht-name">—</div>
+      <div class="acht-desc" id="acht-desc">—</div>
+    </div>
+  </div>
   <!-- Replay overlay -->
   <div id="replay-overlay">
     <div id="replay-bar">⏮ REPLAYING LAST 3 SECONDS…</div>
@@ -610,7 +640,9 @@ canvas#gc{position:absolute;inset:0;display:none;touch-action:none}
 <!-- MOBILE -->
 <div id="mc">
   <div id="jz"><div id="jb"></div><div id="jk"></div></div>
-  <div id="bbtn"><span style="font-size:1.1rem">⚡</span><span>BOOST</span></div>
+  <div id="boost-zone">
+    <div id="bbtn"><span style="font-size:1.2rem">⚡</span><span>BOOST</span></div>
+  </div>
 </div>
 
 <!-- DEATH SCREEN -->
@@ -2487,6 +2519,248 @@ document.head.appendChild(_bpStyle);
 // Init on page load
 updateBpBanner();
 updateBpHud();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACCOUNTS + ACHIEVEMENTS SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════
+const AUTH_KEY = 'ns_auth_token_v1';
+let currentUser = null;   // {userId, username, token, stats, achievements:[]}
+let allAchievements = []; // full achievement definitions from server
+
+// ── Auth modal logic ───────────────────────────────────────────────────────
+let authMode = 'login';
+function switchAuthTab(mode) {
+  authMode = mode;
+  document.getElementById('tab-login').classList.toggle('on', mode==='login');
+  document.getElementById('tab-register').classList.toggle('on', mode==='register');
+  document.getElementById('auth-submit').textContent = mode==='login' ? 'LOG IN' : 'REGISTER';
+  document.getElementById('auth-err').textContent = '';
+  document.getElementById('auth-ok').textContent = '';
+  if(mode==='register') document.getElementById('auth-pass').autocomplete='new-password';
+  else document.getElementById('auth-pass').autocomplete='current-password';
+}
+
+function openAuthModal() {
+  document.getElementById('auth-modal').classList.remove('gone');
+}
+function closeAuthModal() {
+  document.getElementById('auth-modal').classList.add('gone');
+}
+
+document.getElementById('auth-submit').addEventListener('click', () => {
+  const u = document.getElementById('auth-user').value.trim();
+  const p = document.getElementById('auth-pass').value;
+  document.getElementById('auth-err').textContent = '';
+  if (!u) { document.getElementById('auth-err').textContent = 'Enter a username'; return; }
+  if (!p) { document.getElementById('auth-err').textContent = 'Enter a password'; return; }
+  const evt = authMode === 'login' ? 'authLogin' : 'authRegister';
+  socket.emit(evt, {username: u, password: p});
+  document.getElementById('auth-submit').textContent = '…';
+  document.getElementById('auth-submit').disabled = true;
+});
+
+document.getElementById('auth-guest-btn').addEventListener('click', () => {
+  closeAuthModal();
+  updateAccountBadge(null);
+  socket.emit('getAchievements');
+});
+
+['auth-user','auth-pass'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('auth-submit').click();
+  });
+});
+
+socket.on('authResult', ({ok, token, username, userId, stats, achievements, error}) => {
+  document.getElementById('auth-submit').textContent = authMode==='login'?'LOG IN':'REGISTER';
+  document.getElementById('auth-submit').disabled = false;
+  if (!ok) {
+    document.getElementById('auth-err').textContent = error || 'Error';
+    return;
+  }
+  currentUser = {userId, username, token, stats: stats||{}, achievements: achievements||[]};
+  localStorage.setItem(AUTH_KEY, token);
+  document.getElementById('auth-ok').textContent = '✓ Welcome, ' + username + '!';
+  setTimeout(closeAuthModal, 800);
+  updateAccountBadge(currentUser);
+  if (allAchievements.length) renderAchievements();
+  syncStatsFromServer(stats);
+});
+
+// ── Returning user: auto-login from stored token ───────────────────────────
+const _storedToken = localStorage.getItem(AUTH_KEY);
+if (_storedToken) {
+  socket.emit('authLogin', {token: _storedToken});
+} else {
+  // Show auth modal on first visit
+  // (already visible by default, no action needed)
+}
+
+// ── Account badge ──────────────────────────────────────────────────────────
+function updateAccountBadge(user) {
+  const av = document.getElementById('acct-av');
+  const nm = document.getElementById('acct-name');
+  const tl = document.getElementById('acct-tagline');
+  if (user) {
+    av.textContent = user.username[0].toUpperCase();
+    nm.textContent = user.username;
+    const ach = (user.achievements||[]).length;
+    tl.textContent = ach + ' / ' + (allAchievements.length||20) + ' achievements';
+  } else {
+    av.textContent = '?'; nm.textContent = 'Guest'; tl.textContent = 'Click to log in';
+  }
+}
+
+// ── Sync server stats into localStorage stats ──────────────────────────────
+function syncStatsFromServer(srv) {
+  if (!srv) return;
+  const local = loadStats();
+  const merged = {
+    best: Math.max(local.best, srv.best_score||0),
+    kills: Math.max(local.kills, srv.total_kills||0),
+    games: Math.max(local.games, srv.games||0),
+    level: Math.max(local.level, srv.best_level||0),
+    xp: Math.max(local.xp||0, srv.total_xp||0),
+  };
+  saveStats(merged);
+  updateStatsUI();
+}
+
+// ── Achievement definitions from server ───────────────────────────────────
+socket.on('achievementsList', defs => {
+  allAchievements = defs;
+  renderAchievements();
+  updateAccountBadge(currentUser);
+});
+
+// Request achievements list when entering lobby
+socket.on('connect', () => {
+  // re-auth on reconnect
+  const t = localStorage.getItem(AUTH_KEY);
+  if (t && !currentUser) socket.emit('authLogin', {token: t});
+  socket.emit('getAchievements');
+});
+
+// ── Render achievement grid in lobby ──────────────────────────────────────
+function renderAchievements() {
+  const grid = document.getElementById('achGrid');
+  if (!grid || !allAchievements.length) return;
+  const unlocked = new Set(currentUser?.achievements || []);
+  const total = allAchievements.length;
+  const got = allAchievements.filter(a => unlocked.has(a.id)).length;
+  document.getElementById('ach-count').textContent = got + ' / ' + total;
+  grid.innerHTML = allAchievements.map(a => {
+    const has = unlocked.has(a.id);
+    return `<div class="ach-item${has?' got':''}" title="">
+      <div class="ach-icon">${escHtml(a.icon)}</div>
+      <div class="ach-name">${escHtml(a.name)}</div>
+      <div class="ach-tip"><strong>${escHtml(a.name)}</strong>${escHtml(a.desc)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── In-game achievement unlock toast ──────────────────────────────────────
+let achToastTimer = null;
+function showAchToast(ach) {
+  document.getElementById('acht-icon').textContent = ach.icon || '🏅';
+  document.getElementById('acht-name').textContent = ach.name;
+  document.getElementById('acht-desc').textContent = ach.desc;
+  const toast = document.getElementById('ach-toast');
+  toast.classList.add('show');
+  if (achToastTimer) clearTimeout(achToastTimer);
+  achToastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
+  if(SFX.levelup) SFX.levelup();
+}
+
+socket.on('achievements', defs => {
+  if (!Array.isArray(defs) || !defs.length) return;
+  // Add to currentUser's unlocked list
+  if (currentUser) {
+    defs.forEach(a => { if(!currentUser.achievements.includes(a.id)) currentUser.achievements.push(a.id); });
+    updateAccountBadge(currentUser);
+    renderAchievements();
+  }
+  // Show toasts sequentially
+  defs.forEach((a, i) => setTimeout(() => showAchToast(a), i * 4500));
+});
+
+socket.on('profileUpdate', ({stats, achievements}) => {
+  if (currentUser) {
+    currentUser.stats = stats;
+    currentUser.achievements = achievements || currentUser.achievements;
+    updateAccountBadge(currentUser);
+    renderAchievements();
+  }
+  if (stats) syncStatsFromServer(stats);
+});
+
+// ── Initial render ─────────────────────────────────────────────────────────
+renderAchievements();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOBILE CONTROLS OVERHAUL
+// ═══════════════════════════════════════════════════════════════════════════
+// Prevent browser pinch-zoom and double-tap zoom on canvas
+document.addEventListener('gesturestart', e => e.preventDefault(), {passive:false});
+document.addEventListener('touchmove', e => {
+  if (e.touches.length > 1) e.preventDefault();
+}, {passive:false});
+document.addEventListener('dblclick', e => e.preventDefault());
+
+// Joystick — larger, better dead zone
+const JM2 = 62; // max knob displacement (px)
+const JOY_DEAD = 8; // dead zone radius
+
+function updateJoy2(cx, cy) {
+  const r = jz.getBoundingClientRect();
+  const bx = r.left + r.width/2, by = r.top + r.height/2;
+  const dx = cx - bx, dy = cy - by;
+  const dist = Math.hypot(dx, dy);
+  if (dist < JOY_DEAD) { resetJoy(); return; }
+  const clamped = Math.min(dist, JM2);
+  const a = Math.atan2(dy, dx);
+  jk.style.transform = `translate(calc(-50% + ${Math.cos(a)*clamped}px), calc(-50% + ${Math.sin(a)*clamped}px))`;
+  jk.classList.add('active');
+  // Map joystick to world angle
+  mouseX = gc.width/2 + Math.cos(a) * 260;
+  mouseY = gc.height/2 + Math.sin(a) * 260;
+}
+
+// Remove old joystick listeners and replace
+jz.removeEventListener('touchstart', jz._tsHandler || (()=>{}));
+
+let _joyId = null;
+jz.addEventListener('touchstart', e => {
+  e.stopPropagation();
+  const t = e.changedTouches[0];
+  _joyId = t.identifier;
+  updateJoy2(t.clientX, t.clientY);
+}, {passive:true});
+window.addEventListener('touchmove', e => {
+  for (const t of e.changedTouches) if (t.identifier === _joyId) updateJoy2(t.clientX, t.clientY);
+}, {passive:true});
+window.addEventListener('touchend', e => {
+  for (const t of e.changedTouches) if (t.identifier === _joyId) { resetJoy(); _joyId = null; }
+}, {passive:true});
+
+// Boost zone — tap anywhere on right half to boost
+const boostZoneEl = document.getElementById('boost-zone');
+let _boostId = null;
+boostZoneEl.addEventListener('touchstart', e => {
+  e.stopPropagation();
+  _boostId = e.changedTouches[0].identifier;
+  mouseDown = true;
+  bbtn.classList.add('pressing');
+}, {passive:true});
+boostZoneEl.addEventListener('touchend', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === _boostId) { mouseDown = false; bbtn.classList.remove('pressing'); _boostId = null; }
+  }
+}, {passive:true});
+boostZoneEl.addEventListener('touchcancel', () => { mouseDown = false; bbtn.classList.remove('pressing'); _boostId = null; });
+
+// Remove old bbtn listeners (they're now superseded)
+bbtn.ontouchstart = null; bbtn.ontouchend = null;
 
 render();
 
