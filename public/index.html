@@ -1086,12 +1086,10 @@ window.addEventListener('keydown',e=>{
   const em={'1':'😂','2':'😎','3':'👋','4':'💀'};if(em[e.key])socket.emit('emote',em[e.key]);
 });
 const jz=document.getElementById('jz'),jk=document.getElementById('jk'),bbtn=document.getElementById('bbtn'),mcEl=document.getElementById('mc');
-let joyId=null;const JM=44;
-function updateJoy(cx,cy){const r=jz.getBoundingClientRect(),bx=r.left+r.width/2,by=r.top+r.height/2,dx=cx-bx,dy=cy-by,d=Math.min(Math.hypot(dx,dy),JM),a=Math.atan2(dy,dx);jk.style.transform=`translate(calc(-50% + ${Math.cos(a)*d}px),calc(-50% + ${Math.sin(a)*d}px))`;jk.classList.add('active');mouseX=gc.width/2+Math.cos(a)*200;mouseY=gc.height/2+Math.sin(a)*200;}
-function resetJoy(){jk.style.transform='translate(-50%,-50%)';jk.classList.remove('active');joyId=null;}
-jz.addEventListener('touchstart',e=>{e.stopPropagation();const t=e.changedTouches[0];joyId=t.identifier;updateJoy(t.clientX,t.clientY);},{passive:true});
-window.addEventListener('touchmove',e=>{for(const t of e.changedTouches)if(t.identifier===joyId)updateJoy(t.clientX,t.clientY);},{passive:true});
-window.addEventListener('touchend',e=>{for(const t of e.changedTouches)if(t.identifier===joyId)resetJoy();},{passive:true});
+let _joyActive=false;
+function updateJoy(cx,cy){updateJoy2(cx,cy);}
+function resetJoy(){jk.style.transform='translate(-50%,-50%)';jk.classList.remove('active');}
+
 bbtn.addEventListener('touchstart',e=>{e.stopPropagation();mouseDown=true;bbtn.classList.add('pressing');},{passive:true});
 bbtn.addEventListener('touchend',e=>{e.stopPropagation();mouseDown=false;bbtn.classList.remove('pressing');},{passive:true});
 gc.addEventListener('click',()=>{if(!spectating)return;const al=state.players.filter(p=>p.id!==myId);if(!al.length)return;const idx=al.findIndex(p=>p.id===spectateTargetId);spectateTargetId=al[(idx+1)%al.length].id;updateSpBanner();});
@@ -1282,7 +1280,6 @@ socket.on('diedWithReplay',({score,kills,level,xp,replay})=>{
 
 // Fallback for servers that still emit 'died'
 socket.on('died',({score,kills,level,xp})=>{
-  socket.emit('__noop__'); // handled by diedWithReplay; this is a safety net
   inGame=false;paused=false;setPause(false);
   document.getElementById('dsc').textContent=score;document.getElementById('dkl').textContent=kills;document.getElementById('dlv').textContent=level||1;
   document.getElementById('ds').classList.remove('hidden');

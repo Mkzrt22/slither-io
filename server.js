@@ -4,6 +4,10 @@ const { Server } = require('socket.io');
 const path = require('path');
 const crypto = require('crypto');
 
+// ── Env config (needed throughout the file) ───────────────────────────────────
+const PUBLIC_URL     = process.env.PUBLIC_URL||'http://localhost:3000';
+const TOKEN_SECRET   = process.env.TOKEN_SECRET||'change-me-in-production';
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
@@ -151,7 +155,8 @@ function checkAchievements(socketId, userId, p, stats, patch) {
   if (merged.games >= 25)  try_('veteran');
   if (merged.games >= 100) try_('centurion');
   if (merged.ranked_games >= 1) try_('ranked_player');
-  if (p._pacifist && p.score >= 80)  try_('pacifist');
+  if (merged.teams_wins >= 1)   try_('team_player');
+  if (p._pacifist === true && p.score >= 80) try_('pacifist'); // _pacifist stays true if never boosted
   if (merged.total_survive_ticks >= 25*180) try_('survivor'); // 3 min @ 25tps
 
   // Explorer: all 4 maps played
@@ -611,7 +616,22 @@ function checkWin(room,all){
     for(const p of Object.values(all))if(p.team)room.teamScores[p.team]=(room.teamScores[p.team]||0)+p.score;
     if(room.teamScores.red>=SCORE_WIN*3||room.teamScores.blue>=SCORE_WIN*3){
       const w=room.teamScores.red>room.teamScores.blue?'red':'blue';
-      room.winner={team:w,score:room.teamScores[w]};io.to(room.id).emit('gameOver',room.winner);
+      room.winner={team:w,score:room.teamScores[w]};
+      // Persist teams_wins for winning team players + unlock team_player achievement
+      for(const[sid,p] of Object.entries(room.players)){
+        if(p.team===w&&!p.isBot){
+          const uid=socketToUser[sid];
+          if(db&&uid){
+            const st=dbGetStats(uid);
+            if(st){
+              const patch={teams_wins:st.teams_wins+1};
+              dbSaveStats(uid,patch);
+              checkAchievements(sid,uid,p,st,patch);
+            }
+          }
+        }
+      }
+      io.to(room.id).emit('gameOver',room.winner);
     }
   }
   if(room.mode==='ranked'){
@@ -983,9 +1003,7 @@ function joinRoom(socket,room,name,skin,mode,customSkin){
 // ── Stripe ────────────────────────────────────────────────────────────────────
 const STRIPE_SECRET  = process.env.STRIPE_SECRET_KEY||'';
 const STRIPE_WEBHOOK = process.env.STRIPE_WEBHOOK_SECRET||'';
-const TOKEN_SECRET   = process.env.TOKEN_SECRET||'change-me-in-production';
 const PRICE_ID       = process.env.STRIPE_PRICE_ID||'';
-const PUBLIC_URL     = process.env.PUBLIC_URL||'http://localhost:3000';
 let stripe=null;
 if(STRIPE_SECRET){try{stripe=require('stripe')(STRIPE_SECRET);}catch(e){console.warn('Stripe not available:',e.message);}}
 app.use('/api/stripe-webhook',express.raw({type:'application/json'}));
