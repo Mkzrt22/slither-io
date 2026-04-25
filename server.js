@@ -1,214 +1,127 @@
+require('./server/sentry'); // initialise Sentry early so it captures startup errors
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const crypto = require('crypto');
 
-// ── Env config (needed throughout the file) ───────────────────────────────────
-const PUBLIC_URL     = process.env.PUBLIC_URL||'http://localhost:3000';
-const TOKEN_SECRET   = process.env.TOKEN_SECRET||'change-me-in-production';
+const log = require('./server/logger');
+const { captureException } = require('./server/sentry');
+const C = require('./shared/constants');
+const rateLimit = require('./server/rateLimiter');
+const V = require('./server/validation');
+const { makeSessionToken, verifySessionToken } = require('./server/auth');
+const SpatialHash = require('./server/spatialHash');
+const dbMod = require('./server/db');
+const { ACHIEVEMENTS, evaluate: evalAchievements } = require('./server/achievements');
+const { calcEloGain, getRank } = require('./server/elo');
+const { getDailyChallenge } = require('./server/dailyChallenge');
+
+// ── Env config ────────────────────────────────────────────────────────────────
+const NODE_ENV       = process.env.NODE_ENV || 'development';
+const PUBLIC_URL     = process.env.PUBLIC_URL || 'http://localhost:3000';
+const TOKEN_SECRET   = process.env.TOKEN_SECRET || (NODE_ENV === 'production' ? null : 'dev-only-secret');
+if (!TOKEN_SECRET) {
+  log.fatal('TOKEN_SECRET env var is required in production. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  process.exit(1);
+}
+
+// CORS: in prod restrict to PUBLIC_URL, in dev allow all (handy for LAN testing)
+const corsOrigin = NODE_ENV === 'production' ? [PUBLIC_URL] : '*';
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const io = new Server(server, { cors: { origin: corsOrigin } });
 
-// ── Database (SQLite — optional, graceful fallback to in-memory) ──────────────
-let db = null;
-try {
-  const Database = require('better-sqlite3');
-  db = new Database(path.join(__dirname, 'data.db'));
-  db.pragma('journal_mode = WAL');
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL COLLATE NOCASE,
-      password_hash TEXT NOT NULL,
-      created_at INTEGER DEFAULT (strftime('%s','now'))
-    );
-    CREATE TABLE IF NOT EXISTS stats (
-      user_id INTEGER PRIMARY KEY REFERENCES users(id),
-      games INTEGER DEFAULT 0,
-      best_score INTEGER DEFAULT 0,
-      total_kills INTEGER DEFAULT 0,
-      total_food INTEGER DEFAULT 0,
-      best_level INTEGER DEFAULT 0,
-      total_xp INTEGER DEFAULT 0,
-      maps_played TEXT DEFAULT '{}',
-      powerups_collected INTEGER DEFAULT 0,
-      ghost_count INTEGER DEFAULT 0,
-      ranked_games INTEGER DEFAULT 0,
-      teams_wins INTEGER DEFAULT 0,
-      max_kills_game INTEGER DEFAULT 0,
-      total_survive_ticks INTEGER DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS achievements (
-      user_id INTEGER REFERENCES users(id),
-      achievement_id TEXT NOT NULL,
-      unlocked_at INTEGER DEFAULT (strftime('%s','now')),
-      PRIMARY KEY(user_id, achievement_id)
-    );
-  `);
-  console.log('✅ SQLite DB ready');
-} catch(e) {
-  console.warn('⚠️  SQLite unavailable — running without persistence. Install better-sqlite3 for accounts.', e.message);
-  db = null;
-}
+// Surface unhandled errors to Sentry instead of silently dying.
+process.on('uncaughtException', (e) => { log.error({ err: e }, 'uncaughtException'); captureException(e); });
+process.on('unhandledRejection', (e) => { log.error({ err: e }, 'unhandledRejection'); captureException(e); });
+
+// ── Database — delegated to server/db.js ──────────────────────────────────────
+const db = dbMod.db;
 
 // ── Bcrypt (pure-JS fallback if native addon fails) ───────────────────────────
 let bcrypt = null;
-try { bcrypt = require('bcryptjs'); } catch(e) { console.warn('bcryptjs missing'); }
+try { bcrypt = require('bcryptjs'); } catch(e) { log.warn('bcryptjs missing'); }
 
-// ── Achievement definitions ───────────────────────────────────────────────────
-const ACHIEVEMENTS = [
-  { id:'first_blood',   icon:'🩸', name:'First Blood',      desc:'Get your first kill',               secret:false },
-  { id:'hatchling',     icon:'🐣', name:'Hatchling',        desc:'Reach a score of 50',               secret:false },
-  { id:'serpent',       icon:'🐍', name:'Serpent',          desc:'Reach a score of 150',              secret:false },
-  { id:'titan',         icon:'🦕', name:'Titan',            desc:'Reach a score of 300',              secret:false },
-  { id:'speed_demon',   icon:'⚡', name:'Speed Demon',      desc:'Collect 5 speed power-ups',         secret:false },
-  { id:'survivor',      icon:'⏱', name:'Survivor',         desc:'Stay alive for 3 minutes in one game', secret:false },
-  { id:'glutton',       icon:'🍎', name:'Glutton',          desc:'Eat 100 food items total',          secret:false },
-  { id:'predator',      icon:'💀', name:'Predator',         desc:'Get 10 kills total',                secret:false },
-  { id:'apex',          icon:'👑', name:'Apex',             desc:'Get 50 kills total',                secret:false },
-  { id:'pacifist',      icon:'🐢', name:'Pacifist Run',     desc:'Score 80 without boosting',         secret:false },
-  { id:'power_hungry',  icon:'🔋', name:'Power Hungry',     desc:'Collect 50 power-ups total',        secret:false },
-  { id:'explorer',      icon:'🗺️',  name:'Explorer',         desc:'Play on all 4 maps',                secret:false },
-  { id:'veteran',       icon:'🎖', name:'Veteran',          desc:'Play 25 games',                     secret:false },
-  { id:'centurion',     icon:'💯', name:'Centurion',        desc:'Play 100 games',                    secret:false },
-  { id:'ranked_player', icon:'🏅', name:'Ranked Player',    desc:'Play a ranked game',                secret:false },
-  { id:'team_player',   icon:'🤝', name:'Team Player',      desc:'Win a teams game',                  secret:false },
-  { id:'ghost_rider',   icon:'👻', name:'Ghost Rider',      desc:'Collect the ghost power-up 5 times',secret:false },
-  { id:'chain_killer',  icon:'🔥', name:'Chain Killer',     desc:'Get 3 kills in a single game',      secret:false },
-  { id:'comeback',      icon:'💪', name:'Comeback',         desc:'Score 100 after being below length 30', secret:true  },
-  { id:'season1',       icon:'🎫', name:'Season 1 Veteran', desc:'Reach Battle Pass tier 10',         secret:false },
-];
-
-// ── Session tokens (HMAC, same pattern as Stripe tokens) ─────────────────────
-const TOKEN_SECRET_AUTH = process.env.TOKEN_SECRET || 'change-me-in-production';
-function makeSessionToken(userId) {
-  const payload = `uid:${userId}:${Date.now()}`;
-  const sig = crypto.createHmac('sha256', TOKEN_SECRET_AUTH).update(payload).digest('hex');
-  return `${payload}:${sig}`;
-}
-function verifySessionToken(token) {
-  if (!token) return null;
-  const parts = token.split(':');
-  if (parts.length < 4) return null;
-  const sig = parts.pop();
-  const payload = parts.join(':');
-  const expected = crypto.createHmac('sha256', TOKEN_SECRET_AUTH).update(payload).digest('hex');
-  try {
-    if (!crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'))) return null;
-  } catch { return null; }
-  const uid = parseInt(parts[1]);
-  return isNaN(uid) ? null : uid;
-}
-
-// ── DB helpers ────────────────────────────────────────────────────────────────
-function dbGetUser(username)   { return db?.prepare('SELECT * FROM users WHERE username=?').get(username); }
-function dbGetUserById(id)     { return db?.prepare('SELECT * FROM users WHERE id=?').get(id); }
-function dbGetStats(userId)    {
-  if (!db) return null;
-  let s = db.prepare('SELECT * FROM stats WHERE user_id=?').get(userId);
-  if (!s) { db.prepare('INSERT OR IGNORE INTO stats(user_id) VALUES(?)').run(userId); s = db.prepare('SELECT * FROM stats WHERE user_id=?').get(userId); }
-  return s;
-}
-function dbSaveStats(userId, patch) {
-  if (!db) return;
-  const cols = Object.keys(patch).map(k => `${k}=?`).join(',');
-  db.prepare(`UPDATE stats SET ${cols} WHERE user_id=?`).run(...Object.values(patch), userId);
-}
-function dbGetAchievements(userId) {
-  return db?.prepare('SELECT achievement_id FROM achievements WHERE user_id=?').all(userId).map(r=>r.achievement_id) || [];
-}
-function dbUnlockAchievement(userId, id) {
-  if (!db) return false;
-  const r = db.prepare('INSERT OR IGNORE INTO achievements(user_id,achievement_id) VALUES(?,?)').run(userId, id);
-  return r.changes > 0;
-}
+// Re-exported db helpers (kept as local names so the rest of the file stays close
+// to the original shape).
+const dbGetUser            = dbMod.getUser;
+const dbGetUserById        = dbMod.getUserById;
+const dbGetStats           = dbMod.getStats;
+const dbSaveStats          = dbMod.saveStats;
+const dbGetAchievements    = dbMod.getAchievements;
+const dbUnlockAchievement  = dbMod.unlockAchievement;
 
 // ── In-memory userId map (socketId → userId) ──────────────────────────────────
 const socketToUser = {}; // socketId → userId
+// Reverse map (userId → socketId) used to evict duplicate logins on the same account
+const userToSocket = {}; // userId → socketId
 
 // ── Achievement checker ───────────────────────────────────────────────────────
 function checkAchievements(socketId, userId, p, stats, patch) {
   if (!db || !userId) return;
   const unlocked = dbGetAchievements(userId);
+  const mapsPlayed = dbMod.getMapsPlayed(userId);
+  const candidates = evalAchievements(p, stats, patch, mapsPlayed);
   const earned = [];
-  const merged = { ...stats, ...patch };
-
-  function try_(id) {
-    if (unlocked.includes(id)) return false;
-    if (dbUnlockAchievement(userId, id)) { earned.push(id); return true; }
-    return false;
+  for (const id of candidates) {
+    if (unlocked.includes(id)) continue;
+    if (dbUnlockAchievement(userId, id)) earned.push(id);
   }
-
-  if (patch.total_kills >= 1  && merged.total_kills >= 1)  try_('first_blood');
-  if (patch.total_kills >= 10 && merged.total_kills >= 10) try_('predator');
-  if (patch.total_kills >= 50 && merged.total_kills >= 50) try_('apex');
-  if (merged.max_kills_game >= 3)  try_('chain_killer');
-  if (p.score >= 50)   try_('hatchling');
-  if (p.score >= 150)  try_('serpent');
-  if (p.score >= 300)  try_('titan');
-  if (merged.total_food >= 100) try_('glutton');
-  if (merged.powerups_collected >= 50) try_('power_hungry');
-  if (merged.ghost_count >= 5)  try_('ghost_rider');
-  if (merged.games >= 25)  try_('veteran');
-  if (merged.games >= 100) try_('centurion');
-  if (merged.ranked_games >= 1) try_('ranked_player');
-  if (merged.teams_wins >= 1)   try_('team_player');
-  if (p._pacifist === true && p.score >= 80) try_('pacifist'); // _pacifist stays true if never boosted
-  if (merged.total_survive_ticks >= 25*180) try_('survivor'); // 3 min @ 25tps
-
-  // Explorer: all 4 maps played
-  try {
-    const maps = JSON.parse(merged.maps_played || '{}');
-    if (Object.keys(maps).length >= 4) try_('explorer');
-  } catch {}
-
   if (earned.length) {
-    const defs = earned.map(id => ACHIEVEMENTS.find(a=>a.id===id)).filter(Boolean);
+    const defs = earned.map(id => ACHIEVEMENTS.find(a => a.id === id)).filter(Boolean);
     io.to(socketId).emit('achievements', defs);
   }
 }
 
 
-const TICK                = 1000 / 25;
-const SEG_R               = 9;
-const MOVE_SPEED          = 2.8;
-const BOOST_SPEED         = 5.2;
-const TURN_SPEED          = 0.13;
-const INIT_SEGS           = 24;
-const BOOST_SHRINK_INTERVAL = 8;
-const BOT_COUNT           = 6;
-const POWERUP_TARGET      = 10;
-const PORTAL_PAIRS        = 3;
-const ZONE_SHRINK_INTERVAL = 30000;
-const ZONE_MIN_RADIUS     = 500;
-const ZONE_DAMAGE_TICK    = 4;
-const SCORE_WIN           = 200;
-const LEVEL_XP            = [0,50,120,220,360,550,800,1100,1500,2000];
-const LEVEL_ABILITY       = { 2:'wide_eat', 4:'fast_boost', 6:'long_shield', 8:'ghost' };
+// ── Game constants (re-exported from shared/constants.js for readability) ────
+const TICK                  = C.TICK_MS;
+const SEG_R                 = C.SEG_R;
+const MOVE_SPEED            = C.MOVE_SPEED;
+const BOOST_SPEED           = C.BOOST_SPEED;
+const TURN_SPEED            = C.TURN_SPEED;
+const INIT_SEGS             = C.INIT_SEGS;
+const BOOST_SHRINK_INTERVAL = C.BOOST_SHRINK_INTERVAL;
+const POWERUP_TARGET        = C.POWERUP_TARGET;
+const PORTAL_PAIRS          = C.PORTAL_PAIRS;
+const PORTAL_MIN_DISTANCE   = C.PORTAL_MIN_DISTANCE;
+const ZONE_SHRINK_INTERVAL  = C.ZONE_SHRINK_INTERVAL;
+const ZONE_MIN_RADIUS       = C.ZONE_MIN_RADIUS;
+const ZONE_DAMAGE_TICK      = C.ZONE_DAMAGE_TICK;
+const SCORE_WIN             = C.SCORE_WIN;
+const SPAWN_INVUL_TICKS     = C.SPAWN_INVUL_TICKS;
+const LEVEL_XP              = C.LEVEL_XP;
+const LEVEL_ABILITY         = C.LEVEL_ABILITY;
+const POWERUP_TYPES         = C.POWERUP_TYPES;
+const POWERUP_DURATIONS     = C.POWERUP_DURATIONS;
 
-// ── Power-ups (6 types) ───────────────────────────────────────────────────────
-const POWERUP_TYPES     = ['speed','shield','magnet','freeze','clone','ghost_pu'];
-const POWERUP_DURATIONS = {
-  speed:5*25, shield:4*25, magnet:8*25,
-  freeze:4*25, clone:6*25, ghost_pu:5*25,
-};
+// Bot count scales 3-8 with the number of human players (item #38 indirect fix).
+function botCountFor(humanCount) {
+  return Math.max(C.BOT_COUNT_BASE, Math.min(C.BOT_COUNT_MAX, C.BOT_COUNT_BASE + Math.floor(humanCount / 2)));
+}
 
-// ── ELO / Ranked ──────────────────────────────────────────────────────────────
-const ELO_K = 32;
-const RANK_TIERS = [
-  { name:'Bronze',   min:0,    color:'#cd7f32' },
-  { name:'Silver',   min:1000, color:'#c0c0c0' },
-  { name:'Gold',     min:1200, color:'#ffd700' },
-  { name:'Platinum', min:1400, color:'#00e5ff' },
-  { name:'Diamond',  min:1600, color:'#b39ddb' },
-];
-const eloStore = {};
-function getElo(id){ return eloStore[id] || (eloStore[id]={ elo:1000, wins:0, losses:0, streak:0 }); }
-function calcEloGain(wElo,lElo){ return Math.round(ELO_K*(1-1/(1+Math.pow(10,(lElo-wElo)/400)))); }
-function getRank(elo){ for(let i=RANK_TIERS.length-1;i>=0;i--)if(elo>=RANK_TIERS[i].min)return RANK_TIERS[i]; return RANK_TIERS[0]; }
+// ELO is now keyed by userId (not socketId). Anonymous players share id 0,
+// so their ELO is per-session-only and resets on disconnect.
+function getElo(userId) {
+  if (!userId) {
+    // anonymous fallback — ephemeral
+    return { elo: 1000, wins: 0, losses: 0, streak: 0 };
+  }
+  if (!db) return { elo: 1000, wins: 0, losses: 0, streak: 0 };
+  const s = dbGetStats(userId);
+  return { elo: s.elo, wins: s.elo_wins, losses: s.elo_losses, streak: s.elo_streak };
+}
+function setElo(userId, patch) {
+  if (!userId || !db) return;
+  const map = {};
+  if ('elo'      in patch) map.elo        = patch.elo;
+  if ('wins'     in patch) map.elo_wins   = patch.wins;
+  if ('losses'   in patch) map.elo_losses = patch.losses;
+  if ('streak'   in patch) map.elo_streak = patch.streak;
+  if (Object.keys(map).length) dbSaveStats(userId, map);
+}
 
 // ── Maps ──────────────────────────────────────────────────────────────────────
 const MAPS = {
@@ -225,27 +138,6 @@ const MAPS = {
 const TEAM_COLORS = { red:'#FF4757', blue:'#1E90FF' };
 const BOT_NAMES   = ['Slinky','Viper','Cobra','Mamba','Rattler','Anaconda','Fangs','Bolt','Slick','Coil','Hydra','Fang'];
 const GAME_MODES  = ['classic','score','teams','tournament','ranked'];
-
-// ── Daily Challenge ───────────────────────────────────────────────────────────
-// 8 challenge types rotate daily. Seeded deterministically from UTC date.
-const DAILY_CHALLENGES = [
-  { id:'score',      icon:'🏆', label:'High Scorer',     desc:'Reach a score of 150 in one life',           goal:150,  unit:'pts'  },
-  { id:'kills',      icon:'💀', label:'Predator',         desc:'Get 5 kills in one game',                    goal:5,    unit:'kills'},
-  { id:'no_boost',   icon:'🐢', label:'Pacifist Run',     desc:'Score 80 without ever boosting',             goal:80,   unit:'pts'  },
-  { id:'powerups',   icon:'⚡', label:'Power Collector',  desc:'Collect 8 power-ups in one game',            goal:8,    unit:'PUs'  },
-  { id:'survive',    icon:'⏱', label:'Survivor',         desc:'Stay alive for 90 seconds',                  goal:90,   unit:'sec'  },
-  { id:'eat_streak', icon:'🍎', label:'Glutton',          desc:'Eat 40 food items without dying',            goal:40,   unit:'food' },
-  { id:'length',     icon:'📏', label:'Mega Snake',       desc:'Reach a length of 70 segments',              goal:70,   unit:'segs' },
-  { id:'multi_kill', icon:'🔥', label:'Double Kill',      desc:'Get 2 kills within 8 seconds',               goal:2,    unit:'kills'},
-];
-
-function getDailyChallenge(){
-  const d=new Date();
-  const dayNum=Math.floor(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())/86400000);
-  const ch=DAILY_CHALLENGES[dayNum%DAILY_CHALLENGES.length];
-  const dateStr=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
-  return{...ch,date:dateStr};
-}
 
 // Track per-player challenge state (keyed by socketId)
 const challengeState={}; // {socketId:{value,done,violatedNoBoost,killTimes,spawnTick}}
@@ -342,60 +234,108 @@ const dist2 = (a,b)=>{const dx=a.x-b.x,dy=a.y-b.y;return dx*dx+dy*dy;};
 const dist  = (a,b)=>Math.sqrt(dist2(a,b));
 function angleDiff(a,b){let d=b-a;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;return d;}
 function getLevel(xp){for(let i=LEVEL_XP.length-1;i>=0;i--)if(xp>=LEVEL_XP[i])return Math.min(i+1,10);return 1;}
-function selfCollisionSkip(p){return Math.min(40,20+Math.floor(p.segs.length/30));}
+// Skip the first N segments when checking self-collision so the head doesn't
+// instantly hit the neck. The cap scales linearly with snake length so that very
+// long snakes don't pass through their own coils (item #20).
+function selfCollisionSkip(p) {
+  return Math.min(120, 20 + Math.floor(p.segs.length / 18));
+}
 function wrapDist2(a,b,W,H){let dx=Math.abs(a.x-b.x),dy=Math.abs(a.y-b.y);if(dx>W/2)dx=W-dx;if(dy>H/2)dy=H-dy;return dx*dx+dy*dy;}
 
 // ── Factories ──────────────────────────────────────────────────────────────────
 function mkFood(map,x,y,sz,color){return{id:idCounter++,x:x??rnd(map.W),y:y??rnd(map.H),sz:sz??(4+Math.random()*6),color:color??pick(map.palette)};}
 function mkPowerup(map){return{id:idCounter++,x:300+rnd(map.W-600),y:300+rnd(map.H-600),type:pick(POWERUP_TYPES),r:14};}
 function mkObstacle(map){const r=28+rnd(46);return{id:idCounter++,x:400+rnd(map.W-800),y:400+rnd(map.H-800),r,vx:(Math.random()-.5)*.65,vy:(Math.random()-.5)*.65};}
-function mkPortalPair(idx,map){
-  return[
-    {id:idCounter++,x:300+rnd(map.W-600),y:300+rnd(map.H-600),r:22,pairIdx:idx,which:'a'},
-    {id:idCounter++,x:300+rnd(map.W-600),y:300+rnd(map.H-600),r:22,pairIdx:idx,which:'b'},
+function mkPortalPair(idx, map) {
+  // Generate a pair of portals that are at least PORTAL_MIN_DISTANCE apart so
+  // a snake can't immediately re-enter the partner portal in a tight loop (#21).
+  const ax = 300 + rnd(map.W - 600), ay = 300 + rnd(map.H - 600);
+  let bx, by, tries = 0;
+  do {
+    bx = 300 + rnd(map.W - 600);
+    by = 300 + rnd(map.H - 600);
+    tries++;
+  } while (Math.hypot(bx - ax, by - ay) < PORTAL_MIN_DISTANCE && tries < 20);
+  return [
+    { id: idCounter++, x: ax, y: ay, r: 22, pairIdx: idx, which: 'a' },
+    { id: idCounter++, x: bx, y: by, r: 22, pairIdx: idx, which: 'b' },
   ];
 }
 
-function mkPlayer(id,name,isBot,skin,team,customSkin,map){
-  map=map||MAPS.classic;
-  const x=400+rnd(map.W-800),y=400+rnd(map.H-800),angle=Math.random()*Math.PI*2;
-  const color=team?TEAM_COLORS[team]:pick(map.palette);
-  const segs=[];
-  for(let i=0;i<INIT_SEGS;i++)segs.push({x:x-Math.cos(angle)*i*SEG_R*2.5,y:y-Math.sin(angle)*i*SEG_R*2.5});
-  return{id,name:isBot?name:(name||'Anonymous').slice(0,16),color,skin:skin||'solid',segs,angle,targetAngle:angle,team:team||null,
-    customSkin:customSkin||null,boosting:false,boostTick:0,score:INIT_SEGS,alive:true,killCount:0,isBot:!!isBot,
-    powerup:null,powerupTick:0,powerupDuration:0,zoneDamageTick:0,_zoneDeath:false,
-    botWanderTick:0,botState:'forage',botDodgeTick:0,
-    xp:0,level:1,abilities:[],emote:null,emoteTick:0,portalCooldown:0,
-    cloneId:null,frozen:0,_respawnTick:0,
-    replayBuf:[],  // ring buffer of last 75 head positions for death replay
-    _pacifist:true, // cleared if player ever boosts
+// Pick a spawn that doesn't collide with any current obstacle (item #22).
+function pickSpawn(map, room) {
+  const obstacles = room ? room.obstacles : [];
+  for (let tries = 0; tries < 30; tries++) {
+    const x = 400 + rnd(map.W - 800);
+    const y = 400 + rnd(map.H - 800);
+    let safe = true;
+    for (const ob of obstacles) {
+      if ((x - ob.x) ** 2 + (y - ob.y) ** 2 < (ob.r + 60) ** 2) { safe = false; break; }
+    }
+    if (safe) return { x, y };
+  }
+  return { x: 400 + rnd(map.W - 800), y: 400 + rnd(map.H - 800) };
+}
+
+function mkPlayer(id, name, isBot, skin, team, customSkin, map, room) {
+  map = map || MAPS.classic;
+  const { x, y } = pickSpawn(map, room);
+  const angle = Math.random() * Math.PI * 2;
+  const color = team ? TEAM_COLORS[team] : pick(map.palette);
+  const segs = [];
+  for (let i = 0; i < INIT_SEGS; i++) segs.push({ x: x - Math.cos(angle) * i * SEG_R * 2.5, y: y - Math.sin(angle) * i * SEG_R * 2.5 });
+  return {
+    id, name: isBot ? name : (name || 'Anonymous').slice(0, 16),
+    color, skin: skin || 'solid', segs, angle, targetAngle: angle, team: team || null,
+    customSkin: customSkin || null,
+    boosting: false, boostTick: 0, score: INIT_SEGS, alive: true, killCount: 0, isBot: !!isBot,
+    powerup: null, powerupTick: 0, powerupDuration: 0,
+    zoneDamageTick: 0, _zoneDeath: false,
+    botWanderTick: 0, botState: 'forage', botDodgeTick: 0,
+    xp: 0, level: 1, abilities: [], emote: null, emoteTick: 0, portalCooldown: 0,
+    cloneId: null, frozen: 0, _respawnTick: 0,
+    replayBuf: [],
+    _pacifist: true,
+    // 2-second post-spawn invulnerability so players don't get camp-killed (#40)
+    invulTicks: SPAWN_INVUL_TICKS,
   };
 }
 
-function mkRoom(id,name,mode,mapId){
-  const map=MAPS[mapId]||MAPS.classic;
-  const food=Array.from({length:map.FOOD_TARGET},()=>mkFood(map));
-  const powerups=Array.from({length:POWERUP_TARGET},()=>mkPowerup(map));
-  const obstacles=Array.from({length:map.OBSTACLE_COUNT},()=>mkObstacle(map));
-  const portals=[];for(let i=0;i<PORTAL_PAIRS;i++)portals.push(...mkPortalPair(i,map));
-  const bots={};
-  const shuffled=[...BOT_NAMES].sort(()=>Math.random()-.5);
-  for(let i=0;i<BOT_COUNT;i++){
-    const bid='bot_'+idCounter++;
-    const team=mode==='teams'?(i%2===0?'red':'blue'):null;
-    bots[bid]=mkPlayer(bid,shuffled[i]+'_AI',true,'solid',team,null,map);
-  }
-  return{id,name:name||'Room '+id.slice(-4),mode:mode||'classic',map,
-    W:map.W,H:map.H,FOOD_TARGET:map.FOOD_TARGET,
-    players:{},bots,food,powerups,obstacles,portals,clones:{},
-    killFeed:[],chatMsgs:[],mapPings:[],
-    zone:{x:map.W/2,y:map.H/2,r:Math.hypot(map.W,map.H)/2+200,targetR:Math.hypot(map.W,map.H)/2+200},
-    tickCount:0,intervalId:null,zoneTimer:null,
-    winner:null,teamScores:{red:0,blue:0},tournamentBracket:null,
-    activeEvent:null,eventCooldown:0,
-    password:null,  // set after creation for private rooms
+function mkRoom(id, name, mode, mapId) {
+  const map = MAPS[mapId] || MAPS.classic;
+  const food      = Array.from({ length: map.FOOD_TARGET }, () => mkFood(map));
+  const powerups  = Array.from({ length: POWERUP_TARGET }, () => mkPowerup(map));
+  const obstacles = Array.from({ length: map.OBSTACLE_COUNT }, () => mkObstacle(map));
+  const portals = [];
+  for (let i = 0; i < PORTAL_PAIRS; i++) portals.push(...mkPortalPair(i, map));
+
+  const room = {
+    id, name: name || 'Room ' + id.slice(-4), mode: mode || 'classic', map,
+    W: map.W, H: map.H, FOOD_TARGET: map.FOOD_TARGET,
+    players: {}, bots: {}, food, powerups, obstacles, portals, clones: {},
+    killFeed: [], chatMsgs: [], mapPings: [],
+    zone: {
+      x: map.W / 2, y: map.H / 2,
+      r: Math.hypot(map.W, map.H) / 2 + 200,
+      targetR: Math.hypot(map.W, map.H) / 2 + 200,
+    },
+    tickCount: 0, intervalId: null, zoneTimer: null,
+    winner: null, teamScores: { red: 0, blue: 0 }, tournamentBracket: null,
+    activeEvent: null, eventCooldown: 0,
+    password: null,
+    // Spectators waiting to spawn (item #36). They receive state updates but
+    // no Player object exists for them yet.
+    spectators: new Set(),
   };
+
+  const initialBots = botCountFor(0);
+  const shuffled = [...BOT_NAMES].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < initialBots; i++) {
+    const bid = 'bot_' + idCounter++;
+    const team = mode === 'teams' ? (i % 2 === 0 ? 'red' : 'blue') : null;
+    room.bots[bid] = mkPlayer(bid, shuffled[i] + '_AI', true, 'solid', team, null, map, room);
+  }
+  return room;
 }
 
 // ── Obstacles ─────────────────────────────────────────────────────────────────
@@ -427,68 +367,93 @@ function tryPortal(p,room){
 }
 
 // ── IMPROVED BOT AI ───────────────────────────────────────────────────────────
-function updateBot(bot,room){
-  if(!bot.alive){
+// Bots now use portals to escape, hunt with power-ups, and respect team colours.
+function updateBot(bot, room, allAlive) {
+  if (!bot.alive) {
     bot._respawnTick++;
-    if(bot._respawnTick>150)Object.assign(bot,mkPlayer(bot.id,bot.name,true,'solid',room.mode==='teams'?bot.team:null,null,room.map));
+    if (bot._respawnTick > 150) {
+      Object.assign(bot, mkPlayer(bot.id, bot.name, true, 'solid',
+        room.mode === 'teams' ? bot.team : null, null, room.map, room));
+    }
     return;
   }
-  if(bot.frozen>0){bot.frozen--;return;}
+  if (bot.frozen > 0) { bot.frozen--; return; }
 
-  const head=bot.segs[0];
-  const {W,H}=room;
+  const head = bot.segs[0];
+  const { W, H } = room;
   bot.botWanderTick++;
 
-  // Zone avoidance — highest priority
-  if(dist(head,room.zone)>room.zone.r-350){
-    bot.targetAngle=Math.atan2(room.zone.y-head.y,room.zone.x-head.x);
-    bot.botState='zone';return;
-  }
-
-  const all=Object.values({...room.players,...room.bots}).filter(p=>p.alive&&p.id!==bot.id&&!p.isClone);
-
-  // Dodge nearby snake heads
-  if(bot.botDodgeTick>0){bot.botDodgeTick--;return;}
-  for(const other of all){
-    if(wrapDist2(head,other.segs[0],W,H)<180*180){
-      const approachAng=Math.atan2(head.y-other.segs[0].y,head.x-other.segs[0].x);
-      if(Math.abs(angleDiff(other.angle,approachAng))<0.85){
-        bot.targetAngle=bot.angle+(Math.random()<.5?1.2:-1.2);
-        bot.botDodgeTick=18;return;
+  // Use portal when threatened or as a shortcut
+  if (bot.portalCooldown <= 0) {
+    for (const portal of room.portals) {
+      if (wrapDist2(head, portal, W, H) < 60 * 60 && Math.random() < 0.05) {
+        bot.targetAngle = Math.atan2(portal.y - head.y, portal.x - head.x);
+        bot.botState = 'portal';
+        return;
       }
     }
   }
 
-  // Hunt smaller snakes when large
-  if(bot.segs.length>60&&bot.botWanderTick%25===0){
-    for(const other of all){
-      if(!other.isBot&&other.segs.length<bot.segs.length*0.7){
-        const d=wrapDist2(head,other.segs[0],W,H);
-        if(d<480*480){
-          bot.targetAngle=Math.atan2(other.segs[0].y-head.y,other.segs[0].x-head.x);
-          bot.botState='hunt';bot.boosting=d<250*250;return;
+  // Zone avoidance — highest priority
+  if (dist(head, room.zone) > room.zone.r - 350) {
+    bot.targetAngle = Math.atan2(room.zone.y - head.y, room.zone.x - head.x);
+    bot.botState = 'zone'; return;
+  }
+
+  const enemies = allAlive.filter(p => p.id !== bot.id && !p.isClone &&
+    !(room.mode === 'teams' && p.team && p.team === bot.team));
+
+  // Dodge nearby snake heads
+  if (bot.botDodgeTick > 0) { bot.botDodgeTick--; return; }
+  for (const other of enemies) {
+    if (wrapDist2(head, other.segs[0], W, H) < 180 * 180) {
+      const approachAng = Math.atan2(head.y - other.segs[0].y, head.x - other.segs[0].x);
+      if (Math.abs(angleDiff(other.angle, approachAng)) < 0.85) {
+        bot.targetAngle = bot.angle + (Math.random() < 0.5 ? 1.2 : -1.2);
+        bot.botDodgeTick = 18; return;
+      }
+    }
+  }
+
+  // Hunt smaller snakes when large (or coordinate with teammates in teams mode)
+  if (bot.segs.length > 60 && bot.botWanderTick % 25 === 0) {
+    for (const other of enemies) {
+      if (other.segs.length < bot.segs.length * 0.7) {
+        const d = wrapDist2(head, other.segs[0], W, H);
+        if (d < 480 * 480) {
+          bot.targetAngle = Math.atan2(other.segs[0].y - head.y, other.segs[0].x - head.x);
+          bot.botState = 'hunt';
+          bot.boosting = d < 250 * 250;
+          return;
         }
       }
     }
   }
 
   // Seek power-ups
-  if(bot.botWanderTick%18===0&&!bot.powerup){
-    for(const pu of room.powerups){
-      const d=wrapDist2(head,pu,W,H);
-      if(d<280*280){bot.targetAngle=Math.atan2(pu.y-head.y,pu.x-head.x);bot.botState='powerup';return;}
+  if (bot.botWanderTick % 18 === 0 && !bot.powerup) {
+    for (const pu of room.powerups) {
+      const d = wrapDist2(head, pu, W, H);
+      if (d < 280 * 280) {
+        bot.targetAngle = Math.atan2(pu.y - head.y, pu.x - head.x);
+        bot.botState = 'powerup'; return;
+      }
     }
   }
 
-  // Forage
-  if(bot.botWanderTick>18+Math.floor(rnd(28))){
-    const sample=room.food.length>80?room.food.filter((_,i)=>i%3===0):room.food;
-    let best=null,bestD=Infinity;
-    for(const f of sample){const d=wrapDist2(head,f,W,H);if(d<bestD){bestD=d;best=f;}}
-    if(best)bot.targetAngle=Math.atan2(best.y-head.y,best.x-head.x)+(Math.random()-.5)*.3;
-    bot.botWanderTick=0;bot.botState='forage';
+  // Forage — sample with a stride instead of allocating a filtered array (#26)
+  if (bot.botWanderTick > 18 + Math.floor(rnd(28))) {
+    let best = null, bestD = Infinity;
+    const stride = room.food.length > 80 ? 3 : 1;
+    for (let i = 0; i < room.food.length; i += stride) {
+      const f = room.food[i];
+      const d = wrapDist2(head, f, W, H);
+      if (d < bestD) { bestD = d; best = f; }
+    }
+    if (best) bot.targetAngle = Math.atan2(best.y - head.y, best.x - head.x) + (Math.random() - 0.5) * 0.3;
+    bot.botWanderTick = 0; bot.botState = 'forage';
   }
-  bot.boosting=(bot.botState==='hunt')||(bot.segs.length>80&&Math.random()<.05);
+  bot.boosting = (bot.botState === 'hunt') || (bot.segs.length > 80 && Math.random() < 0.05);
 }
 
 // ── CLONE DECOY ───────────────────────────────────────────────────────────────
@@ -634,48 +599,76 @@ function checkWin(room,all){
       io.to(room.id).emit('gameOver',room.winner);
     }
   }
-  if(room.mode==='ranked'){
-    const humans=Object.values(room.players).filter(p=>p.alive);
-    if(humans.length<=1&&Object.keys(room.players).length>1){
-      const winner=humans[0];
-      if(winner){
-        Object.keys(room.players).forEach(id=>{
-          if(id===winner.id)return;
-          const w=getElo(winner.id),l=getElo(id);
-          const gain=calcEloGain(w.elo,l.elo);
-          w.elo+=gain;w.wins++;w.streak++;
-          l.elo=Math.max(0,l.elo-gain);l.losses++;l.streak=0;
-          io.to(id).emit('eloResult',{change:-gain,newElo:l.elo,rank:getRank(l.elo)});
+  if (room.mode === 'ranked') {
+    const humans = Object.values(room.players).filter(p => p.alive);
+    if (humans.length <= 1 && Object.keys(room.players).length > 1) {
+      const winner = humans[0];
+      if (winner) {
+        const winnerUid = socketToUser[winner.id];
+        const w = getElo(winnerUid);
+        let totalGain = 0;
+        Object.keys(room.players).forEach(id => {
+          if (id === winner.id) return;
+          const loserUid = socketToUser[id];
+          const l = getElo(loserUid);
+          const gain = calcEloGain(w.elo, l.elo);
+          totalGain += gain;
+          const newL = { elo: Math.max(0, l.elo - gain), wins: l.wins, losses: l.losses + 1, streak: 0 };
+          setElo(loserUid, newL);
+          io.to(id).emit('eloResult', { change: -gain, newElo: newL.elo, rank: getRank(newL.elo) });
         });
-        const wd=getElo(winner.id);
-        io.to(winner.id).emit('eloResult',{change:calcEloGain(wd.elo,1000),newElo:wd.elo,rank:getRank(wd.elo)});
+        const newW = { elo: w.elo + totalGain, wins: w.wins + 1, losses: w.losses, streak: w.streak + 1 };
+        setElo(winnerUid, newW);
+        io.to(winner.id).emit('eloResult', { change: totalGain, newElo: newW.elo, rank: getRank(newW.elo) });
       }
-      room.winner={name:winner?.name||'?',score:winner?.score||0};
-      io.to(room.id).emit('gameOver',room.winner);
+      room.winner = { name: winner?.name || '?', score: winner?.score || 0 };
+      io.to(room.id).emit('gameOver', room.winner);
     }
   }
 }
 
-function startTournament(room){
-  const humans=Object.keys(room.players);if(humans.length<2)return;
-  const p=[...humans];while(p.length<4)p.push(null);
-  room.tournamentBracket={rounds:[[[p[0],p[1]],[p[2],p[3]]]],currentRound:0,currentMatch:0,winners:[]};
-  io.to(room.id).emit('tournamentStart',room.tournamentBracket);
+function startTournament(room) {
+  // Use display names (not socket ids) so the client can render directly without
+  // having to map ids → names, and so the payload doesn't leak ids (item #6).
+  const players = Object.values(room.players);
+  if (players.length < 2) return;
+  const names = players.map(p => p.name);
+  while (names.length < 4) names.push(null);
+  room.tournamentBracket = {
+    rounds: [[[names[0], names[1]], [names[2], names[3]]]],
+    currentRound: 0, currentMatch: 0, winners: [],
+  };
+  io.to(room.id).emit('tournamentStart', room.tournamentBracket);
 }
 
 // ── Main tick ─────────────────────────────────────────────────────────────────
-function tickRoom(room){
-  if(room.winner)return;
-  room.tickCount++;
-  const{W,H,FOOD_TARGET,map}=room;
-  const all={...room.players,...room.bots};
-  const alive=Object.values(all).filter(p=>p.alive);
+function tickRoom(room) {
+  try { return _tickRoom(room); }
+  catch (e) {
+    log.error({ err: e, roomId: room.id }, 'tickRoom error');
+    captureException(e, { roomId: room.id });
+  }
+}
 
-  if(room.zone.r>room.zone.targetR)room.zone.r=Math.max(room.zone.targetR,room.zone.r-.6);
+function _tickRoom(room) {
+  if (room.winner) return;
+  room.tickCount++;
+  const { W, H, FOOD_TARGET, map } = room;
+
+  // Cache once per tick — was rebuilt 4-5 times per tick (item #25)
+  const playersArr = Object.values(room.players);
+  const botsArr    = Object.values(room.bots);
+  const all        = {};
+  for (const p of playersArr) all[p.id] = p;
+  for (const p of botsArr)    all[p.id] = p;
+  const allArr     = playersArr.concat(botsArr);
+  const alive      = allArr.filter(p => p.alive);
+
+  if (room.zone.r > room.zone.targetR) room.zone.r = Math.max(room.zone.targetR, room.zone.r - 0.6);
   tickObstacles(room);
   tickClones(room);
   tickMapEvent(room);
-  for(const bot of Object.values(room.bots))updateBot(bot,room);
+  for (const bot of botsArr) updateBot(bot, room, alive);
 
   const blizzard=room.activeEvent?.type==='blizzard';
 
@@ -724,7 +717,7 @@ function tickRoom(room){
         p.powerupDuration=dur;
         if(pu.type==='freeze'){
           const fr2=300*300;
-          for(const other of Object.values({...room.players,...room.bots})){
+          for(const other of allArr){
             if(other.id!==p.id&&other.alive&&wrapDist2(head,other.segs[0],W,H)<fr2){
               other.frozen=Math.floor(dur*0.7);
               if(!other.isBot)io.to(other.id).emit('sfx','freeze');
@@ -757,40 +750,70 @@ function tickRoom(room){
       if(p.zoneDamageTick>=ZONE_DAMAGE_TICK){p.zoneDamageTick=0;if(p.segs.length>8){const d=p.segs.pop();room.food.push(mkFood(map,d.x,d.y,5,p.color));p.score=Math.max(1,p.score-1);}else p._zoneDeath=true;}
     }else p.zoneDamageTick=0;
     if(p.emote){p.emoteTick++;if(p.emoteTick>75){p.emote=null;p.emoteTick=0;}}
+    if(p.invulTicks>0)p.invulTicks--;
   }
 
-  // ── Collision ────────────────────────────────────────────────────────────────
-  const dead=new Set();
-  for(const p of alive){
-    if(dead.has(p.id)||p._zoneDeath)continue;
-    if(p.powerup==='shield'||p.powerup==='ghost_pu'||p.abilities.includes('ghost'))continue;
-    const head=p.segs[0];
-    for(const ob of room.obstacles){if(wrapDist2(head,ob,W,H)<(SEG_R+ob.r*0.80)**2){dead.add(p.id);break;}}
-    if(dead.has(p.id))continue;
-    for(const other of alive){
-      const isSelf=other.id===p.id;
-      if(!isSelf&&room.mode==='teams'&&p.team&&other.team&&p.team===other.team)continue;
-      if(other.isClone)continue;
-      const skip=isSelf?selfCollisionSkip(p):0;
-      const colR2=isSelf?(SEG_R*1.3)**2:(SEG_R*1.9)**2;
-      const checkTo=dead.has(other.id)?Math.min(1,other.segs.length):other.segs.length;
-      for(let i=skip;i<checkTo;i++){
-        if(wrapDist2(head,other.segs[i],W,H)<colR2){
-          dead.add(p.id);
-          if(!isSelf&&!dead.has(other.id)){
-            other.killCount++;other.xp+=30;
-            addKill(room,other.name,p.name,other.color,head);
-            if(!other.isBot)io.to(other.id).emit('sfx','kill');
-            // Challenge: kills / multi_kill
-            if(!other.isBot){
-              const cs=getChallengeState(other.id);
-              const ch=getDailyChallenge();
-              if(ch.id==='kills'||ch.id==='multi_kill'){cs.killTimes=cs.killTimes||[];cs.killTimes.push(room.tickCount);}
+  // ── Collision (broadphase via spatial hash, item #24) ─────────────────────
+  // Build a grid of (segment, ownerId, segIndex) once per tick.
+  const grid = new SpatialHash(C.SPATIAL_CELL, W, H);
+  for (const p of alive) {
+    if (p.isClone) continue;
+    for (let i = 0; i < p.segs.length; i++) {
+      const s = p.segs[i];
+      grid.insert(s.x, s.y, { ownerId: p.id, segIndex: i });
+    }
+  }
+
+  const dead = new Set();
+  const COL_R_OTHER = SEG_R * 1.9;
+  const COL_R_SELF  = SEG_R * 1.3;
+  const COL_R2_OTHER = COL_R_OTHER * COL_R_OTHER;
+  const COL_R2_SELF  = COL_R_SELF  * COL_R_SELF;
+  const queryR = COL_R_OTHER;
+
+  for (const p of alive) {
+    if (dead.has(p.id) || p._zoneDeath) continue;
+    if (p.powerup === 'shield' || p.powerup === 'ghost_pu' || p.abilities.includes('ghost')) continue;
+    if (p.invulTicks > 0) continue; // post-spawn invulnerability (#40)
+    const head = p.segs[0];
+
+    // Obstacles
+    let hitObstacle = false;
+    for (const ob of room.obstacles) {
+      if (wrapDist2(head, ob, W, H) < (SEG_R + ob.r * 0.80) ** 2) { hitObstacle = true; break; }
+    }
+    if (hitObstacle) { dead.add(p.id); continue; }
+
+    const skipSelf = selfCollisionSkip(p);
+
+    for (const cand of grid.query(head.x, head.y, queryR)) {
+      const isSelf = cand.ownerId === p.id;
+      const other = all[cand.ownerId];
+      if (!other || !other.alive) continue;
+      if (!isSelf && room.mode === 'teams' && p.team && other.team && p.team === other.team) continue;
+      if (isSelf && cand.segIndex < skipSelf) continue;
+      // The head of `other` shouldn't kill `p` if other was already counted dead
+      if (!isSelf && dead.has(other.id) && cand.segIndex > 0) continue;
+
+      const colR2 = isSelf ? COL_R2_SELF : COL_R2_OTHER;
+      if (wrapDist2(head, other.segs[cand.segIndex], W, H) < colR2) {
+        dead.add(p.id);
+        if (!isSelf && !dead.has(other.id)) {
+          other.killCount++;
+          other.xp += 30;
+          addKill(room, other.name, p.name, other.color, head);
+          if (!other.isBot) io.to(other.id).emit('sfx', 'kill');
+          if (!other.isBot) {
+            const cs = getChallengeState(other.id);
+            const ch = getDailyChallenge();
+            if (ch.id === 'kills' || ch.id === 'multi_kill') {
+              cs.killTimes = cs.killTimes || [];
+              cs.killTimes.push(room.tickCount);
             }
-          }          break;
+          }
         }
+        break;
       }
-      if(dead.has(p.id))break;
     }
   }
   for(const p of alive)if(p._zoneDeath){dead.add(p.id);p._zoneDeath=false;}
@@ -811,24 +834,21 @@ function tickRoom(room){
         const st = dbGetStats(userId);
         if (st) {
           const surviveTicks = room.tickCount - (challengeState[id]?.spawnTick||0);
-          let mapsPlayed = {};
-          try { mapsPlayed = JSON.parse(st.maps_played||'{}'); } catch {}
-          mapsPlayed[room.map.id] = (mapsPlayed[room.map.id]||0) + 1;
+          // maps_played is now a real table, not a JSON column (item #28)
+          dbMod.incMapPlayed(userId, room.map.id);
           const patch = {
             games: st.games + 1,
             best_score: Math.max(st.best_score, p.score),
             total_kills: st.total_kills + p.killCount,
-            total_food: st.total_food + Math.max(0, p.score - 24), // approx food eaten
+            total_food: st.total_food + Math.max(0, p.score - 24),
             best_level: Math.max(st.best_level, p.level||1),
             total_xp: st.total_xp + (p.xp||0),
-            maps_played: JSON.stringify(mapsPlayed),
             max_kills_game: Math.max(st.max_kills_game, p.killCount),
             total_survive_ticks: st.total_survive_ticks + surviveTicks,
             ranked_games: st.ranked_games + (room.mode==='ranked'?1:0),
           };
           dbSaveStats(userId, patch);
           checkAchievements(id, userId, p, st, patch);
-          // Send updated profile back
           io.to(id).emit('profileUpdate', { stats: { ...st, ...patch }, achievements: dbGetAchievements(userId) });
         }
       }
@@ -847,7 +867,11 @@ function tickRoom(room){
 
   checkWin(room,all);
   while(room.food.length<FOOD_TARGET)room.food.push(mkFood(map));
-  if(room.food.length>FOOD_TARGET*1.5)room.food.length=FOOD_TARGET;
+  // FIFO trim instead of brute-truncate so newly spawned death-burst food keeps
+  // its colours/positions (item #23).
+  if (room.food.length > FOOD_TARGET * 1.5) {
+    room.food.splice(0, room.food.length - FOOD_TARGET);
+  }
   while(room.powerups.length<POWERUP_TARGET)room.powerups.push(mkPowerup(map));
 
   const now=Date.now();
@@ -886,151 +910,431 @@ function tickRoom(room){
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
-io.on('connection',socket=>{
-  socket.on('getRooms',()=>{
+// Helper: bail out early when rate-limited (sends an `error` toast).
+function rl(socket, action) {
+  const cfg = C.RATE_LIMITS[action] ?? C.RATE_LIMITS.generic;
+  if (!rateLimit.allowed(socket.id, action, cfg)) {
+    socket.emit('rateLimited', { action });
+    return false;
+  }
+  return true;
+}
+
+// Bind socketToUser bidirectionally; evicts any existing socket on the same userId
+// so duplicate-tab/login attempts don't silently clobber each other (item #13).
+function bindUser(socket, userId) {
+  const prevSocketId = userToSocket[userId];
+  if (prevSocketId && prevSocketId !== socket.id) {
+    const prev = io.sockets.sockets.get(prevSocketId);
+    if (prev) {
+      prev.emit('error', 'Account logged in from another tab');
+      prev.disconnect(true);
+    }
+    delete socketToUser[prevSocketId];
+  }
+  socketToUser[socket.id] = userId;
+  userToSocket[userId] = socket.id;
+}
+
+io.on('connection', (socket) => {
+  socket.on('getRooms', () => {
+    if (!rl(socket, 'generic')) return;
     checkWeeklyReset();
-    socket.emit('roomList',Object.values(rooms).map(r=>({id:r.id,name:r.name,players:Object.keys(r.players).length,mode:r.mode,mapId:r.map.id,locked:!!r.password})));
-    socket.emit('globalScores',globalScores.slice(0,10));
-    socket.emit('weeklyScores',{scores:weeklyScores.slice(0,10),hallOfFame,week:currentWeekKey});
-    socket.emit('mapList',Object.values(MAPS).map(m=>({id:m.id,name:m.name,unlockLevel:m.unlockLevel})));
-    const ed=eloStore[socket.id];
-    if(ed)socket.emit('eloData',{...ed,rank:getRank(ed.elo)});
-    socket.emit('dailyChallenge',getDailyChallenge());
-  });
-  socket.on('createRoom',({name,roomName,skin,mode,mapId,customSkin,password})=>{
-    const roomId='r'+idCounter++;const m=GAME_MODES.includes(mode)?mode:'classic';
-    const room=mkRoom(roomId,roomName,m,mapId||'classic');
-    if(password&&password.trim())room.password=password.trim().slice(0,32);
-    rooms[roomId]=room;
-    room.intervalId=setInterval(()=>tickRoom(room),TICK);
-    if(['classic','score','ranked'].includes(m))startZone(room);
-    joinRoom(socket,room,name,skin,m,customSkin);
-  });
-  socket.on('joinRoom',({roomId,name,skin,customSkin,password})=>{
-    const room=rooms[roomId];if(!room)return socket.emit('error','Room not found');
-    if(room.password&&room.password!==(password||'').trim())return socket.emit('passwordRequired',{roomId,roomName:room.name});
-    joinRoom(socket,room,name,skin,room.mode,customSkin);
-  });
-  socket.on('input',({angle,boosting})=>{
-    const r=rooms[socketToRoom[socket.id]];const p=r?.players[socket.id];
-    if(!p||!p.alive||p.frozen>0)return;
-    p.targetAngle=angle;p.boosting=boosting;
-  });
-  socket.on('emote',emoji=>{const r=rooms[socketToRoom[socket.id]];const p=r?.players[socket.id];if(!p||!p.alive)return;if(!['😂','😎','👋','💀'].includes(emoji))return;p.emote=emoji;p.emoteTick=0;});
-  socket.on('chat',msg=>{const r=rooms[socketToRoom[socket.id]];if(!r)return;const p=r.players[socket.id];const clean=(msg||'').slice(0,60).replace(/[<>]/g,'');if(!clean)return;r.chatMsgs.push({name:p?.name||'?',msg:clean,color:p?.color||'#fff',t:Date.now()});if(r.chatMsgs.length>20)r.chatMsgs.shift();});
-  socket.on('startTournament',()=>{const r=rooms[socketToRoom[socket.id]];if(!r||r.mode!=='tournament')return;startTournament(r);});
-  socket.on('respawn',({name,skin,customSkin})=>{
-    const r=rooms[socketToRoom[socket.id]];if(!r||r.winner)return;
-    const team=r.mode==='teams'?(Object.values(r.players).filter(p=>p.team==='red').length<=Object.values(r.players).filter(p=>p.team==='blue').length?'red':'blue'):null;
-    r.players[socket.id]=mkPlayer(socket.id,name,false,skin||'solid',team,customSkin||null,r.map);
-  });
-  socket.on('disconnect',()=>{
-    const roomId=socketToRoom[socket.id];
-    if(roomId&&rooms[roomId]){delete rooms[roomId].players[socket.id];setTimeout(()=>{const r=rooms[roomId];if(r&&Object.keys(r.players).length===0){clearInterval(r.intervalId);clearInterval(r.zoneTimer);delete rooms[roomId];}},60000);}
-    delete socketToRoom[socket.id];
-    delete socketToUser[socket.id];
+    socket.emit('roomList', Object.values(rooms).map(r => ({
+      id: r.id, name: r.name, players: Object.keys(r.players).length,
+      mode: r.mode, mapId: r.map.id, locked: !!r.password,
+    })));
+    socket.emit('globalScores', globalScores.slice(0, 10));
+    socket.emit('weeklyScores', { scores: weeklyScores.slice(0, 10), hallOfFame, week: currentWeekKey });
+    socket.emit('mapList', Object.values(MAPS).map(m => ({ id: m.id, name: m.name, unlockLevel: m.unlockLevel })));
+    const uid = socketToUser[socket.id];
+    if (uid) {
+      const ed = getElo(uid);
+      socket.emit('eloData', { ...ed, rank: getRank(ed.elo) });
+    }
+    socket.emit('dailyChallenge', getDailyChallenge());
   });
 
-  // ── Auth ─────────────────────────────────────────────────────────────────────
-  socket.on('authRegister', async ({username, password}) => {
-    if (!db || !bcrypt) return socket.emit('authResult', {ok:false, error:'Server auth unavailable'});
-    const u = (username||'').trim().slice(0,20);
-    const p = (password||'').trim();
-    if (u.length < 2) return socket.emit('authResult', {ok:false, error:'Username too short (min 2)'});
-    if (p.length < 4) return socket.emit('authResult', {ok:false, error:'Password too short (min 4)'});
-    if (dbGetUser(u)) return socket.emit('authResult', {ok:false, error:'Username already taken'});
-    const hash = await bcrypt.hash(p, 10);
+  socket.on('createRoom', (msg = {}) => {
+    if (!rl(socket, 'createRoom')) return;
+    const roomName = V.validString(msg.roomName, 32) || 'Room';
+    const skin     = V.validString(msg.skin, 16) || 'solid';
+    const mode     = V.validMode(msg.mode, GAME_MODES) || 'classic';
+    const mapId    = V.validMapId(msg.mapId, Object.keys(MAPS)) || 'classic';
+    const name     = V.validString(msg.name, 16) || 'Anonymous';
+    const password = msg.password ? V.validString(msg.password, 32) : null;
+    const customSkin = msg.customSkin && typeof msg.customSkin === 'object' ? msg.customSkin : null;
+
+    const roomId = 'r' + idCounter++;
+    const room = mkRoom(roomId, roomName, mode, mapId);
+    if (password) room.password = password;
+    rooms[roomId] = room;
+    room.intervalId = setInterval(() => tickRoom(room), TICK);
+    if (['classic', 'score', 'ranked'].includes(mode)) startZone(room);
+    joinRoom(socket, room, name, skin, mode, customSkin);
+  });
+
+  socket.on('joinRoom', (msg = {}) => {
+    if (!rl(socket, 'joinRoom')) return;
+    const roomId = V.validRoomId(msg.roomId);
+    if (!roomId) return socket.emit('error', 'Invalid room id');
+    const room = rooms[roomId];
+    if (!room) return socket.emit('error', 'Room not found');
+    if (room.password) {
+      const pw = V.validString(msg.password, 32);
+      if (room.password !== pw) return socket.emit('passwordRequired', { roomId, roomName: room.name });
+    }
+    const name = V.validString(msg.name, 16) || 'Anonymous';
+    const skin = V.validString(msg.skin, 16) || 'solid';
+    const customSkin = msg.customSkin && typeof msg.customSkin === 'object' ? msg.customSkin : null;
+    joinRoom(socket, room, name, skin, room.mode, customSkin);
+  });
+
+  // Spectate a room without spawning (item #36). Player can later send `respawn`.
+  socket.on('spectate', (msg = {}) => {
+    if (!rl(socket, 'generic')) return;
+    const roomId = V.validRoomId(msg.roomId);
+    const room = roomId && rooms[roomId];
+    if (!room) return socket.emit('error', 'Room not found');
+    socket.join(room.id);
+    socketToRoom[socket.id] = room.id;
+    room.spectators.add(socket.id);
+    socket.emit('joined', {
+      id: socket.id, W: room.W, H: room.H, roomId: room.id, roomName: room.name,
+      mode: room.mode, team: null, mapId: room.map.id,
+      elo: 1000, rank: getRank(1000),
+      inviteUrl: `${PUBLIC_URL}/?room=${room.id}`,
+      spectator: true,
+    });
+  });
+
+  socket.on('input', (msg = {}) => {
+    if (!rl(socket, 'input')) return;
+    const angle = V.validAngle(msg.angle);
+    if (angle === null) return; // silently ignore garbage — item #2
+    const r = rooms[socketToRoom[socket.id]];
+    const p = r?.players[socket.id];
+    if (!p || !p.alive || p.frozen > 0) return;
+    p.targetAngle = angle;
+    p.boosting = V.validBoolean(msg.boosting);
+  });
+
+  socket.on('emote', (emoji) => {
+    if (!rl(socket, 'emote')) return;
+    const e = V.validEmote(emoji);
+    if (!e) return;
+    const r = rooms[socketToRoom[socket.id]];
+    const p = r?.players[socket.id];
+    if (!p || !p.alive) return;
+    p.emote = e; p.emoteTick = 0;
+  });
+
+  socket.on('chat', (msg) => {
+    if (!rl(socket, 'chat')) return;
+    const clean = V.validString(msg, 60);
+    if (!clean) return;
+    const r = rooms[socketToRoom[socket.id]];
+    if (!r) return;
+    const p = r.players[socket.id];
+    r.chatMsgs.push({
+      name: p?.name || '?', msg: clean,
+      color: p?.color || '#fff', t: Date.now(),
+    });
+    if (r.chatMsgs.length > 20) r.chatMsgs.shift();
+  });
+
+  socket.on('startTournament', () => {
+    if (!rl(socket, 'generic')) return;
+    const r = rooms[socketToRoom[socket.id]];
+    if (!r || r.mode !== 'tournament') return;
+    startTournament(r);
+  });
+
+  socket.on('respawn', (msg = {}) => {
+    if (!rl(socket, 'generic')) return;
+    const r = rooms[socketToRoom[socket.id]];
+    if (!r || r.winner) return;
+    const name = V.validString(msg.name, 16) || 'Anonymous';
+    const skin = V.validString(msg.skin, 16) || 'solid';
+    const customSkin = msg.customSkin && typeof msg.customSkin === 'object' ? msg.customSkin : null;
+    const team = r.mode === 'teams'
+      ? (Object.values(r.players).filter(p => p.team === 'red').length <=
+         Object.values(r.players).filter(p => p.team === 'blue').length ? 'red' : 'blue')
+      : null;
+    r.players[socket.id] = mkPlayer(socket.id, name, false, skin, team, customSkin, r.map, r);
+    r.spectators.delete(socket.id);
+  });
+
+  socket.on('disconnect', () => {
+    const roomId = socketToRoom[socket.id];
+    if (roomId && rooms[roomId]) {
+      delete rooms[roomId].players[socket.id];
+      rooms[roomId].spectators.delete(socket.id);
+      // Immediate cleanup if room is now empty (item #18 — was 60s window)
+      const r = rooms[roomId];
+      if (Object.keys(r.players).length === 0 && r.spectators.size === 0) {
+        clearInterval(r.intervalId);
+        clearInterval(r.zoneTimer);
+        delete rooms[roomId];
+      }
+    }
+    // Cleanup leaks (item #12)
+    delete socketToRoom[socket.id];
+    const uid = socketToUser[socket.id];
+    if (uid && userToSocket[uid] === socket.id) delete userToSocket[uid];
+    delete socketToUser[socket.id];
+    delete challengeState[socket.id];
+    rateLimit.clear(socket.id);
+  });
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
+  socket.on('authRegister', async (msg = {}) => {
+    if (!rl(socket, 'authRegister')) return;
+    if (!db || !bcrypt) return socket.emit('authResult', { ok: false, error: 'Server auth unavailable' });
+    const u = V.validUsername(msg.username);
+    const p = V.validPassword(msg.password);
+    if (!u) return socket.emit('authResult', { ok: false, error: `Username must be ${C.USERNAME_MIN}-${C.USERNAME_MAX} chars (letters/digits/_/-)` });
+    if (!p) return socket.emit('authResult', { ok: false, error: `Password must be at least ${C.PASSWORD_MIN} characters` });
+    if (dbGetUser(u)) return socket.emit('authResult', { ok: false, error: 'Username already taken' });
     try {
+      const hash = await bcrypt.hash(p, 10);
       const r = db.prepare('INSERT INTO users(username,password_hash) VALUES(?,?)').run(u, hash);
       const userId = r.lastInsertRowid;
-      dbGetStats(userId); // initialise stats row
-      socketToUser[socket.id] = userId;
-      const token = makeSessionToken(userId);
-      socket.emit('authResult', {ok:true, token, username:u, userId,
-        stats: dbGetStats(userId), achievements: []});
-    } catch(e) { socket.emit('authResult', {ok:false, error:'Registration failed'}); }
+      dbGetStats(userId);
+      bindUser(socket, userId);
+      const token = makeSessionToken(userId, TOKEN_SECRET);
+      socket.emit('authResult', { ok: true, token, username: u, userId, stats: dbGetStats(userId), achievements: [] });
+    } catch (e) {
+      log.error({ err: e }, 'Registration failed');
+      socket.emit('authResult', { ok: false, error: 'Registration failed' });
+    }
   });
 
-  socket.on('authLogin', async ({username, password, token}) => {
-    // Token-based re-auth (returning user)
-    if (token) {
-      const uid = verifySessionToken(token);
+  socket.on('authLogin', async (msg = {}) => {
+    if (!rl(socket, 'authLogin')) return;
+    if (msg.token) {
+      const uid = verifySessionToken(msg.token, TOKEN_SECRET);
       if (uid) {
         const user = dbGetUserById(uid);
         if (user) {
-          socketToUser[socket.id] = uid;
-          return socket.emit('authResult', {ok:true, token, username:user.username, userId:uid,
-            stats: dbGetStats(uid), achievements: dbGetAchievements(uid)});
+          bindUser(socket, uid);
+          return socket.emit('authResult', {
+            ok: true, token: msg.token, username: user.username, userId: uid,
+            stats: dbGetStats(uid), achievements: dbGetAchievements(uid),
+          });
         }
       }
-      return socket.emit('authResult', {ok:false, error:'Session expired — please log in'});
+      return socket.emit('authResult', { ok: false, error: 'Session expired — please log in' });
     }
-    // Username+password login
-    if (!db || !bcrypt) return socket.emit('authResult', {ok:false, error:'Server auth unavailable'});
-    const u = (username||'').trim();
+    if (!db || !bcrypt) return socket.emit('authResult', { ok: false, error: 'Server auth unavailable' });
+    const u = V.validUsername(msg.username);
+    if (!u) return socket.emit('authResult', { ok: false, error: 'Invalid username' });
     const user = dbGetUser(u);
-    if (!user) return socket.emit('authResult', {ok:false, error:'Username not found'});
-    const ok = await bcrypt.compare((password||'').trim(), user.password_hash);
-    if (!ok) return socket.emit('authResult', {ok:false, error:'Wrong password'});
-    socketToUser[socket.id] = user.id;
-    const newToken = makeSessionToken(user.id);
-    socket.emit('authResult', {ok:true, token:newToken, username:user.username, userId:user.id,
-      stats: dbGetStats(user.id), achievements: dbGetAchievements(user.id)});
+    if (!user) return socket.emit('authResult', { ok: false, error: 'Username not found' });
+    const ok = await bcrypt.compare(typeof msg.password === 'string' ? msg.password : '', user.password_hash);
+    if (!ok) return socket.emit('authResult', { ok: false, error: 'Wrong password' });
+    bindUser(socket, user.id);
+    const newToken = makeSessionToken(user.id, TOKEN_SECRET);
+    socket.emit('authResult', {
+      ok: true, token: newToken, username: user.username, userId: user.id,
+      stats: dbGetStats(user.id), achievements: dbGetAchievements(user.id),
+    });
   });
 
   socket.on('getAchievements', () => {
+    if (!rl(socket, 'generic')) return;
     socket.emit('achievementsList', ACHIEVEMENTS);
     const uid = socketToUser[socket.id];
-    if (uid) socket.emit('profileUpdate', {stats: dbGetStats(uid), achievements: dbGetAchievements(uid)});
+    if (uid) socket.emit('profileUpdate', { stats: dbGetStats(uid), achievements: dbGetAchievements(uid) });
+  });
+
+  // ── Friends list (item #43) ────────────────────────────────────────────────
+  socket.on('friends:list', () => {
+    if (!rl(socket, 'generic')) return;
+    const uid = socketToUser[socket.id];
+    if (!uid) return socket.emit('friends:result', { ok: false, error: 'Not logged in' });
+    socket.emit('friends:result', { ok: true, friends: dbMod.listFriends(uid) });
+  });
+  socket.on('friends:add', (msg = {}) => {
+    if (!rl(socket, 'generic')) return;
+    const uid = socketToUser[socket.id];
+    if (!uid) return socket.emit('friends:result', { ok: false, error: 'Not logged in' });
+    const username = V.validUsername(msg.username);
+    if (!username) return socket.emit('friends:result', { ok: false, error: 'Invalid username' });
+    const target = dbGetUser(username);
+    if (!target) return socket.emit('friends:result', { ok: false, error: 'User not found' });
+    dbMod.addFriend(uid, target.id);
+    socket.emit('friends:result', { ok: true, friends: dbMod.listFriends(uid) });
+  });
+  socket.on('friends:remove', (msg = {}) => {
+    if (!rl(socket, 'generic')) return;
+    const uid = socketToUser[socket.id];
+    if (!uid) return;
+    const fid = parseInt(msg.friendId, 10);
+    if (!Number.isFinite(fid)) return;
+    dbMod.removeFriend(uid, fid);
+    socket.emit('friends:result', { ok: true, friends: dbMod.listFriends(uid) });
+  });
+
+  // ── Mute (item #37) ────────────────────────────────────────────────────────
+  socket.on('mute:add', (msg = {}) => {
+    if (!rl(socket, 'generic')) return;
+    const uid = socketToUser[socket.id];
+    if (!uid) return;
+    const u = V.validString(msg.username, 16);
+    if (!u) return;
+    dbMod.muteUser(uid, u);
+    socket.emit('mute:list', dbMod.listMutes(uid));
+  });
+  socket.on('mute:list', () => {
+    if (!rl(socket, 'generic')) return;
+    const uid = socketToUser[socket.id];
+    if (!uid) return socket.emit('mute:list', []);
+    socket.emit('mute:list', dbMod.listMutes(uid));
   });
 });
 
-function joinRoom(socket,room,name,skin,mode,customSkin){
-  const team=mode==='teams'?(Object.values(room.players).filter(p=>p.team==='red').length<=Object.values(room.players).filter(p=>p.team==='blue').length?'red':'blue'):null;
-  socket.join(room.id);socketToRoom[socket.id]=room.id;
-  // Use account username if logged in
-  const uid=socketToUser[socket.id];
-  const accountUser=uid?dbGetUserById(uid):null;
-  const displayName=accountUser?accountUser.username:(name||'Anonymous').slice(0,16);
-  room.players[socket.id]=mkPlayer(socket.id,displayName,false,skin||'solid',team,customSkin||null,room.map);
-  const cs=getChallengeState(socket.id);
-  cs.spawnTick=room.tickCount;cs.value=0;cs.violatedNoBoost=false;cs.killTimes=[];
-  const ed=getElo(socket.id);
-  const inviteUrl=`${PUBLIC_URL}/?room=${room.id}`;
-  socket.emit('joined',{id:socket.id,W:room.W,H:room.H,roomId:room.id,roomName:room.name,mode:room.mode,team,mapId:room.map.id,elo:ed.elo,rank:getRank(ed.elo),inviteUrl});
+function joinRoom(socket, room, name, skin, mode, customSkin) {
+  const team = mode === 'teams'
+    ? (Object.values(room.players).filter(p => p.team === 'red').length <=
+       Object.values(room.players).filter(p => p.team === 'blue').length ? 'red' : 'blue')
+    : null;
+  socket.join(room.id);
+  socketToRoom[socket.id] = room.id;
+  const uid = socketToUser[socket.id];
+  const accountUser = uid ? dbGetUserById(uid) : null;
+  const displayName = accountUser ? accountUser.username : name;
+  room.players[socket.id] = mkPlayer(socket.id, displayName, false, skin, team, customSkin, room.map, room);
+  room.spectators.delete(socket.id);
+  const cs = getChallengeState(socket.id);
+  cs.spawnTick = room.tickCount; cs.value = 0; cs.violatedNoBoost = false; cs.killTimes = [];
+  const ed = getElo(uid);
+  const inviteUrl = `${PUBLIC_URL}/?room=${room.id}`;
+  socket.emit('joined', {
+    id: socket.id, W: room.W, H: room.H, roomId: room.id, roomName: room.name,
+    mode: room.mode, team, mapId: room.map.id,
+    elo: ed.elo, rank: getRank(ed.elo), inviteUrl,
+  });
 }
 
 // ── Stripe ────────────────────────────────────────────────────────────────────
-const STRIPE_SECRET  = process.env.STRIPE_SECRET_KEY||'';
-const STRIPE_WEBHOOK = process.env.STRIPE_WEBHOOK_SECRET||'';
-const PRICE_ID       = process.env.STRIPE_PRICE_ID||'';
-let stripe=null;
-if(STRIPE_SECRET){try{stripe=require('stripe')(STRIPE_SECRET);}catch(e){console.warn('Stripe not available:',e.message);}}
-app.use('/api/stripe-webhook',express.raw({type:'application/json'}));
-app.use(express.json());
-app.post('/api/create-checkout',async(req,res)=>{
-  if(!stripe||!PRICE_ID)return res.status(503).json({error:'Stripe not configured'});
-  try{const session=await stripe.checkout.sessions.create({mode:'payment',line_items:[{price:PRICE_ID,quantity:1}],success_url:`${PUBLIC_URL}/?session_id={CHECKOUT_SESSION_ID}`,cancel_url:`${PUBLIC_URL}/`,metadata:{product:'supporter_pack'}});res.json({url:session.url});}
-  catch(e){res.status(500).json({error:e.message});}
+const STRIPE_SECRET  = process.env.STRIPE_SECRET_KEY  || '';
+const STRIPE_WEBHOOK = process.env.STRIPE_WEBHOOK_SECRET || '';
+const PRICE_ID       = process.env.STRIPE_PRICE_ID || '';
+let stripe = null;
+if (STRIPE_SECRET) {
+  try { stripe = require('stripe')(STRIPE_SECRET); }
+  catch (e) { log.warn('Stripe not available: ' + e.message); }
+}
+
+// Health endpoint (item #48). Returns 200 unless we are shutting down.
+let shuttingDown = false;
+app.get('/healthz', (req, res) => {
+  if (shuttingDown) return res.status(503).json({ status: 'shutting_down' });
+  res.json({
+    status: 'ok',
+    uptime: Math.round(process.uptime()),
+    rooms: Object.keys(rooms).length,
+    db: !!db, bcrypt: !!bcrypt, stripe: !!stripe,
+    version: require('./package.json').version,
+  });
 });
-app.get('/api/verify-purchase',async(req,res)=>{
-  const{session_id}=req.query;if(!stripe||!session_id)return res.status(400).json({error:'Missing params'});
-  try{const session=await stripe.checkout.sessions.retrieve(session_id);if(session.payment_status!=='paid')return res.status(402).json({error:'Not paid'});const payload=`supporter:${session.id}`;const sig=crypto.createHmac('sha256',TOKEN_SECRET).update(payload).digest('hex');res.json({token:`${payload}:${sig}`,product:session.metadata.product});}
-  catch(e){res.status(500).json({error:e.message});}
+
+// Webhook receives raw body so signature verification works.
+app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
+app.use(express.json({ limit: '64kb' }));
+
+// Same-origin guard for state-changing endpoints (item #9).
+function sameOriginOk(req) {
+  if (NODE_ENV !== 'production') return true;
+  const origin = req.headers.origin || req.headers.referer || '';
+  return origin.startsWith(PUBLIC_URL);
+}
+
+app.post('/api/create-checkout', async (req, res) => {
+  if (!sameOriginOk(req)) return res.status(403).json({ error: 'Forbidden' });
+  if (!stripe || !PRICE_ID) return res.status(503).json({ error: 'Stripe not configured' });
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{ price: PRICE_ID, quantity: 1 }],
+      success_url: `${PUBLIC_URL}/?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url:  `${PUBLIC_URL}/`,
+      metadata: { product: 'supporter_pack' },
+    });
+    res.json({ url: session.url });
+  } catch (e) { log.error({ err: e }, 'create-checkout'); res.status(500).json({ error: 'Internal error' }); }
 });
-app.get('/api/verify-token',(req,res)=>{
-  const{token}=req.query;if(!token)return res.status(400).json({valid:false});
-  const parts=token.split(':');if(parts.length!==3)return res.status(400).json({valid:false});
-  const[type,sessionId,clientSig]=parts;const payload=`${type}:${sessionId}`;
-  const expectedSig=crypto.createHmac('sha256',TOKEN_SECRET).update(payload).digest('hex');
-  const valid=crypto.timingSafeEqual(Buffer.from(clientSig,'hex'),Buffer.from(expectedSig,'hex'));
-  res.json({valid,product:valid?'supporter_pack':null});
+
+app.get('/api/verify-purchase', async (req, res) => {
+  const { session_id } = req.query;
+  if (!stripe || !session_id) return res.status(400).json({ error: 'Missing params' });
+  if (typeof session_id !== 'string' || session_id.length > 200) return res.status(400).json({ error: 'Bad session id' });
+  try {
+    // Prefer the DB record (set by webhook) so we don't reveal Stripe metadata to clients.
+    const stored = dbMod.getPurchase(session_id);
+    if (stored) {
+      const payload = `supporter:${session_id}`;
+      const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('hex');
+      return res.json({ token: `${payload}:${sig}`, product: stored.product });
+    }
+    // Fallback to live Stripe lookup (also persists for next time).
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    if (session.payment_status !== 'paid') return res.status(402).json({ error: 'Not paid' });
+    const product = session.metadata?.product || 'supporter_pack';
+    dbMod.recordPurchase(session_id, null, product);
+    const payload = `supporter:${session_id}`;
+    const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('hex');
+    res.json({ token: `${payload}:${sig}`, product });
+  } catch (e) { log.error({ err: e }, 'verify-purchase'); res.status(500).json({ error: 'Internal error' }); }
 });
-app.post('/api/stripe-webhook',(req,res)=>{
-  if(!stripe||!STRIPE_WEBHOOK)return res.sendStatus(200);
-  let event;try{event=stripe.webhooks.constructEvent(req.body,req.headers['stripe-signature'],STRIPE_WEBHOOK);}catch(e){return res.status(400).send(`Webhook error: ${e.message}`);}
-  if(event.type==='checkout.session.completed')console.log('✅ Purchase confirmed:',event.data.object.id);
+
+app.get('/api/verify-token', (req, res) => {
+  const { token } = req.query;
+  if (typeof token !== 'string' || token.length > 400) return res.status(400).json({ valid: false });
+  const parts = token.split(':');
+  if (parts.length !== 3) return res.status(400).json({ valid: false });
+  const [type, sessionId, clientSig] = parts;
+  const payload = `${type}:${sessionId}`;
+  const expectedSig = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('hex');
+  let valid = false;
+  try {
+    const a = Buffer.from(clientSig, 'hex'), b = Buffer.from(expectedSig, 'hex');
+    valid = a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {}
+  res.json({ valid, product: valid ? 'supporter_pack' : null });
+});
+
+app.post('/api/stripe-webhook', (req, res) => {
+  if (!stripe || !STRIPE_WEBHOOK) return res.sendStatus(200);
+  let event;
+  try { event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], STRIPE_WEBHOOK); }
+  catch (e) { return res.status(400).send(`Webhook error: ${e.message}`); }
+  // Persist purchase so /api/verify-purchase doesn't depend on a live Stripe call (item #10).
+  if (event.type === 'checkout.session.completed') {
+    const sess = event.data.object;
+    const product = sess.metadata?.product || 'supporter_pack';
+    dbMod.recordPurchase(sess.id, null, product);
+    log.info({ sessionId: sess.id }, 'Purchase confirmed');
+  }
   res.sendStatus(200);
 });
-app.use(express.static(path.join(__dirname,'public')));
-server.listen(process.env.PORT||3000,()=>console.log('🐍 NeonSlither v6 → http://localhost:'+(process.env.PORT||3000)));
+
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: NODE_ENV === 'production' ? '1h' : 0 }));
+
+const PORT = parseInt(process.env.PORT, 10) || 3000;
+server.listen(PORT, () => log.info(`NeonSlither → http://localhost:${PORT}`));
+
+// Graceful shutdown so /healthz reflects state and intervals are cleaned.
+function shutdown(sig) {
+  log.info({ sig }, 'shutting down');
+  shuttingDown = true;
+  for (const r of Object.values(rooms)) {
+    clearInterval(r.intervalId);
+    clearInterval(r.zoneTimer);
+  }
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
