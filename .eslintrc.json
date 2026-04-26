@@ -1,0 +1,15 @@
+{
+  "root": true,
+  "env": { "node": true, "es2022": true, "browser": true, "jest": true },
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "script" },
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "no-undef": "error",
+    "no-var": "error",
+    "prefer-const": "warn",
+    "no-empty": ["error", { "allowEmptyCatch": true }],
+    "eqeqeq": ["warn", "smart"],
+    "no-console": "off"
+  },
+  "ignorePatterns": ["node_modules/", "data.db*", "public/index.html"]
+}

@@ -1,0 +1,6 @@
+node_modules/
+data.db
+data.db-*
+package-lock.json
+public/index.html
+backups/

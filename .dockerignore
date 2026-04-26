@@ -1,0 +1,15 @@
+node_modules
+.git
+.github
+tests
+*.md
+data.db
+data.db-*
+backups
+.env
+.env.*
+.eslintrc.json
+.prettierrc.json
+.prettierignore
+Dockerfile
+.dockerignore

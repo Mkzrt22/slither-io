@@ -149,7 +149,6 @@ function tickChallengePlayer(p,room,ch){
   if(!p||p.isBot||p.isClone)return;
   const cs=getChallengeState(p.id);
   if(cs.done)return;
-  const head=p.segs[0];
   let newVal=cs.value;
 
   if(ch.id==='score')        newVal=p.score;
@@ -227,7 +226,8 @@ function addWeeklyScore(name,score){
   if(weeklyScores.length>10)weeklyScores.length=10;
 }
 
-let rooms={}, socketToRoom={}, idCounter=0;
+const rooms={}, socketToRoom={};
+let idCounter=0;
 const rnd  = n=>Math.random()*n;
 const pick = arr=>arr[Math.floor(Math.random()*arr.length)];
 const dist2 = (a,b)=>{const dx=a.x-b.x,dy=a.y-b.y;return dx*dx+dy*dy;};
@@ -893,6 +893,7 @@ function _tickRoom(room) {
     score:p.score,boosting:p.boosting,powerup:p.powerup,powerupTick:p.powerupTick,
     powerupDuration:p.powerupDuration||1,isBot:p.isBot,team:p.team,level:p.level,
     xp:p.xp,abilities:p.abilities,emote:p.emote,frozen:p.frozen>0,
+    invul:p.invulTicks>0,
   }));
 
   const evOut=room.activeEvent?{

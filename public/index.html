@@ -1474,7 +1474,7 @@ document.getElementById('startTBtn').addEventListener('click',()=>{
   socket.emit('startTournament');document.getElementById('ts-screen').classList.add('hidden');runCountdown(()=>{inGame=true;});
 });
 function updateSpBanner(){const t=state.players.find(p=>p.id===spectateTargetId);document.getElementById('spb').textContent=t?`SPECTATING: ${t.name} (click)`:'SPECTATING';}
-function renderBracket(b){const el=document.getElementById('brDisplay');el.innerHTML='';(b.rounds||[]).forEach(round=>round.forEach(match=>{const div=document.createElement('div');div.className='br-match';div.innerHTML=`<span class="br-p">${match[0]?match[0].slice(0,8):'BYE'}</span><span class="br-vs">VS</span><span class="br-p">${match[1]?match[1].slice(0,8):'BYE'}</span>`;el.appendChild(div);}));}
+function renderBracket(b){const el=document.getElementById('brDisplay');el.innerHTML='';(b.rounds||[]).forEach(round=>round.forEach(match=>{const div=document.createElement('div');div.className='br-match';div.innerHTML=`<span class="br-p">${match[0]?escHtml(String(match[0]).slice(0,12)):'BYE'}</span><span class="br-vs">VS</span><span class="br-p">${match[1]?escHtml(String(match[1]).slice(0,12)):'BYE'}</span>`;el.appendChild(div);}));}
 
 // ═══ PAUSE ═══════════════════════════════════════════════════════════════════
 let paused=false;
@@ -1538,11 +1538,24 @@ function addKFRow(k){
   row.innerHTML=`${kl} <span style="color:var(--dim)">↗</span> ${vi}`;
   el.prepend(row);setTimeout(()=>row.style.opacity='0',4400);setTimeout(()=>row.remove(),5000);
 }
+// Mute list (item #37) — populated by server via 'mute:list', stored locally too
+let _mutedNames = new Set(JSON.parse(localStorage.getItem('slither_mutes')||'[]'));
+function persistMutes(){localStorage.setItem('slither_mutes',JSON.stringify([...(_mutedNames)]));}
+socket.on('mute:list',(list)=>{_mutedNames=new Set(list||[]);persistMutes();});
 function addChatMsg(m){
+  if(_mutedNames.has(m.name))return;
   const el=document.getElementById('chat-msgs');const div=document.createElement('div');div.className='cmsg';
-  div.innerHTML=`<span class="cn" style="color:${escHtml(m.color||'var(--acc)')}">${escHtml(m.name)}:</span> ${escHtml(m.msg)}`;
+  div.innerHTML=`<span class="cn" style="color:${escHtml(m.color||'var(--acc)')}">${escHtml(m.name)}:</span> ${escHtml(m.msg)} <span class="cmute" data-name="${escHtml(m.name)}" title="Mute ${escHtml(m.name)}" style="cursor:pointer;opacity:.4;margin-left:4px">🔇</span>`;
+  div.querySelector('.cmute').addEventListener('click',(e)=>{
+    const n=e.currentTarget.dataset.name;_mutedNames.add(n);persistMutes();socket.emit('mute:add',{username:n});div.remove();
+  });
   el.prepend(div);setTimeout(()=>div.remove(),8000);
 }
+// Toast on rate-limit feedback so the player knows why their input was dropped
+socket.on('rateLimited',({action})=>{
+  const t=document.createElement('div');t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(255,61,113,.85);color:#fff;padding:6px 12px;border-radius:6px;z-index:999;font-family:Orbitron,monospace;font-size:.6rem;letter-spacing:1px';
+  t.textContent='Slow down ('+action+')';document.body.appendChild(t);setTimeout(()=>t.remove(),1400);
+});
 const PU_META={
   speed:  {icon:'⚡',label:'SPEED',   color:'#ffc312'},
   shield: {icon:'🛡',label:'SHIELD',  color:'#00ffcc'},
@@ -1776,6 +1789,8 @@ function drawSnake(p,cam){
   if(isGhost)ctx.globalAlpha=0.38;
   // Clone: dashed semi-transparent
   if(isClone){ctx.globalAlpha=0.45;ctx.setLineDash([8,5]);}
+  // Spawn invulnerability: shimmer (item #40)
+  if(p.invul){ctx.globalAlpha=0.5+Math.abs(Math.sin(t*0.012))*0.4;}
   // Frozen: blue overlay tint applied after drawing
 
   // ── Pass 1: deep outer bloom (wide, very soft) ───────────────────────────
