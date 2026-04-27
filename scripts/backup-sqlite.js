@@ -6,8 +6,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, '..', 'data.db');
-const BACKUP_DIR = path.join(__dirname, '..', 'backups');
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..');
+const DB_PATH = path.join(DATA_DIR, 'data.db');
+const BACKUP_DIR = process.env.BACKUP_DIR || path.join(DATA_DIR, 'backups');
 const KEEP = parseInt(process.env.BACKUP_KEEP || '14', 10);
 
 if (!fs.existsSync(DB_PATH)) {

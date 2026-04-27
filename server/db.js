@@ -1,11 +1,17 @@
 // SQLite schema + helpers. Maps_played is now a real table instead of a JSON column.
+const fs = require('fs');
 const path = require('path');
 const log = require('./logger');
 
+// Persistent data dir (DATA_DIR env, default: project root). Created if missing.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..');
+const DB_PATH  = path.join(DATA_DIR, 'data.db');
+
 let db = null;
 try {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
   const Database = require('better-sqlite3');
-  db = new Database(path.join(__dirname, '..', 'data.db'));
+  db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
