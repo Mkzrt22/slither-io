@@ -68,9 +68,14 @@ ok "Node $(node --version)"
 prompt() { local var=$1 msg=$2 def=${3-}; local val
   eval "val=\${$var-}"
   if [[ -n "$val" ]]; then return; fi
-  if [[ -n "$def" ]]; then read -rp "$msg [$def]: " val; val="${val:-$def}"
-  else                       read -rp "$msg: " val
+  # Read from the controlling terminal so this works when the script is piped
+  # (curl ... | bash). Falls back to stdin if no tty (e.g. CI).
+  local in_fd=0
+  if [[ -r /dev/tty ]]; then exec 3</dev/tty; in_fd=3; fi
+  if [[ -n "$def" ]]; then read -rp "$msg [$def]: " val <&$in_fd; val="${val:-$def}"
+  else                       read -rp "$msg: " val <&$in_fd
   fi
+  [[ $in_fd -eq 3 ]] && exec 3<&-
   eval "$var=\"$val\""
 }
 
