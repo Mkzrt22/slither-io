@@ -104,6 +104,9 @@ if [[ -d "$INSTALL_DIR/.git" ]]; then
   git -C "$INSTALL_DIR" reset --hard --quiet "origin/$BRANCH"
 else
   log "Cloning $REPO into $INSTALL_DIR"
+  # Move out of $INSTALL_DIR if we're inside it — `rm -rf` would otherwise
+  # delete the cwd and break the next `git clone`.
+  cd /
   rm -rf "$INSTALL_DIR"
   git clone --quiet --branch "$BRANCH" "$REPO" "$INSTALL_DIR"
 fi
