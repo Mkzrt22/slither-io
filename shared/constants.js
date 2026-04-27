@@ -2,7 +2,7 @@
 // CommonJS module; the client receives them via /shared/constants.js as text and
 // either parses with new Function() in the browser or loads via require() in Node.
 
-const TICK_HZ                  = 25;
+const TICK_HZ                  = 25;   // server tick — client interpolates for smooth render
 const TICK_MS                  = 1000 / TICK_HZ;
 const SEG_R                    = 9;
 const MOVE_SPEED               = 2.8;

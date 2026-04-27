@@ -31,7 +31,13 @@ const corsOrigin = NODE_ENV === 'production' ? [PUBLIC_URL] : '*';
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: corsOrigin } });
+const io = new Server(server, {
+  cors: { origin: corsOrigin },
+  // Compress state broadcasts ≥1KB. Cuts bandwidth ~3-5× for the 25 Hz state
+  // payload (food/segments/leaderboard/etc).
+  perMessageDeflate: { threshold: 1024 },
+  httpCompression: true,
+});
 
 // Surface unhandled errors to Sentry instead of silently dying.
 process.on('uncaughtException', (e) => { log.error({ err: e }, 'uncaughtException'); captureException(e); });
