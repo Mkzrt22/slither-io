@@ -1495,6 +1495,74 @@ window.addEventListener('keydown',e=>{
     if(inGame||spectating)setPause(!paused);
   }
 });
+// ── Client-side prediction for own snake ────────────────────────────────────
+// We replicate the server physics locally so the player's snake reacts to
+// input at frame rate (≤16ms) instead of waiting for the server round-trip.
+// On every server snapshot we reconcile by smoothly snapping toward authority.
+const SVR_MOVE_SPEED  = 2.8;
+const SVR_BOOST_SPEED = 5.2;
+const SVR_TURN_SPEED  = 0.13;
+const SVR_TICK_MS     = 40; // 25 Hz — used to scale per-tick speeds to per-frame
+const _predict = { angle: 0, targetAngle: 0, segs: null, lastFrame: 0, W: 4000, H: 4000 };
+
+function _angleDiffPx(a, b) { let d=b-a; while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI; return d; }
+
+function tickPrediction(now) {
+  if (!_predict.segs || !inGame || spectating) return;
+  const dt = Math.min(50, now - _predict.lastFrame); // ms since last frame, capped
+  _predict.lastFrame = now;
+  const ticks = dt / SVR_TICK_MS; // fractional ticks elapsed
+  // Update angle (toward targetAngle, capped at TURN_SPEED per tick)
+  const diff = _angleDiffPx(_predict.angle, _predict.targetAngle);
+  _predict.angle += Math.max(-SVR_TURN_SPEED * ticks, Math.min(SVR_TURN_SPEED * ticks, diff));
+  // Speed
+  const spd = (mouseDown ? SVR_BOOST_SPEED : SVR_MOVE_SPEED) * ticks;
+  const head = _predict.segs[0];
+  const nx = ((head.x + Math.cos(_predict.angle) * spd) % _predict.W + _predict.W) % _predict.W;
+  const ny = ((head.y + Math.sin(_predict.angle) * spd) % _predict.H + _predict.H) % _predict.H;
+  _predict.segs.unshift({ x: nx, y: ny });
+  _predict.segs.pop();
+}
+
+// Reconcile predicted state with the latest authoritative server snapshot.
+// We don't snap — we drift the predicted head a fraction toward the server head
+// so corrections are invisible.
+function reconcilePrediction(serverPlayer, W, H) {
+  if (!serverPlayer || !serverPlayer.segs?.length) return;
+  if (!_predict.segs) {
+    _predict.segs = serverPlayer.segs.map(s => ({ ...s }));
+    _predict.angle = _predict.targetAngle = Math.atan2(
+      serverPlayer.segs[0].y - serverPlayer.segs[1]?.y || 0,
+      serverPlayer.segs[0].x - serverPlayer.segs[1]?.x || 1,
+    );
+    _predict.W = W; _predict.H = H;
+    _predict.lastFrame = performance.now();
+    return;
+  }
+  _predict.W = W; _predict.H = H;
+  // If server segment count differs (ate food / shrunk via boost), resize predicted body
+  if (_predict.segs.length !== serverPlayer.segs.length) {
+    if (_predict.segs.length < serverPlayer.segs.length) {
+      while (_predict.segs.length < serverPlayer.segs.length) {
+        _predict.segs.push({ ...(_predict.segs[_predict.segs.length - 1] || serverPlayer.segs[0]) });
+      }
+    } else {
+      _predict.segs.length = serverPlayer.segs.length;
+    }
+  }
+  // Drift each segment 25% toward server position (90% for tail to keep it taut)
+  for (let i = 0; i < _predict.segs.length; i++) {
+    const sv = serverPlayer.segs[i]; if (!sv) continue;
+    const f = i === 0 ? 0.18 : 0.30;
+    let dx = sv.x - _predict.segs[i].x;
+    let dy = sv.y - _predict.segs[i].y;
+    if (Math.abs(dx) > W / 2) dx = 0; // wrap detected — let server snap
+    if (Math.abs(dy) > H / 2) dy = 0;
+    _predict.segs[i].x += dx * f;
+    _predict.segs[i].y += dy * f;
+  }
+}
+
 // ── Snapshot buffer + interpolation ─────────────────────────────────────────
 // Render at now-INTERP_DELAY so we always have a "next" snapshot to lerp toward.
 // This makes the snake feel smooth even at 25-50 Hz server tick.
@@ -1539,6 +1607,10 @@ socket.on('state',s=>{
   state=s;
   _pushState(s);
   if(s.W)W_world=s.W;if(s.H)H_world=s.H;
+  // Reconcile prediction against authoritative state
+  const _meSv=s.players?.find(p=>p.id===myId);
+  if(_meSv)reconcilePrediction(_meSv,s.W||W_world,s.H||H_world);
+  else _predict.segs=null; // we died — clear prediction
   // Sync active event from state if no socket event received
   if(s.activeEvent&&!activeEventOverlay){
     activeEventOverlay={...s.activeEvent,...s.activeEvent.data};
@@ -2305,7 +2377,16 @@ function render(){
   // Use the interpolated snapshot so motion is smooth between server frames.
   // Static fields (food, leaderboard, killFeed) stay on the latest `state`.
   const istate=getRenderState()||state;
-  const renderPlayers=istate.players||state.players;
+  let renderPlayers=istate.players||state.players;
+  // Update prediction targetAngle from current cursor and tick it forward
+  if(!spectating&&myId){
+    _predict.targetAngle=Math.atan2(mouseY-gc.height/2,mouseX-gc.width/2);
+    tickPrediction(performance.now());
+    if(_predict.segs){
+      // Replace own player's segments with the predicted ones for instant input feel
+      renderPlayers=renderPlayers.map(p=>p.id===myId?{...p,segs:_predict.segs}:p);
+    }
+  }
   const vw=gc.width,vh=gc.height;
   let camTarget=spectating&&spectateTargetId?renderPlayers.find(p=>p.id===spectateTargetId):renderPlayers.find(p=>p.id===myId);
   if(!camTarget&&renderPlayers.length){camTarget=renderPlayers[0];spectateTargetId=renderPlayers[0].id;}
