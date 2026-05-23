@@ -54,7 +54,35 @@ function validMapId(m, allowed) {
   return allowed.includes(m) ? m : null;
 }
 
+// Custom snake skin sent by clients. We only accept a small, predictable
+// shape: a 3×15 grid of hex colour strings (or null). Anything larger or
+// shaped differently is rejected so a malicious client can't broadcast
+// a multi-MB blob to every other player through the state payload.
+const CUSTOM_SKIN_ROWS = 3;
+const CUSTOM_SKIN_COLS = 15;
+const HEX_RE = /^#[0-9a-fA-F]{3,8}$/;
+
+function validCustomSkin(skin) {
+  if (skin === null || skin === undefined) return null;
+  if (typeof skin !== 'object' || Array.isArray(skin) === false) return null;
+  if (skin.length !== CUSTOM_SKIN_ROWS) return null;
+  const out = new Array(CUSTOM_SKIN_ROWS);
+  for (let r = 0; r < CUSTOM_SKIN_ROWS; r++) {
+    const row = skin[r];
+    if (!Array.isArray(row) || row.length !== CUSTOM_SKIN_COLS) return null;
+    const cleanRow = new Array(CUSTOM_SKIN_COLS);
+    for (let c = 0; c < CUSTOM_SKIN_COLS; c++) {
+      const cell = row[c];
+      if (cell === null) { cleanRow[c] = null; continue; }
+      if (typeof cell !== 'string' || cell.length > 9 || !HEX_RE.test(cell)) return null;
+      cleanRow[c] = cell;
+    }
+    out[r] = cleanRow;
+  }
+  return out;
+}
+
 module.exports = {
   validAngle, validBoolean, validString, validUsername, validPassword,
-  validEmote, validRoomId, validMode, validMapId, isFiniteNumber,
+  validEmote, validRoomId, validMode, validMapId, validCustomSkin, isFiniteNumber,
 };

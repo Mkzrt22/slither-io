@@ -26,4 +26,19 @@ describe('SpatialHash', () => {
     // density ~5000/(4000^2) per px², expect roughly a couple hits in a 200²px box
     expect(found.length).toBeLessThan(200);
   });
+
+  test('keys never collide between distinct (cx, cy) pairs', () => {
+    // Szudzik pairing is a bijection — verify a dense neighbourhood has no clashes
+    const g = new SpatialHash(1, 1000, 1000);
+    const seen = new Map();
+    for (let cx = -100; cx <= 100; cx++) {
+      for (let cy = -100; cy <= 100; cy++) {
+        const k = g._key(cx, cy);
+        const prev = seen.get(k);
+        if (prev) throw new Error(`collision: (${cx},${cy}) and (${prev[0]},${prev[1]}) both → ${k}`);
+        seen.set(k, [cx, cy]);
+      }
+    }
+    expect(seen.size).toBe(201 * 201);
+  });
 });

@@ -8,7 +8,15 @@ class SpatialHash {
     this.cells = new Map();
   }
 
-  _key(cx, cy) { return cx * 73856093 ^ cy * 19349663; }
+  // Szudzik pairing: a stable bijection from (cx, cy) ∈ ℤ² to ℤ with no
+  // collisions. Avoids the false-positive collisions that bitwise XOR
+  // produced when paired with multipliers — those would let segments of
+  // two unrelated snakes share a bucket and cause phantom hits.
+  _key(cx, cy) {
+    const a = cx >= 0 ? cx * 2 : -cx * 2 - 1;
+    const b = cy >= 0 ? cy * 2 : -cy * 2 - 1;
+    return a >= b ? a * a + a + b : a + b * b;
+  }
 
   insert(x, y, payload) {
     const cx = Math.floor(x / this.cellSize);

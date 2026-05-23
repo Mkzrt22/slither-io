@@ -120,7 +120,14 @@ function getElo(userId) {
   return { elo: s.elo, wins: s.elo_wins, losses: s.elo_losses, streak: s.elo_streak };
 }
 function setElo(userId, patch) {
-  if (!userId || !db) return;
+  if (!userId) {
+    log.warn({ patch }, 'setElo called without userId — ranked ELO change discarded');
+    return;
+  }
+  if (!db) {
+    log.warn('setElo called without db — ranked ELO change discarded');
+    return;
+  }
   const map = {};
   if ('elo'      in patch) map.elo        = patch.elo;
   if ('wins'     in patch) map.elo_wins   = patch.wins;
@@ -970,7 +977,12 @@ io.on('connection', (socket) => {
     const mapId    = V.validMapId(msg.mapId, Object.keys(MAPS)) || 'classic';
     const name     = V.validString(msg.name, 16) || 'Anonymous';
     const password = msg.password ? V.validString(msg.password, 32) : null;
-    const customSkin = msg.customSkin && typeof msg.customSkin === 'object' ? msg.customSkin : null;
+    const customSkin = V.validCustomSkin(msg.customSkin);
+
+    // Ranked requires a real account so ELO can be persisted across sessions.
+    if (mode === 'ranked' && !socketToUser[socket.id]) {
+      return socket.emit('error', 'Login required to play ranked');
+    }
 
     const roomId = 'r' + idCounter++;
     const room = mkRoom(roomId, roomName, mode, mapId);
@@ -987,13 +999,16 @@ io.on('connection', (socket) => {
     if (!roomId) return socket.emit('error', 'Invalid room id');
     const room = rooms[roomId];
     if (!room) return socket.emit('error', 'Room not found');
+    if (room.mode === 'ranked' && !socketToUser[socket.id]) {
+      return socket.emit('error', 'Login required to play ranked');
+    }
     if (room.password) {
       const pw = V.validString(msg.password, 32);
       if (room.password !== pw) return socket.emit('passwordRequired', { roomId, roomName: room.name });
     }
     const name = V.validString(msg.name, 16) || 'Anonymous';
     const skin = V.validString(msg.skin, 16) || 'solid';
-    const customSkin = msg.customSkin && typeof msg.customSkin === 'object' ? msg.customSkin : null;
+    const customSkin = V.validCustomSkin(msg.customSkin);
     joinRoom(socket, room, name, skin, room.mode, customSkin);
   });
 
@@ -1063,7 +1078,7 @@ io.on('connection', (socket) => {
     if (!r || r.winner) return;
     const name = V.validString(msg.name, 16) || 'Anonymous';
     const skin = V.validString(msg.skin, 16) || 'solid';
-    const customSkin = msg.customSkin && typeof msg.customSkin === 'object' ? msg.customSkin : null;
+    const customSkin = V.validCustomSkin(msg.customSkin);
     const team = r.mode === 'teams'
       ? (Object.values(r.players).filter(p => p.team === 'red').length <=
          Object.values(r.players).filter(p => p.team === 'blue').length ? 'red' : 'blue')
