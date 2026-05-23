@@ -1555,15 +1555,21 @@ function reconcilePrediction(serverPlayer, W, H) {
     return;
   }
   _predict.W = W; _predict.H = H;
-  // If server segment count differs (ate food / shrunk via boost), resize predicted body
-  if (_predict.segs.length !== serverPlayer.segs.length) {
-    if (_predict.segs.length < serverPlayer.segs.length) {
-      while (_predict.segs.length < serverPlayer.segs.length) {
-        _predict.segs.push({ ...(_predict.segs[_predict.segs.length - 1] || serverPlayer.segs[0]) });
-      }
-    } else {
-      _predict.segs.length = serverPlayer.segs.length;
+  // Resize the predicted body toward the server's length. Growth (food eaten)
+  // is immediate so the snake doesn't visibly lag. Shrink (boost) is rate-
+  // limited to one tail segment per reconciliation so the body doesn't
+  // visually pop — at 25 Hz that smooths out the boost shrink into ~40 ms
+  // intervals instead of a single hard truncation.
+  const diff = _predict.segs.length - serverPlayer.segs.length;
+  if (diff < 0) {
+    while (_predict.segs.length < serverPlayer.segs.length) {
+      _predict.segs.push({ ...(_predict.segs[_predict.segs.length - 1] || serverPlayer.segs[0]) });
     }
+  } else if (diff > 0) {
+    // Drop up to 2 tail segs per reconciliation; the rest catches up over the
+    // next ticks. Hard-cap when far behind so we don't drift unboundedly.
+    const drop = diff > 8 ? diff : Math.min(diff, 2);
+    _predict.segs.length -= drop;
   }
   // Drift each segment 25% toward server position (90% for tail to keep it taut)
   for (let i = 0; i < _predict.segs.length; i++) {
@@ -1583,7 +1589,14 @@ function reconcilePrediction(serverPlayer, W, H) {
 // This makes the snake feel smooth even at 25-50 Hz server tick.
 const _stateBuffer=[];
 const INTERP_DELAY=90; // ms — bigger = smoother but laggier feel
-function _pushState(s){s._t=performance.now();_stateBuffer.push(s);if(_stateBuffer.length>10)_stateBuffer.shift();}
+// The buffer only needs what the interpolator reads (players + world dims +
+// timestamp). Storing references to the merged `state` object would mean every
+// snapshot points to the same data — disaster for interpolation.
+function _pushState(s){
+  const snap={_t:performance.now(),players:s.players||[],W:s.W||W_world,H:s.H||H_world};
+  _stateBuffer.push(snap);
+  if(_stateBuffer.length>10)_stateBuffer.shift();
+}
 function _interpEntities(prevList,nextList,t,W,H){
   // Interpolate by id; segments are lerped pairwise. World-wrap teleports are
   // detected by an unusually large delta and skipped.
@@ -1618,9 +1631,32 @@ function getRenderState(){
   return {...next,players:_interpEntities(prev.players||[],next.players||[],t,W,H)};
 }
 
+// Static room data sent once per join (or spectate). Holds the rarely-changing
+// fields the per-tick `state` no longer carries.
+socket.on('roomInit',(init)=>{
+  state.portals=init.portals||[];
+  state.mapId=init.mapId;state.mode=init.mode;state.scoreWin=init.scoreWin;
+  state.food=init.food||[];state.powerups=init.powerups||[];
+  if(init.W)W_world=init.W;if(init.H)H_world=init.H;
+  state.W=init.W;state.H=init.H;
+});
+
 socket.on('state',s=>{
-  state=s;
-  _pushState(s);
+  // Apply incremental food/powerup deltas first, then merge the rest in. Full
+  // refresh (every 250 ticks) ships the entire array as `food`/`powerups`.
+  if(!state.food)state.food=[];
+  if(!state.powerups)state.powerups=[];
+  if(s.foodRm&&s.foodRm.length){const rm=new Set(s.foodRm);state.food=state.food.filter(f=>!rm.has(f.id));}
+  if(s.foodAdd&&s.foodAdd.length)state.food=state.food.concat(s.foodAdd);
+  if(s.food)state.food=s.food;
+  if(s.puRm&&s.puRm.length){const rm=new Set(s.puRm);state.powerups=state.powerups.filter(p=>!rm.has(p.id));}
+  if(s.puAdd&&s.puAdd.length)state.powerups=state.powerups.concat(s.puAdd);
+  if(s.powerups)state.powerups=s.powerups;
+  // Merge everything else (players, zone, obstacles, leaderboard, ...). We
+  // deliberately don't reassign `state` so the existing references (portals,
+  // mapId, etc. from roomInit) survive.
+  for(const k of Object.keys(s))if(k!=='food'&&k!=='powerups'&&k!=='foodAdd'&&k!=='foodRm'&&k!=='puAdd'&&k!=='puRm')state[k]=s[k];
+  _pushState(state);
   if(s.W)W_world=s.W;if(s.H)H_world=s.H;
   // Reconcile prediction against authoritative state
   const _meSv=s.players?.find(p=>p.id===myId);
@@ -2421,7 +2457,13 @@ function render(){
     }
   }
   const vw=gc.width,vh=gc.height;
-  let camTarget=spectating&&spectateTargetId?renderPlayers.find(p=>p.id===spectateTargetId):renderPlayers.find(p=>p.id===myId);
+  // Single pass: locate myself + the spectate target instead of running .find() twice
+  let me=null,spTarget=null;
+  for(const p of renderPlayers){
+    if(p.id===myId)me=p;
+    if(spectateTargetId&&p.id===spectateTargetId)spTarget=p;
+  }
+  let camTarget=spectating?spTarget:me;
   if(!camTarget&&renderPlayers.length){camTarget=renderPlayers[0];spectateTargetId=renderPlayers[0].id;}
   let cam={x:0,y:0};
   if(replayCamPos){cam.x=replayCamPos.x-vw/2;cam.y=replayCamPos.y-vh/2;}
@@ -2513,7 +2555,7 @@ function render(){
 
   // Snakes — draw from the interpolated snapshot for smooth motion
   for(const p of renderPlayers)if(p.id!==myId)drawSnake(p,cam);
-  const me=renderPlayers.find(p=>p.id===myId);if(me)drawSnake(me,cam);
+  if(me)drawSnake(me,cam);
 
   // Cursor crosshair
   if(!spectating&&!isMobile()){

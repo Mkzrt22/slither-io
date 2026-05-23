@@ -137,20 +137,8 @@ function setElo(userId, patch) {
 }
 
 // ── Maps ──────────────────────────────────────────────────────────────────────
-const MAPS = {
-  classic:{ id:'classic',name:'Classic',W:4000,H:4000,FOOD_TARGET:380,OBSTACLE_COUNT:18,
-    palette:['#FF6B6B','#FF9F43','#FFC312','#A3CB38','#1289A7','#C84B31','#EE5A24','#009432','#0652DD','#9980FA','#FDA7DF','#D980FA','#12CBC4','#ED4C67','#F79F1F'],unlockLevel:1 },
-  arctic:{ id:'arctic',name:'Arctic',W:3600,H:3600,FOOD_TARGET:320,OBSTACLE_COUNT:24,
-    palette:['#cceeff','#99ddff','#66ccff','#33aaee','#ffffff','#aaddff','#77bbff','#55aaee','#88ccff','#bbddff'],unlockLevel:3 },
-  volcano:{ id:'volcano',name:'Volcano',W:3200,H:3200,FOOD_TARGET:280,OBSTACLE_COUNT:30,
-    palette:['#ff4400','#ff6600','#ff8800','#ffaa00','#ff2200','#cc3300','#ee5500','#ff7700','#dd4400','#ff9900'],unlockLevel:5 },
-  space:{ id:'space',name:'Space',W:5000,H:5000,FOOD_TARGET:500,OBSTACLE_COUNT:40,
-    palette:['#9980FA','#6c5ce7','#a29bfe','#fd79a8','#e84393','#00cec9','#00b894','#74b9ff','#0984e3','#dfe6e9'],unlockLevel:8 },
-};
-
-const TEAM_COLORS = { red:'#FF4757', blue:'#1E90FF' };
-const BOT_NAMES   = ['Slinky','Viper','Cobra','Mamba','Rattler','Anaconda','Fangs','Bolt','Slick','Coil','Hydra','Fang'];
-const GAME_MODES  = ['classic','score','teams','tournament','ranked'];
+const M = require('./server/maps');
+const { MAPS, TEAM_COLORS, BOT_NAMES, GAME_MODES, MAP_EVENTS, EVENT_INTERVAL, EVENT_DURATION } = M;
 
 // Track per-player challenge state (keyed by socketId)
 const challengeState={}; // {socketId:{value,done,violatedNoBoost,killTimes,spawnTick}}
@@ -520,9 +508,6 @@ function tickClones(room){
 }
 
 // ── MAP EVENTS ────────────────────────────────────────────────────────────────
-const EVENT_INTERVAL = 3000; // ~2 min at 25tps
-const EVENT_DURATION = {meteor:200,blizzard:350,eruption:220,surge:120};
-const MAP_EVENTS     = {space:['meteor'],arctic:['blizzard'],volcano:['eruption'],classic:['surge']};
 
 function startMapEvent(room){
   const type=pick(MAP_EVENTS[room.map.id]||['surge']);
@@ -933,13 +918,49 @@ function _tickRoom(room) {
     data:{x:room.activeEvent.data.x,y:room.activeEvent.data.y,r:room.activeEvent.data.r,speedMult:room.activeEvent.data.speedMult},
   }:null;
 
-  io.to(room.id).emit('state',{
-    players:[...pArr,...cloneArr],food:room.food,powerups:room.powerups,
-    obstacles:room.obstacles,portals:room.portals,leaderboard,
-    killFeed:room.killFeed,zone:room.zone,mode:room.mode,
-    teamScores:room.teamScores,scoreWin:SCORE_WIN,chatMsgs:room.chatMsgs,
-    mapPings:room.mapPings,mapId:room.map.id,W,H,activeEvent:evOut,
-  });
+  // ── Delta computation for food + powerups (audit #10) ─────────────────────
+  // Food/powerups rarely change tick-to-tick — sending the full list every
+  // 40 ms wastes ~12 KB/s per client. We track ids and broadcast only the
+  // added/removed items. Every 250 ticks (~10s) we send the full snapshot as
+  // a safety net for clients that may have missed a delta.
+  const lastFoodIds = room._lastFoodIds || new Set();
+  const lastPuIds   = room._lastPuIds   || new Set();
+  const foodIds = new Set();
+  const puIds   = new Set();
+  const foodAdd = [];
+  const puAdd   = [];
+  for (const f of room.food)     { foodIds.add(f.id); if (!lastFoodIds.has(f.id)) foodAdd.push(f); }
+  for (const p of room.powerups) { puIds.add(p.id);   if (!lastPuIds.has(p.id))   puAdd.push(p); }
+  const foodRm = [];
+  const puRm   = [];
+  for (const id of lastFoodIds) if (!foodIds.has(id)) foodRm.push(id);
+  for (const id of lastPuIds)   if (!puIds.has(id))   puRm.push(id);
+  room._lastFoodIds = foodIds;
+  room._lastPuIds   = puIds;
+  const fullRefresh = room.tickCount % 250 === 0;
+
+  const payload = {
+    players: [...pArr, ...cloneArr],
+    obstacles: room.obstacles,
+    leaderboard,
+    killFeed: room.killFeed,
+    zone: room.zone,
+    teamScores: room.teamScores,
+    chatMsgs: room.chatMsgs,
+    mapPings: room.mapPings,
+    activeEvent: evOut,
+    tickCount: room.tickCount,
+  };
+  if (fullRefresh) {
+    payload.food = room.food;
+    payload.powerups = room.powerups;
+  } else {
+    if (foodAdd.length) payload.foodAdd = foodAdd;
+    if (foodRm.length)  payload.foodRm  = foodRm;
+    if (puAdd.length)   payload.puAdd   = puAdd;
+    if (puRm.length)    payload.puRm    = puRm;
+  }
+  io.to(room.id).emit('state', payload);
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
@@ -1057,6 +1078,11 @@ io.on('connection', (socket) => {
       elo: 1000, rank: getRank(1000),
       inviteUrl: `${PUBLIC_URL}/?room=${room.id}`,
       spectator: true,
+    });
+    socket.emit('roomInit', {
+      portals: room.portals, mapId: room.map.id, mode: room.mode,
+      W: room.W, H: room.H, scoreWin: SCORE_WIN,
+      food: room.food, powerups: room.powerups,
     });
   });
 
@@ -1282,6 +1308,17 @@ function joinRoom(socket, room, name, skin, mode, customSkin) {
     id: socket.id, W: room.W, H: room.H, roomId: room.id, roomName: room.name,
     mode: room.mode, team, mapId: room.map.id,
     elo: ed.elo, rank: getRank(ed.elo), inviteUrl,
+  });
+  // Static room data + initial food/powerups snapshot. The per-tick `state`
+  // stream then only carries deltas (foodAdd/foodRm/puAdd/puRm).
+  socket.emit('roomInit', {
+    portals: room.portals,
+    mapId: room.map.id,
+    mode: room.mode,
+    W: room.W, H: room.H,
+    scoreWin: SCORE_WIN,
+    food: room.food,
+    powerups: room.powerups,
   });
 }
 
