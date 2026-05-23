@@ -276,18 +276,27 @@ function mkPortalPair(idx, map) {
 }
 
 // Pick a spawn that doesn't collide with any current obstacle (item #22).
+// If we can't find a clear spot in 60 tries the map is saturated — warn so
+// it's visible in logs, and pick the candidate with the largest clearance
+// rather than a blind random fallback (audit #14).
 function pickSpawn(map, room) {
   const obstacles = room ? room.obstacles : [];
-  for (let tries = 0; tries < 30; tries++) {
+  let best = null, bestDist = -1;
+  for (let tries = 0; tries < 60; tries++) {
     const x = 400 + rnd(map.W - 800);
     const y = 400 + rnd(map.H - 800);
-    let safe = true;
+    let minDist = Infinity, safe = true;
     for (const ob of obstacles) {
-      if ((x - ob.x) ** 2 + (y - ob.y) ** 2 < (ob.r + 60) ** 2) { safe = false; break; }
+      const d2 = (x - ob.x) ** 2 + (y - ob.y) ** 2;
+      const min2 = (ob.r + 60) ** 2;
+      if (d2 < min2) { safe = false; break; }
+      if (d2 < minDist) minDist = d2;
     }
     if (safe) return { x, y };
+    if (minDist > bestDist) { bestDist = minDist; best = { x, y }; }
   }
-  return { x: 400 + rnd(map.W - 800), y: 400 + rnd(map.H - 800) };
+  log.warn({ mapId: map.id }, 'pickSpawn saturated — using best-clearance fallback');
+  return best || { x: map.W / 2, y: map.H / 2 };
 }
 
 function mkPlayer(id, name, isBot, skin, team, customSkin, map, room) {
@@ -470,16 +479,26 @@ function updateBot(bot, room, allAlive) {
 }
 
 // ── CLONE DECOY ───────────────────────────────────────────────────────────────
-function spawnClone(p,room){
-  if(p.cloneId)return;
-  const cid='clone_'+idCounter++;
-  room.clones[cid]={
-    id:cid,name:p.name,color:p.color,skin:p.skin,customSkin:p.customSkin,
-    segs:p.segs.map(s=>({...s})),alive:true,isClone:true,ownerId:p.id,cloneTick:0,
-    angle:p.angle+0.3,team:p.team,level:p.level,score:0,
-    boosting:false,powerup:null,powerupTick:0,powerupDuration:1,
-    isBot:false,xp:0,abilities:[],emote:null,
+// Build a decoy that visually mimics the owner snake but is harmless. Kept as a
+// dedicated factory so the shape stays in lock-step with mkPlayer's output —
+// the state broadcast assumes every player-like entity carries the same fields.
+function mkClone(owner, cloneId) {
+  return {
+    id: cloneId, name: owner.name, color: owner.color, skin: owner.skin,
+    customSkin: owner.customSkin,
+    segs: owner.segs.map(s => ({ ...s })),
+    alive: true, isClone: true, ownerId: owner.id, cloneTick: 0,
+    angle: owner.angle + 0.3, team: owner.team, level: owner.level, score: 0,
+    boosting: false, powerup: null, powerupTick: 0, powerupDuration: 1,
+    isBot: false, xp: 0, abilities: [], emote: null,
+    invulTicks: 0,
   };
+}
+
+function spawnClone(p, room) {
+  if (p.cloneId) return;
+  const cid = 'clone_' + idCounter++;
+  room.clones[cid] = mkClone(p, cid);
   p.cloneId=cid;
 }
 
@@ -936,15 +955,18 @@ function rl(socket, action) {
 
 // Bind socketToUser bidirectionally; evicts any existing socket on the same userId
 // so duplicate-tab/login attempts don't silently clobber each other (item #13).
+// Cleanup MUST happen before disconnect() so the disconnect handler sees a
+// clean slate (audit #16 — otherwise we double-cleanup with stale state).
 function bindUser(socket, userId) {
   const prevSocketId = userToSocket[userId];
   if (prevSocketId && prevSocketId !== socket.id) {
+    delete socketToUser[prevSocketId];
+    delete userToSocket[userId];
     const prev = io.sockets.sockets.get(prevSocketId);
     if (prev) {
       prev.emit('error', 'Account logged in from another tab');
       prev.disconnect(true);
     }
-    delete socketToUser[prevSocketId];
   }
   socketToUser[socket.id] = userId;
   userToSocket[userId] = socket.id;
@@ -961,6 +983,14 @@ io.on('connection', (socket) => {
     socket.emit('globalScores', globalScores.slice(0, 10));
     socket.emit('weeklyScores', { scores: weeklyScores.slice(0, 10), hallOfFame, week: currentWeekKey });
     socket.emit('mapList', Object.values(MAPS).map(m => ({ id: m.id, name: m.name, unlockLevel: m.unlockLevel })));
+    // Send authoritative game constants so the client can't drift out of sync
+    // (audit #6 — LEVEL_XP duplication was a hidden footgun).
+    socket.emit('gameConfig', {
+      LEVEL_XP: C.LEVEL_XP,
+      LEVEL_ABILITY: C.LEVEL_ABILITY,
+      MAX_LEVEL: C.MAX_LEVEL,
+      PRESTIGE_XP: C.PRESTIGE_XP,
+    });
     const uid = socketToUser[socket.id];
     if (uid) {
       const ed = getElo(uid);
@@ -1214,6 +1244,22 @@ io.on('connection', (socket) => {
     if (!uid) return socket.emit('mute:list', []);
     socket.emit('mute:list', dbMod.listMutes(uid));
   });
+
+  // ── Purchase claim (item #4 audit follow-up) ────────────────────────────
+  // Stripe webhook creates an unverified purchase row (we don't know the
+  // userId yet). When a logged-in client completes the checkout, the client
+  // forwards the session_id here and we bind it to their account.
+  socket.on('purchase:claim', (msg = {}) => {
+    if (!rl(socket, 'generic')) return;
+    const uid = socketToUser[socket.id];
+    if (!uid) return socket.emit('purchase:result', { ok: false, error: 'Not logged in' });
+    const sessionId = V.validString(msg.sessionId, 200);
+    if (!sessionId) return socket.emit('purchase:result', { ok: false, error: 'Invalid session id' });
+    const purchase = dbMod.getPurchase(sessionId);
+    if (!purchase) return socket.emit('purchase:result', { ok: false, error: 'Unknown purchase' });
+    const bound = dbMod.bindPurchaseToUser(sessionId, uid);
+    socket.emit('purchase:result', { ok: bound, product: purchase.product });
+  });
 });
 
 function joinRoom(socket, room, name, skin, mode, customSkin) {
@@ -1251,20 +1297,80 @@ if (STRIPE_SECRET) {
 
 // Health endpoint (item #48). Returns 200 unless we are shutting down.
 let shuttingDown = false;
+
+function roomMetrics() {
+  let players = 0, bots = 0, totalSegs = 0;
+  for (const r of Object.values(rooms)) {
+    players += Object.keys(r.players).length;
+    bots    += Object.keys(r.bots).length;
+    for (const p of Object.values(r.players)) totalSegs += p.segs?.length || 0;
+    for (const p of Object.values(r.bots))    totalSegs += p.segs?.length || 0;
+  }
+  return { players, bots, totalSegs };
+}
+
 app.get('/healthz', (req, res) => {
   if (shuttingDown) return res.status(503).json({ status: 'shutting_down' });
+  const { rss, heapUsed } = process.memoryUsage();
   res.json({
     status: 'ok',
     uptime: Math.round(process.uptime()),
     rooms: Object.keys(rooms).length,
+    ...roomMetrics(),
+    memMB: { rss: Math.round(rss / 1048576), heap: Math.round(heapUsed / 1048576) },
     db: !!db, bcrypt: !!bcrypt, stripe: !!stripe,
     version: require('./package.json').version,
   });
 });
 
+// Lightweight Prometheus-friendly text endpoint. No external client needed
+// — `curl /metrics` gives operators something to scrape from a sidecar.
+app.get('/metrics', httpRateLimit('metrics', 60, 60_000), (req, res) => {
+  const m = roomMetrics();
+  const { rss, heapUsed } = process.memoryUsage();
+  res.type('text/plain').send([
+    `# HELP slither_rooms_total Number of active rooms`,
+    `slither_rooms_total ${Object.keys(rooms).length}`,
+    `slither_players_total ${m.players}`,
+    `slither_bots_total ${m.bots}`,
+    `slither_segments_total ${m.totalSegs}`,
+    `slither_uptime_seconds ${Math.round(process.uptime())}`,
+    `slither_mem_rss_bytes ${rss}`,
+    `slither_mem_heap_bytes ${heapUsed}`,
+    '',
+  ].join('\n'));
+});
+
 // Webhook receives raw body so signature verification works.
 app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '64kb' }));
+
+// Per-IP rate-limit middleware for the public HTTP API. Lightweight sliding-
+// window keyed by req.ip + route — keeps the verify-purchase / verify-token
+// brute-force surface bounded. ~30 requests/minute is enough for honest
+// users but stops scripted scans in their tracks.
+const _httpHits = new Map(); // ip+route → [{ t: now }]
+function httpRateLimit(routeKey, max = 30, windowMs = 60_000) {
+  return (req, res, next) => {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+    const key = ip + '|' + routeKey;
+    const now = Date.now();
+    let arr = _httpHits.get(key);
+    if (!arr) { arr = []; _httpHits.set(key, arr); }
+    // prune
+    while (arr.length && now - arr[0] > windowMs) arr.shift();
+    if (arr.length >= max) return res.status(429).json({ error: 'Too many requests' });
+    arr.push(now);
+    next();
+  };
+}
+// Periodic GC of stale buckets
+setInterval(() => {
+  const cutoff = Date.now() - 5 * 60_000;
+  for (const [k, arr] of _httpHits) {
+    if (!arr.length || arr[arr.length - 1] < cutoff) _httpHits.delete(k);
+  }
+}, 5 * 60_000).unref();
 
 // Same-origin guard for state-changing endpoints (item #9).
 function sameOriginOk(req) {
@@ -1273,7 +1379,7 @@ function sameOriginOk(req) {
   return origin.startsWith(PUBLIC_URL);
 }
 
-app.post('/api/create-checkout', async (req, res) => {
+app.post('/api/create-checkout', httpRateLimit('checkout', 5, 60_000), async (req, res) => {
   if (!sameOriginOk(req)) return res.status(403).json({ error: 'Forbidden' });
   if (!stripe || !PRICE_ID) return res.status(503).json({ error: 'Stripe not configured' });
   try {
@@ -1288,7 +1394,7 @@ app.post('/api/create-checkout', async (req, res) => {
   } catch (e) { log.error({ err: e }, 'create-checkout'); res.status(500).json({ error: 'Internal error' }); }
 });
 
-app.get('/api/verify-purchase', async (req, res) => {
+app.get('/api/verify-purchase', httpRateLimit('verify-purchase', 30, 60_000), async (req, res) => {
   const { session_id } = req.query;
   if (!stripe || !session_id) return res.status(400).json({ error: 'Missing params' });
   if (typeof session_id !== 'string' || session_id.length > 200) return res.status(400).json({ error: 'Bad session id' });
@@ -1311,7 +1417,7 @@ app.get('/api/verify-purchase', async (req, res) => {
   } catch (e) { log.error({ err: e }, 'verify-purchase'); res.status(500).json({ error: 'Internal error' }); }
 });
 
-app.get('/api/verify-token', (req, res) => {
+app.get('/api/verify-token', httpRateLimit('verify-token', 60, 60_000), (req, res) => {
   const { token } = req.query;
   if (typeof token !== 'string' || token.length > 400) return res.status(400).json({ valid: false });
   const parts = token.split(':');

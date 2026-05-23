@@ -893,14 +893,18 @@ document.getElementById('supporter-modal').addEventListener('click', e => {
 checkSupporterUnlock();
 
 
-const LEVEL_XP=[0,50,120,220,360,550,800,1100,1500,2000];
+// Authoritative LEVEL_XP comes from the server (gameConfig event). These
+// fallback values are only used until the first server response so the
+// initial lobby render doesn't break — they MUST match shared/constants.js.
+let LEVEL_XP=[0,50,120,220,360,550,800,1100,1500,2000];
+let MAX_LEVEL=10;
 const LEVEL_ABILITIES={
   2:{name:'Wide Eat',desc:'Eat food from farther away',icon:'👅'},
   4:{name:'Fast Boost',desc:'20% faster when boosting',icon:'💨'},
   6:{name:'Long Shield',desc:'Shield lasts twice as long',icon:'🛡'},
   8:{name:'Ghost Mode',desc:'Pass through other snakes',icon:'👻'},
 };
-function getLevel(xp){for(let i=LEVEL_XP.length-1;i>=0;i--)if(xp>=LEVEL_XP[i])return Math.min(i+1,10);return 1;}
+function getLevel(xp){for(let i=LEVEL_XP.length-1;i>=0;i--)if(xp>=LEVEL_XP[i])return Math.min(i+1,MAX_LEVEL);return 1;}
 
 // ═══ PERSONAL STATS ═════════════════════════════════════════════════════════
 const STATS_KEY='slither_stats_v4';
@@ -1137,6 +1141,11 @@ function sendChat(){const inp=document.getElementById('chat-input');const msg=in
 // ═══ LOBBY ════════════════════════════════════════════════════════════════════
 function loadRooms(){socket.emit('getRooms');}
 socket.on('mapList',maps=>{serverMaps=maps;myBestLevel=loadStats().level||1;buildMapGrid();});
+socket.on('gameConfig',cfg=>{
+  if(Array.isArray(cfg.LEVEL_XP))LEVEL_XP=cfg.LEVEL_XP;
+  if(typeof cfg.MAX_LEVEL==='number')MAX_LEVEL=cfg.MAX_LEVEL;
+  updateStatsUI();buildLevelPanel(loadStats());
+});
 let pendingJoinRoomId=null;
 socket.on('roomList',rooms=>{
   const el=document.getElementById('roomList');
@@ -1509,6 +1518,12 @@ function _angleDiffPx(a, b) { let d=b-a; while(d>Math.PI)d-=2*Math.PI; while(d<-
 
 function tickPrediction(now) {
   if (!_predict.segs || !inGame || spectating) return;
+  // Death fade-out — keep rendering for 500ms then clear so the visual
+  // doesn't snap to nothing while the server-side death overlay catches up.
+  if (_predict.dying) {
+    if (now - _predict.dying > 500) { _predict.segs = null; _predict.dying = 0; }
+    return; // freeze position during fade
+  }
   const dt = Math.min(50, now - _predict.lastFrame); // ms since last frame, capped
   _predict.lastFrame = now;
   const ticks = dt / SVR_TICK_MS; // fractional ticks elapsed
@@ -1568,7 +1583,7 @@ function reconcilePrediction(serverPlayer, W, H) {
 // This makes the snake feel smooth even at 25-50 Hz server tick.
 const _stateBuffer=[];
 const INTERP_DELAY=90; // ms — bigger = smoother but laggier feel
-function _pushState(s){s._t=performance.now();_stateBuffer.push(s);if(_stateBuffer.length>20)_stateBuffer.shift();}
+function _pushState(s){s._t=performance.now();_stateBuffer.push(s);if(_stateBuffer.length>10)_stateBuffer.shift();}
 function _interpEntities(prevList,nextList,t,W,H){
   // Interpolate by id; segments are lerped pairwise. World-wrap teleports are
   // detected by an unusually large delta and skipped.
@@ -1609,8 +1624,13 @@ socket.on('state',s=>{
   if(s.W)W_world=s.W;if(s.H)H_world=s.H;
   // Reconcile prediction against authoritative state
   const _meSv=s.players?.find(p=>p.id===myId);
-  if(_meSv)reconcilePrediction(_meSv,s.W||W_world,s.H||H_world);
-  else _predict.segs=null; // we died — clear prediction
+  if(_meSv){reconcilePrediction(_meSv,s.W||W_world,s.H||H_world);_predict.dying=0;}
+  else if(_predict.segs && !_predict.dying){
+    // Server says we're dead but the client just rendered alive. Don't snap
+    // to nothing — start a 500ms fade so the visual feels like an explosion
+    // instead of teleporting away.
+    _predict.dying = performance.now();
+  }
   // Sync active event from state if no socket event received
   if(s.activeEvent&&!activeEventOverlay){
     activeEventOverlay={...s.activeEvent,...s.activeEvent.data};
@@ -1878,6 +1898,7 @@ function hasPlayerCustomSkin(p){return p.customSkin&&p.customSkin.some(r=>r&&r.s
 
 function drawSnake(p,cam){
   if(!p.segs||p.segs.length<2)return;
+  if(p._dyingAlpha!==undefined&&p._dyingAlpha<=0)return;
   const isMe=p.id===myId,shielded=p.powerup==='shield';
   const isGhost=p.powerup==='ghost_pu'||p.abilities?.includes('ghost');
   const isClone=!!p.isClone;
@@ -1898,8 +1919,10 @@ function drawSnake(p,cam){
 
   ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
 
+  // Dying fade-out (predicted-only ghost while server drops us from state)
+  if(p._dyingAlpha!==undefined)ctx.globalAlpha=p._dyingAlpha;
   // Ghost: translucent + faint blue tint
-  if(isGhost)ctx.globalAlpha=0.38;
+  if(isGhost)ctx.globalAlpha=(ctx.globalAlpha||1)*0.38;
   // Clone: dashed semi-transparent
   if(isClone){ctx.globalAlpha=0.45;ctx.setLineDash([8,5]);}
   // Spawn invulnerability: shimmer (item #40)
@@ -2383,8 +2406,18 @@ function render(){
     _predict.targetAngle=Math.atan2(mouseY-gc.height/2,mouseX-gc.width/2);
     tickPrediction(performance.now());
     if(_predict.segs){
-      // Replace own player's segments with the predicted ones for instant input feel
-      renderPlayers=renderPlayers.map(p=>p.id===myId?{...p,segs:_predict.segs}:p);
+      // Replace own player's segments with the predicted ones for instant input feel.
+      // If we're in the dying state, fabricate a ghost-player entry since the
+      // server has already dropped us from state.players.
+      if(_predict.dying){
+        const ghost={id:myId,name:myName||'',color:lastDeathColor,skin:'solid',segs:_predict.segs,
+          score:0,boosting:false,powerup:null,powerupTick:0,powerupDuration:1,
+          isBot:false,team:null,level:1,xp:0,abilities:[],emote:null,frozen:false,
+          _dyingAlpha:Math.max(0,1-(performance.now()-_predict.dying)/500)};
+        renderPlayers=renderPlayers.concat([ghost]);
+      } else {
+        renderPlayers=renderPlayers.map(p=>p.id===myId?{...p,segs:_predict.segs}:p);
+      }
     }
   }
   const vw=gc.width,vh=gc.height;

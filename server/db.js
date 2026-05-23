@@ -62,7 +62,8 @@ try {
       session_id TEXT PRIMARY KEY,
       user_id INTEGER,
       product TEXT NOT NULL,
-      paid_at INTEGER DEFAULT (strftime('%s','now'))
+      paid_at INTEGER DEFAULT (strftime('%s','now')),
+      verified INTEGER DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS mutes (
       user_id INTEGER NOT NULL,
@@ -72,6 +73,8 @@ try {
   `);
   // Migration: drop legacy JSON column quietly
   try { db.exec('ALTER TABLE stats DROP COLUMN maps_played'); } catch {}
+  // Migration: add the `verified` column to purchases if it doesn't exist yet
+  try { db.exec('ALTER TABLE purchases ADD COLUMN verified INTEGER DEFAULT 0'); } catch {}
 
   log.info('SQLite DB ready');
 } catch (e) {
@@ -126,10 +129,22 @@ function getMapsPlayed(userId) {
   return out;
 }
 
+// Two-step purchase persistence:
+//  1. Stripe webhook calls recordPurchase(sessionId, null, product) — verified=0
+//  2. A logged-in client hits /api/verify-purchase?session_id=... — we then
+//     bind their user_id and flip verified to 1. Only verified rows count
+//     toward entitlements (skins, etc.).
 function recordPurchase(sessionId, userId, product) {
   if (!db) return;
-  db.prepare('INSERT OR IGNORE INTO purchases(session_id, user_id, product) VALUES(?,?,?)')
-    .run(sessionId, userId, product);
+  db.prepare('INSERT OR IGNORE INTO purchases(session_id, user_id, product, verified) VALUES(?,?,?,?)')
+    .run(sessionId, userId || null, product, userId ? 1 : 0);
+}
+
+function bindPurchaseToUser(sessionId, userId) {
+  if (!db || !userId) return false;
+  const r = db.prepare('UPDATE purchases SET user_id=?, verified=1 WHERE session_id=? AND (user_id IS NULL OR user_id=?)')
+    .run(userId, sessionId, userId);
+  return r.changes > 0;
 }
 
 function getPurchase(sessionId) {
@@ -137,7 +152,7 @@ function getPurchase(sessionId) {
 }
 
 function getPurchasesByUser(userId) {
-  return db?.prepare('SELECT * FROM purchases WHERE user_id=?').all(userId) || [];
+  return db?.prepare('SELECT * FROM purchases WHERE user_id=? AND verified=1').all(userId) || [];
 }
 
 function addFriend(userId, friendId) {
@@ -175,7 +190,7 @@ module.exports = {
   getUser, getUserById, getStats, saveStats,
   getAchievements, unlockAchievement,
   incMapPlayed, getMapsPlayed,
-  recordPurchase, getPurchase, getPurchasesByUser,
+  recordPurchase, bindPurchaseToUser, getPurchase, getPurchasesByUser,
   addFriend, removeFriend, listFriends,
   muteUser, listMutes,
 };

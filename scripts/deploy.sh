@@ -100,6 +100,18 @@ prompt SENTRY_DSN "Sentry DSN (blank = disabled)"   ""
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   log "Updating existing checkout"
   git -C "$INSTALL_DIR" fetch --quiet origin
+  # Warn if there are uncommitted local changes — `reset --hard` would silently
+  # erase them. Use FORCE=1 to skip the prompt in automated runs.
+  if [[ -n "$(git -C "$INSTALL_DIR" status --porcelain 2>/dev/null)" ]]; then
+    if [[ "${FORCE:-}" == "1" ]]; then
+      warn "Local changes detected — discarding (FORCE=1)"
+    else
+      warn "Local changes detected in $INSTALL_DIR:"
+      git -C "$INSTALL_DIR" status --short
+      read -rp "Discard them and continue? [y/N] " _ans < /dev/tty
+      [[ "$_ans" =~ ^[Yy] ]] || die "Aborted by user (re-run with FORCE=1 to skip this check)"
+    fi
+  fi
   git -C "$INSTALL_DIR" checkout --quiet "$BRANCH"
   git -C "$INSTALL_DIR" reset --hard --quiet "origin/$BRANCH"
 else
