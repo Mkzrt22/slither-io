@@ -6,12 +6,19 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsc -p tsconfig.test.json && node --test \"dist-test/tests/**/*.test.js\"",
-    "build:web": "tsc -p tsconfig.web.json && cp web/index.html dist-web/web/",
+    "build:web": "tsc -p tsconfig.web.json && cp web/index.html dist-web/index.html",
     "test:e2e": "npm run build:web && node e2e/browser.e2e.mjs",
-    "serve:web": "npm run build:web && npx -y http-server dist-web -p 8080 -c-1 -o /web/"
+    "serve:web": "npm run build:web && npx -y http-server dist-web -p 8080 -c-1 -o /",
+    "sync:mobile": "npm run build:web && npx cap copy"
   },
   "devDependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/ios": "^6.2.1",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.2.1"
   }
 }

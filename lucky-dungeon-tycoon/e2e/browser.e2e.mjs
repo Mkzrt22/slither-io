@@ -63,7 +63,7 @@ try {
   page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
   page.on('pageerror', (err) => consoleErrors.push(`pageerror: ${err.message}`));
 
-  await page.goto(`${base}/web/`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/`, { waitUntil: 'networkidle' });
 
   // Boot: the controller's first state:updated renders a fresh profile.
   await page.waitForFunction(() => document.getElementById('stat-energy').textContent === '30/30');

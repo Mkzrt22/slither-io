@@ -28,6 +28,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - name: Validate mobile asset sync (Capacitor)
+        run: npm run sync:mobile
 
   browser:
     name: Browser end-to-end
