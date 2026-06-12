@@ -5,7 +5,9 @@
   "description": "Framework-agnostic TypeScript core for the Lucky Dungeon Tycoon idle game",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/tests/**/*.test.js\""
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/tests/**/*.test.js\"",
+    "build:web": "tsc -p tsconfig.web.json && cp web/index.html dist-web/web/",
+    "serve:web": "npm run build:web && npx -y http-server dist-web -p 8080 -c-1 -o /web/"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

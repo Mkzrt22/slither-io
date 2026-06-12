@@ -7,7 +7,7 @@
  * signatures, so swapping in real SDK bridges later touches only this file.
  */
 
-import { UserProfile, cloneProfile } from './types';
+import { UserProfile, cloneProfile } from './types.js';
 
 /** Simulated SDK round-trip latency in milliseconds. */
 const AD_SIMULATED_LATENCY_MS = 1_000;

@@ -6,8 +6,8 @@
  * distribution is auditable at a glance and provably sums to 100%.
  */
 
-import { EconomyEngine } from './EconomyEngine';
-import { MAX_SHIELDS, SpinResult, SpinResultType, UserProfile, cloneProfile } from './types';
+import { EconomyEngine } from './EconomyEngine.js';
+import { MAX_SHIELDS, SpinResult, SpinResultType, UserProfile, cloneProfile } from './types.js';
 
 /** Energy price of one spin. */
 const SPIN_ENERGY_COST = 1;

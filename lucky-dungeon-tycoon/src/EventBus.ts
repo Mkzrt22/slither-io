@@ -6,7 +6,7 @@
  * both sides only know this bus and the domain types.
  */
 
-import { SpinResult, UserProfile } from './types';
+import { SpinResult, UserProfile } from './types.js';
 
 /** Severity levels surfaced by toast/banner notifications. */
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';

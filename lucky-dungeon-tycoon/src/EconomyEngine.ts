@@ -7,7 +7,7 @@
  * non-throwing result, because UI render paths must never crash on bad data.
  */
 
-import { DEFAULT_GAME_CONFIG } from './types';
+import { DEFAULT_GAME_CONFIG } from './types.js';
 
 export class EconomyEngine {
   /**

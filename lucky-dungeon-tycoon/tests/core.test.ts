@@ -10,17 +10,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { EconomyEngine } from '../src/EconomyEngine';
-import { SpinEngine } from '../src/SpinEngine';
-import { GameStateManager } from '../src/GameStateManager';
-import { MonetizationBridge } from '../src/MonetizationBridge';
-import { EventBus } from '../src/EventBus';
+import { EconomyEngine } from '../src/EconomyEngine.js';
+import { SpinEngine } from '../src/SpinEngine.js';
+import { GameStateManager } from '../src/GameStateManager.js';
+import { MonetizationBridge } from '../src/MonetizationBridge.js';
+import { EventBus } from '../src/EventBus.js';
 import {
   MAX_SHIELDS,
   UserProfile,
   cloneProfile,
   createDefaultProfile,
-} from '../src/types';
+} from '../src/types.js';
 
 // ---------------------------------------------------------------------------
 // EconomyEngine — curves

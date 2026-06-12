@@ -13,7 +13,7 @@ import {
   UserProfile,
   cloneProfile,
   createDefaultProfile,
-} from './types';
+} from './types.js';
 
 /** Minimal key-value contract satisfied by both DOM Storage and the fallback. */
 interface KeyValueStore {
