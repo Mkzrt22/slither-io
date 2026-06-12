@@ -16,6 +16,7 @@ UI event bus) at the edge. No module imports anything from a view layer.
 | `MonetizationBridge.ts` | Infrastructure | Mock rewarded-ad gateway (1s latency, 95% fill) and gem→energy IAP with non-mutating purchase semantics. |
 | `EventBus.ts` | Infrastructure | Type-safe pub/sub (`state:updated`, `spin:result`, `ui:popup_energy`, `ui:notification`) decoupling model from view. |
 | `GameController.ts` | Application | Orchestrates the engines into use cases (spin, upgrade, buy energy, watch ad), live energy regen loop, offline-log replay; publishes every transition on the bus. |
+| `index.ts` | — | Public barrel export; consumers should import from here only. |
 
 ## View layer (`web/`)
 
@@ -32,11 +33,17 @@ npm run serve:web   # builds and serves http://localhost:8080/web/
 ```sh
 npm install
 npm run typecheck   # strict-mode compile, no emit
-npm test            # 49 unit tests on Node's built-in test runner
+npm test            # 50 unit tests on Node's built-in test runner
+npm run test:e2e    # headless-Chromium e2e (requires Playwright + Chromium)
 ```
 
-Compiles clean under `strict: true`. The test suite (`tests/core.test.ts`)
-covers the economy curves, every formatter tier and degenerate input, all
-spin-band boundaries, raid/shield offline outcomes, anti-tamper state
-sanitisation, monetization paths, and EventBus delivery semantics — all
-deterministic via the injectable RNG and roll parameters.
+Compiles clean under `strict: true`. The unit suites (`tests/`) cover the
+economy curves, every formatter tier and degenerate input, all spin-band
+boundaries, raid/shield offline outcomes, anti-tamper state sanitisation,
+monetization paths, EventBus delivery semantics, and the controller use
+cases — all deterministic via the injectable RNG and roll parameters. The
+browser e2e (`e2e/browser.e2e.mjs`) drives the real UI: boot render, spins,
+the out-of-energy popup, gem purchase, and persistence across reload.
+
+Both run in CI on every change under this directory
+(`.github/workflows/lucky-dungeon-tycoon.yml`).
