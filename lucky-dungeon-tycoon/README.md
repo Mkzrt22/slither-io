@@ -19,7 +19,13 @@ UI event bus) at the edge. No module imports anything from a view layer.
 ## Verifying
 
 ```sh
-tsc --noEmit -p tsconfig.json
+npm install
+npm run typecheck   # strict-mode compile, no emit
+npm test            # 37 unit tests on Node's built-in test runner
 ```
 
-Compiles clean under `strict: true`.
+Compiles clean under `strict: true`. The test suite (`tests/core.test.ts`)
+covers the economy curves, every formatter tier and degenerate input, all
+spin-band boundaries, raid/shield offline outcomes, anti-tamper state
+sanitisation, monetization paths, and EventBus delivery semantics — all
+deterministic via the injectable RNG and roll parameters.
