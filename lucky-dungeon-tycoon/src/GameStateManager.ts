@@ -51,6 +51,13 @@ const RAID_GOLD_TAX = 0.15;
  * corrupted or maliciously rewound clock cannot mint unbounded regen time.
  */
 const MAX_OFFLINE_SECONDS = 7 * 24 * 60 * 60;
+/**
+ * Absolute ceiling for loaded energy. Purchased energy intentionally
+ * overfills past maxEnergy and must survive a restart, so the anti-tamper
+ * clamp cannot use maxEnergy itself; this bound merely keeps a hand-edited
+ * save from minting unbounded spins.
+ */
+const ENERGY_ABSOLUTE_CAP = 999;
 
 export class GameStateManager {
   private readonly store: KeyValueStore;
@@ -233,7 +240,10 @@ export class GameStateManager {
       id,
       gold: this.toBoundedNumber(raw.gold, defaults.gold),
       gems: this.toBoundedInt(raw.gems, defaults.gems),
-      energy: Math.min(this.toBoundedInt(raw.energy, defaults.energy), maxEnergy),
+      energy: Math.min(
+        this.toBoundedInt(raw.energy, defaults.energy),
+        ENERGY_ABSOLUTE_CAP,
+      ),
       maxEnergy,
       dungeonLevel: this.toBoundedInt(raw.dungeonLevel, defaults.dungeonLevel),
       shields: Math.min(this.toBoundedInt(raw.shields, defaults.shields), MAX_SHIELDS),

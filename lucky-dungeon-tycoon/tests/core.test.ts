@@ -301,7 +301,7 @@ test('tampered fields are clamped to their documented domains', () => {
     id: 'ldt_player',
     gold: -9_999,            // negative -> default 0
     gems: 12.9,              // fractional -> floored
-    energy: 500,             // over cap -> clamped to maxEnergy
+    energy: 5_000,           // beyond the absolute cap -> clamped to 999
     maxEnergy: 40,
     dungeonLevel: 'hacked',  // wrong type -> default 0
     shields: 99,             // over cap -> clamped to MAX_SHIELDS
@@ -312,10 +312,23 @@ test('tampered fields are clamped to their documented domains', () => {
   assert.equal(state.id, 'ldt_player');
   assert.equal(state.gold, 0);
   assert.equal(state.gems, 12);
-  assert.equal(state.energy, 40);
+  assert.equal(state.energy, 999);
   assert.equal(state.maxEnergy, 40);
   assert.equal(state.dungeonLevel, 0);
   assert.equal(state.shields, MAX_SHIELDS);
+});
+
+test('purchased energy overfill survives a save/load cycle', () => {
+  const store = new FakeStore();
+  const gsm = new GameStateManager('key', neverRaid, store);
+  const state = gsm.loadState();
+
+  const purchased = MonetizationBridge.buyEnergyWithGems(state); // 30 -> 80
+  gsm.saveState(purchased);
+
+  const reloaded = gsm.loadState();
+  assert.equal(reloaded.energy, 80);
+  assert.equal(reloaded.maxEnergy, 30);
 });
 
 test('future-dated save timestamps grant zero offline credit', () => {

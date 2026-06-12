@@ -7,6 +7,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsc -p tsconfig.test.json && node --test \"dist-test/tests/**/*.test.js\"",
     "build:web": "tsc -p tsconfig.web.json && cp web/index.html dist-web/web/",
+    "test:e2e": "npm run build:web && node e2e/browser.e2e.mjs",
     "serve:web": "npm run build:web && npx -y http-server dist-web -p 8080 -c-1 -o /web/"
   },
   "devDependencies": {
