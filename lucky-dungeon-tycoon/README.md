@@ -28,6 +28,18 @@ rules live in the view. Run it with:
 npm run serve:web   # builds and serves http://localhost:8080/
 ```
 
+## Play from a phone (PWA — no app store needed)
+
+The web build is an installable PWA, deployed automatically to GitHub Pages
+by `.github/workflows/deploy-pages.yml` on every push to `main` (and the
+development branch):
+
+> **https://mkzrt22.github.io/slither-io/**
+
+On iPhone: open the URL in Safari → Share → **Add to Home Screen**. The game
+launches fullscreen with its own icon, works offline after the first visit
+(service worker), and saves progress in localStorage.
+
 ## iOS & Android (`ios/`, `android/`)
 
 The same web build ships as native apps through [Capacitor](https://capacitorjs.com)
