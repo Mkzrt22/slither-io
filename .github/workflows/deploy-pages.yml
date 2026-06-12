@@ -1,0 +1,46 @@
+name: Deploy Lucky Dungeon Tycoon (GitHub Pages)
+
+on:
+  push:
+    branches:
+      - main
+      - claude/lucky-dungeon-tycoon-core-z2d07k
+    paths:
+      - 'lucky-dungeon-tycoon/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lucky-dungeon-tycoon/package-lock.json
+      - run: npm ci
+        working-directory: lucky-dungeon-tycoon
+      - run: npm run build:web
+        working-directory: lucky-dungeon-tycoon
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: lucky-dungeon-tycoon/dist-web
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -28,7 +28,13 @@ function loadPlaywright() {
 }
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist-web');
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+const MIME = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.webmanifest': 'application/manifest+json',
+  '.png': 'image/png',
+};
 
 const server = createServer(async (req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
