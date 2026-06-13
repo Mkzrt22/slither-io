@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
@@ -18,11 +18,13 @@
       --panel-edge: #3b2d5c;
       --gold: #f6c244;
       --gem: #5fd4f5;
+      --relic: #c08af5;
       --text: #efe9ff;
       --muted: #9b8fc0;
       --success: #6fe08a;
       --warning: #f0a84b;
       --error: #f06d6d;
+      --hp: #f06d6d;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
@@ -32,48 +34,60 @@
       font-family: "Segoe UI", system-ui, sans-serif;
       display: flex;
       justify-content: center;
+      padding-bottom: env(safe-area-inset-bottom);
     }
     main {
       width: 100%;
-      max-width: 420px;
-      padding: 16px;
+      max-width: 430px;
+      padding: 12px 14px 84px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
     }
     h1 {
       text-align: center;
-      font-size: 1.35rem;
+      font-size: 1.15rem;
       letter-spacing: 0.08em;
       color: var(--gold);
       text-shadow: 0 2px 8px rgba(246, 194, 68, 0.35);
     }
     .stats {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 6px;
     }
     .stat {
       background: var(--panel);
       border: 1px solid var(--panel-edge);
       border-radius: 10px;
-      padding: 8px 4px;
+      padding: 7px 4px;
       text-align: center;
     }
-    .stat .label { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; }
-    .stat .value { font-size: 0.95rem; font-weight: 700; margin-top: 2px; display: block; }
+    .stat .label { font-size: 0.58rem; color: var(--muted); text-transform: uppercase; }
+    .stat .value { font-size: 0.9rem; font-weight: 700; margin-top: 2px; display: block; }
     #stat-gold { color: var(--gold); }
     #stat-gems { color: var(--gem); }
+    #stat-relics { color: var(--relic); }
+    #stat-rate { color: var(--success); }
+    section.tab { display: none; flex-direction: column; gap: 12px; }
+    section.tab.active { display: flex; }
     #reel {
       background: var(--panel);
       border: 2px solid var(--panel-edge);
       border-radius: 16px;
-      min-height: 110px;
+      min-height: 96px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.6rem;
+      gap: 18px;
+      font-size: 2.4rem;
       font-weight: 800;
+    }
+    #reel-label {
+      text-align: center;
+      min-height: 1.2em;
+      font-size: 0.85rem;
+      color: var(--muted);
     }
     .reel-pop { animation: pop 0.45s ease-out; }
     @keyframes pop {
@@ -84,8 +98,8 @@
     button {
       border: none;
       border-radius: 12px;
-      padding: 14px;
-      font-size: 1rem;
+      padding: 13px;
+      font-size: 0.98rem;
       font-weight: 700;
       color: #1c142e;
       background: var(--gold);
@@ -94,14 +108,26 @@
     }
     button:active { transform: scale(0.98); }
     button:disabled { filter: grayscale(0.8) brightness(0.6); cursor: not-allowed; }
-    #btn-spin { font-size: 1.25rem; padding: 18px; }
+    #btn-spin { font-size: 1.2rem; padding: 16px; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .row button { background: var(--panel); color: var(--text); border: 1px solid var(--panel-edge); }
+    .row button, .ghost { background: var(--panel); color: var(--text); border: 1px solid var(--panel-edge); }
     #btn-upgrade { background: #4a3a7a; color: var(--text); }
+    #boss-panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-edge);
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #boss-title { font-size: 0.85rem; font-weight: 700; }
+    .hp-track { background: rgba(0,0,0,0.4); border-radius: 8px; height: 14px; overflow: hidden; }
+    #boss-hp-fill { background: var(--hp); height: 100%; width: 100%; transition: width 0.3s; }
     #log {
       list-style: none;
-      font-size: 0.8rem;
-      min-height: 120px;
+      font-size: 0.78rem;
+      min-height: 96px;
       background: rgba(0, 0, 0, 0.25);
       border-radius: 10px;
       padding: 10px;
@@ -113,6 +139,59 @@
     .log-success { color: var(--success); }
     .log-warning { color: var(--warning); }
     .log-error { color: var(--error); }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--panel-edge);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card .info { flex: 1; min-width: 0; }
+    .card .name { font-weight: 700; font-size: 0.9rem; }
+    .card .desc { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .card button { padding: 10px 12px; font-size: 0.82rem; white-space: nowrap; }
+    .progress-track { background: rgba(0,0,0,0.4); border-radius: 6px; height: 6px; overflow: hidden; margin-top: 6px; }
+    .progress-fill { background: var(--gem); height: 100%; transition: width 0.3s; }
+    .panel-note { font-size: 0.8rem; color: var(--muted); text-align: center; padding: 0 8px; }
+    nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      background: rgba(20, 16, 31, 0.96);
+      border-top: 1px solid var(--panel-edge);
+      padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+      backdrop-filter: blur(8px);
+    }
+    nav .tabs { display: flex; width: 100%; max-width: 430px; }
+    nav button {
+      flex: 1;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.72rem;
+      padding: 6px 2px;
+      border-radius: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    nav button .icon { font-size: 1.25rem; }
+    nav button.active { color: var(--gold); }
+    nav button .badge {
+      position: absolute;
+      transform: translate(16px, -2px);
+      background: var(--error);
+      color: #fff;
+      font-size: 0.6rem;
+      border-radius: 8px;
+      padding: 1px 5px;
+      display: none;
+    }
     #energy-popup {
       position: fixed;
       inset: 0;
@@ -121,6 +200,7 @@
       align-items: center;
       justify-content: center;
       padding: 24px;
+      z-index: 10;
     }
     #energy-popup.visible { display: flex; }
     .popup-card {
@@ -144,33 +224,86 @@
   <main>
     <h1>⚒ LUCKY DUNGEON TYCOON ⚒</h1>
 
-    <section class="stats" aria-label="Player resources">
-      <div class="stat"><span class="label">Gold</span><span class="value" id="stat-gold">0</span></div>
-      <div class="stat"><span class="label">Gems</span><span class="value" id="stat-gems">0</span></div>
-      <div class="stat"><span class="label">Energy</span><span class="value" id="stat-energy">0/0</span></div>
-      <div class="stat"><span class="label">Level</span><span class="value" id="stat-level">0</span></div>
-      <div class="stat"><span class="label">Shields</span><span class="value" id="stat-shields">0/3</span></div>
+    <section class="stats" aria-label="Ressources">
+      <div class="stat"><span class="label">Or</span><span class="value" id="stat-gold">0</span></div>
+      <div class="stat"><span class="label">Gemmes</span><span class="value" id="stat-gems">0</span></div>
+      <div class="stat"><span class="label">Énergie</span><span class="value" id="stat-energy">0/0</span></div>
+      <div class="stat"><span class="label">Étage</span><span class="value" id="stat-level">1</span></div>
+      <div class="stat"><span class="label">Or/s</span><span class="value" id="stat-rate">0</span></div>
+      <div class="stat"><span class="label">Reliques</span><span class="value" id="stat-relics">0</span></div>
+      <div class="stat"><span class="label">Boucliers</span><span class="value" id="stat-shields">0/3</span></div>
+      <div class="stat"><span class="label">Mineurs</span><span class="value" id="stat-miners">0</span></div>
     </section>
 
-    <div id="reel">Pull the lever!</div>
+    <!-- ===================== Onglet MINE ===================== -->
+    <section id="tab-mine" class="tab active">
+      <div id="boss-panel" hidden>
+        <div id="boss-title">Gardien de l’étage</div>
+        <div class="hp-track"><div id="boss-hp-fill"></div></div>
+      </div>
 
-    <button id="btn-spin">🎰 SPIN (1 ⚡)</button>
-    <button id="btn-upgrade">⬆ Upgrade</button>
-    <div class="row">
-      <button id="btn-buy-energy">💎 +50 Energy (10)</button>
-      <button id="btn-watch-ad">📺 Ad: +10 Energy</button>
-    </div>
+      <div id="reel"><span>❔</span><span>❔</span><span>❔</span></div>
+      <div id="reel-label">Tirez le levier !</div>
 
-    <ul id="log" aria-label="Event log"></ul>
+      <button id="btn-spin">🎰 SPIN (1 ⚡)</button>
+      <button id="btn-boss" class="ghost">⚔️ Défier le gardien de l’étage</button>
+      <button id="btn-upgrade">⬆ Améliorer la mine</button>
+      <div class="row">
+        <button id="btn-buy-energy">💎 +50 Énergie (10)</button>
+        <button id="btn-watch-ad">📺 Pub : +10 Énergie</button>
+      </div>
+
+      <ul id="log" aria-label="Journal"></ul>
+    </section>
+
+    <!-- ===================== Onglet MINEURS ===================== -->
+    <section id="tab-miners" class="tab">
+      <p class="panel-note">Les mineurs extraient de l’or en continu — même quand le jeu est fermé (à mi-régime, 8 h max).</p>
+      <div id="miners-list"></div>
+    </section>
+
+    <!-- ===================== Onglet QUÊTES ===================== -->
+    <section id="tab-quests" class="tab">
+      <p class="panel-note">Accomplissez des hauts faits pour gagner des gemmes.</p>
+      <div id="quests-list"></div>
+    </section>
+
+    <!-- ===================== Onglet ASCENSION ===================== -->
+    <section id="tab-prestige" class="tab">
+      <p class="panel-note" id="prestige-note"></p>
+      <div class="card">
+        <div class="info">
+          <div class="name">✨ Ascension</div>
+          <div class="desc">Réinitialise or, mineurs, étages et améliorations. Conserve gemmes, boucliers et reliques. Chaque relique : +10 % d’or, pour toujours.</div>
+          <div class="progress-track"><div class="progress-fill" id="prestige-progress"></div></div>
+        </div>
+        <button id="btn-ascend">Ascendre</button>
+      </div>
+      <div class="card">
+        <div class="info">
+          <div class="name">📜 Statistiques</div>
+          <div class="desc" id="stats-summary"></div>
+        </div>
+      </div>
+    </section>
   </main>
+
+  <nav aria-label="Navigation">
+    <div class="tabs">
+      <button data-tab="tab-mine" class="active"><span class="icon">⛏️</span>Mine</button>
+      <button data-tab="tab-miners"><span class="icon">👷</span>Mineurs</button>
+      <button data-tab="tab-quests"><span class="badge" id="quests-badge"></span><span class="icon">📜</span>Quêtes</button>
+      <button data-tab="tab-prestige"><span class="icon">✨</span>Ascension</button>
+    </div>
+  </nav>
 
   <div id="energy-popup" role="dialog" aria-modal="true" aria-labelledby="popup-title">
     <div class="popup-card">
-      <h2 id="popup-title">Out of Energy!</h2>
-      <p>Energy refills 1 every 5 minutes — or top up now:</p>
-      <button id="btn-popup-buy">💎 Buy 50 Energy (10 gems)</button>
-      <button id="btn-popup-ad">📺 Watch Ad (+10 energy)</button>
-      <button id="btn-popup-close">Wait it out</button>
+      <h2 id="popup-title">Plus d’énergie !</h2>
+      <p>L’énergie revient 1 toutes les 5 minutes — ou rechargez :</p>
+      <button id="btn-popup-buy">💎 50 énergie (10 gemmes)</button>
+      <button id="btn-popup-ad">📺 Pub (+10 énergie)</button>
+      <button id="btn-popup-close">Attendre</button>
     </div>
   </div>
 

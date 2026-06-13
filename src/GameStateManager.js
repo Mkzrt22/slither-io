@@ -6,7 +6,8 @@
  * sanitisation of everything read from storage. Storage is user-writable on
  * mobile, so every loaded value is treated as hostile until clamped.
  */
-import { DEFAULT_GAME_CONFIG, MAX_SHIELDS, cloneProfile, createDefaultProfile, } from './types.js';
+import { EconomyEngine } from './EconomyEngine.js';
+import { DEFAULT_GAME_CONFIG, MAX_SHIELDS, MINER_TIERS, cloneProfile, createDefaultProfile, createEmptyMiners, createEmptyStats, creditGold, } from './types.js';
 /** In-memory store used when no DOM localStorage exists (tests, Node, SSR). */
 class MemoryStore {
     constructor() {
@@ -41,6 +42,10 @@ const MAX_OFFLINE_SECONDS = 7 * 24 * 60 * 60;
  * save from minting unbounded spins.
  */
 const ENERGY_ABSOLUTE_CAP = 999;
+/** Miners only dig at half speed while the player is away... */
+const OFFLINE_PASSIVE_EFFICIENCY = 0.5;
+/** ...and only for the first 8 hours of any absence. */
+const MAX_OFFLINE_PASSIVE_SECONDS = 8 * 60 * 60;
 export class GameStateManager {
     /**
      * @param storageKey localStorage key under which the profile is persisted.
@@ -91,7 +96,9 @@ export class GameStateManager {
      *
      *  1. Energy regen: +1 energy per `energyRegenTimeSeconds` (300s), capped
      *     at `maxEnergy`.
-     *  2. Offline Raid Determinator: if the window is >= 4 hours, there is a
+     *  2. Passive income: miners keep digging at half efficiency while the
+     *     game is closed, credited for at most 8 hours per absence.
+     *  3. Offline Raid Determinator: if the window is >= 4 hours, there is a
      *     70% chance of an enemy AI attack. A shield (if any) absorbs it;
      *     otherwise the raid steals 15% of the player's gold.
      *
@@ -111,7 +118,17 @@ export class GameStateManager {
             next.energy += granted;
             logs.push(`Recovered ${granted} energy while away`);
         }
-        // --- 2. Offline Raid Determinator ---------------------------------------
+        // --- 2. Offline passive income -------------------------------------------
+        const passiveSeconds = Math.min(safeSeconds, MAX_OFFLINE_PASSIVE_SECONDS);
+        const rate = EconomyEngine.getPassiveRate(next);
+        if (rate > 0 && passiveSeconds > 0) {
+            const earned = Math.floor(rate * passiveSeconds * OFFLINE_PASSIVE_EFFICIENCY);
+            if (earned > 0) {
+                creditGold(next, earned);
+                logs.push(`Vos mineurs ont extrait ${EconomyEngine.formatCurrency(earned)} or pendant votre absence`);
+            }
+        }
+        // --- 3. Offline Raid Determinator ---------------------------------------
         if (safeSeconds >= RAID_THRESHOLD_SECONDS) {
             const raidOccurred = this.rng() < RAID_CHANCE;
             if (raidOccurred) {
@@ -191,8 +208,52 @@ export class GameStateManager {
             maxEnergy,
             dungeonLevel: this.toBoundedInt(raw.dungeonLevel, defaults.dungeonLevel),
             shields: Math.min(this.toBoundedInt(raw.shields, defaults.shields), MAX_SHIELDS),
+            floor: Math.max(1, this.toBoundedInt(raw.floor, defaults.floor)),
+            bossHp: this.toBossHp(raw.bossHp),
+            miners: this.toMiners(raw.miners),
+            relics: this.toBoundedInt(raw.relics, defaults.relics),
+            stats: this.toStats(raw.stats),
+            claimedQuests: this.toStringArray(raw.claimedQuests),
             lastSaveTimestamp: this.toTimestamp(raw.lastSaveTimestamp, now),
         };
+    }
+    /** Active boss HP: a finite positive number, or null (no fight). */
+    toBossHp(value) {
+        if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+            return Math.floor(value);
+        }
+        return null;
+    }
+    /** Miner roster: each tier clamped to a non-negative integer. */
+    toMiners(value) {
+        const miners = createEmptyMiners();
+        if (typeof value === 'object' && value !== null) {
+            const raw = value;
+            for (const tier of MINER_TIERS) {
+                miners[tier] = this.toBoundedInt(raw[tier], 0);
+            }
+        }
+        return miners;
+    }
+    /** Lifetime counters: each clamped to a non-negative finite number. */
+    toStats(value) {
+        const stats = createEmptyStats();
+        if (typeof value === 'object' && value !== null) {
+            const raw = value;
+            stats.goldEarnedRun = this.toBoundedNumber(raw.goldEarnedRun, 0);
+            stats.goldEarnedAll = this.toBoundedNumber(raw.goldEarnedAll, 0);
+            stats.totalSpins = this.toBoundedInt(raw.totalSpins, 0);
+            stats.bossesKilled = this.toBoundedInt(raw.bossesKilled, 0);
+            stats.prestiges = this.toBoundedInt(raw.prestiges, 0);
+        }
+        return stats;
+    }
+    /** Claimed-quest ids: strings only, deduplicated. */
+    toStringArray(value) {
+        if (!Array.isArray(value)) {
+            return [];
+        }
+        return [...new Set(value.filter((v) => typeof v === 'string'))];
     }
     /** Finite, non-negative number; otherwise the fallback. */
     toBoundedNumber(value, fallback) {

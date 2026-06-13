@@ -6,7 +6,22 @@
  * numeric input (including NaN, ±Infinity and negatives) produces a defined,
  * non-throwing result, because UI render paths must never crash on bad data.
  */
-import { DEFAULT_GAME_CONFIG } from './types.js';
+import { DEFAULT_GAME_CONFIG, MINER_TIERS } from './types.js';
+export const MINER_CONFIGS = Object.freeze({
+    goblin: { name: 'Mineur gobelin', baseCost: 50, costGrowth: 1.15, baseRate: 1 },
+    skeleton: { name: 'Fossoyeur squelette', baseCost: 600, costGrowth: 1.17, baseRate: 9 },
+    golem: { name: 'Golem de forage', baseCost: 8000, costGrowth: 1.19, baseRate: 65 },
+    dragon: { name: 'Dragon thésauriseur', baseCost: 110000, costGrowth: 1.21, baseRate: 420 },
+});
+/** Gold multiplier gained per dungeon floor beyond the first. */
+const FLOOR_GOLD_GROWTH = 1.3;
+/** Permanent gold multiplier granted by each prestige relic. */
+const RELIC_BONUS = 0.1;
+/** Boss HP at floor 1; grows faster than gold so upgrades stay relevant. */
+const BOSS_BASE_HP = 300;
+const BOSS_HP_GROWTH = 2.2;
+/** Gold-earned-this-run required before ascension unlocks. */
+export const PRESTIGE_THRESHOLD = 1000000;
 export class EconomyEngine {
     /**
      * Cost of upgrading from `level` to `level + 1`.
@@ -80,6 +95,59 @@ export class EconomyEngine {
         // such as 999.9999999 scaling to a 1000.00 display value.
         const truncated = Math.min(Math.floor(scaled * 100) / 100, 999.99);
         return sign + truncated.toFixed(2) + EconomyEngine.SUFFIXES[tier];
+    }
+    // -------------------------------------------------------------------------
+    // v2 economy: floors, relics, miners, bosses, prestige
+    // -------------------------------------------------------------------------
+    /** Gold multiplier from the current floor: 1.3^(floor-1). */
+    static getFloorMultiplier(floor) {
+        const safeFloor = Math.max(1, EconomyEngine.sanitizeLevel(floor));
+        return Math.pow(FLOOR_GOLD_GROWTH, safeFloor - 1);
+    }
+    /** Permanent gold multiplier from prestige relics: 1 + 0.1/relic. */
+    static getRelicMultiplier(relics) {
+        return 1 + RELIC_BONUS * EconomyEngine.sanitizeLevel(relics);
+    }
+    /** Combined global gold multiplier for a profile. */
+    static getGlobalMultiplier(state) {
+        return (EconomyEngine.getFloorMultiplier(state.floor) *
+            EconomyEngine.getRelicMultiplier(state.relics));
+    }
+    /** Cost of the next unit of `tier` given how many are already owned. */
+    static getMinerCost(tier, owned) {
+        const cfg = MINER_CONFIGS[tier];
+        return Math.round(cfg.baseCost * Math.pow(cfg.costGrowth, EconomyEngine.sanitizeLevel(owned)));
+    }
+    /**
+     * Total passive income in gold/second for a profile, with floor and relic
+     * multipliers applied.
+     */
+    static getPassiveRate(state) {
+        let rate = 0;
+        for (const tier of MINER_TIERS) {
+            rate += MINER_CONFIGS[tier].baseRate * Math.max(0, state.miners[tier]);
+        }
+        return rate * EconomyEngine.getGlobalMultiplier(state);
+    }
+    /** Max HP of the boss guarding `floor`: 300 * 2.2^(floor-1). */
+    static getBossMaxHp(floor) {
+        const safeFloor = Math.max(1, EconomyEngine.sanitizeLevel(floor));
+        return Math.round(BOSS_BASE_HP * Math.pow(BOSS_HP_GROWTH, safeFloor - 1));
+    }
+    /** Gems found in the chest dropped by the boss of `floor`. */
+    static getBossReward(floor) {
+        return 3 + Math.max(1, EconomyEngine.sanitizeLevel(floor));
+    }
+    /**
+     * Relics granted by ascending now: sub-linear in gold earned this run so
+     * each prestige pushes the next threshold meaningfully further. Returns 0
+     * when the run has not reached the prestige threshold.
+     */
+    static getPrestigeRelics(goldEarnedRun) {
+        if (!Number.isFinite(goldEarnedRun) || goldEarnedRun < PRESTIGE_THRESHOLD) {
+            return 0;
+        }
+        return Math.max(1, Math.floor(Math.pow(goldEarnedRun / PRESTIGE_THRESHOLD, 0.45)));
     }
     /** Clamps a level to a non-negative integer; non-finite input becomes 0. */
     static sanitizeLevel(level) {

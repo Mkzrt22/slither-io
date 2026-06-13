@@ -4,6 +4,12 @@
  * Pure domain layer: no imports, no side effects. Every other module in the
  * architecture depends on this file; this file depends on nothing.
  */
+export const MINER_TIERS = [
+    'goblin',
+    'skeleton',
+    'golem',
+    'dragon',
+];
 /** Canonical default configuration used by the engines below. */
 export const DEFAULT_GAME_CONFIG = Object.freeze({
     baseGoldCost: 100,
@@ -14,6 +20,20 @@ export const DEFAULT_GAME_CONFIG = Object.freeze({
 });
 /** Maximum number of shields a player may stockpile. */
 export const MAX_SHIELDS = 3;
+/** Empty miner roster (all tiers at zero). */
+export function createEmptyMiners() {
+    return { goblin: 0, skeleton: 0, golem: 0, dragon: 0 };
+}
+/** Zeroed lifetime counters. */
+export function createEmptyStats() {
+    return {
+        goldEarnedRun: 0,
+        goldEarnedAll: 0,
+        totalSpins: 0,
+        bossesKilled: 0,
+        prestiges: 0,
+    };
+}
 /**
  * Creates a brand-new, fully valid profile for a first-session player.
  * Centralised here so every layer (storage, tests, tooling) initialises
@@ -28,6 +48,12 @@ export function createDefaultProfile(now = Date.now()) {
         maxEnergy: 30,
         dungeonLevel: 0,
         shields: 0,
+        floor: 1,
+        bossHp: null,
+        miners: createEmptyMiners(),
+        relics: 0,
+        stats: createEmptyStats(),
+        claimedQuests: [],
         lastSaveTimestamp: now,
     };
 }
@@ -40,9 +66,8 @@ function generateProfileId() {
     return `ldt_${Date.now().toString(36)}_${rand()}${rand()}`;
 }
 /**
- * Returns a deep copy of a profile. UserProfile is intentionally flat, so a
- * field-by-field copy is both exhaustive and cheap. If a field is ever added
- * to UserProfile, the compiler forces this function to be updated.
+ * Returns a deep copy of a profile, field by field, so the compiler forces
+ * this function to be updated whenever the profile shape changes.
  */
 export function cloneProfile(state) {
     return {
@@ -53,6 +78,36 @@ export function cloneProfile(state) {
         maxEnergy: state.maxEnergy,
         dungeonLevel: state.dungeonLevel,
         shields: state.shields,
+        floor: state.floor,
+        bossHp: state.bossHp,
+        miners: {
+            goblin: state.miners.goblin,
+            skeleton: state.miners.skeleton,
+            golem: state.miners.golem,
+            dragon: state.miners.dragon,
+        },
+        relics: state.relics,
+        stats: {
+            goldEarnedRun: state.stats.goldEarnedRun,
+            goldEarnedAll: state.stats.goldEarnedAll,
+            totalSpins: state.stats.totalSpins,
+            bossesKilled: state.stats.bossesKilled,
+            prestiges: state.stats.prestiges,
+        },
+        claimedQuests: [...state.claimedQuests],
         lastSaveTimestamp: state.lastSaveTimestamp,
     };
+}
+/**
+ * Credits gold to a profile, updating the lifetime counters that quests and
+ * prestige read. Every gold *gain* in the game must flow through here;
+ * steals/penalties debit `gold` directly and never touch the counters.
+ */
+export function creditGold(state, amount) {
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return;
+    }
+    state.gold += amount;
+    state.stats.goldEarnedRun += amount;
+    state.stats.goldEarnedAll += amount;
 }

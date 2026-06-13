@@ -1,21 +1,23 @@
 /**
- * GameController.ts — Application Layer (Lucky Dungeon Tycoon)
+ * GameController.ts — Application Layer (Lucky Dungeon Tycoon v2)
  *
  * Orchestrates the domain engines into the player-facing use cases (spin,
- * upgrade, refill energy, watch ad) and publishes every state transition on
- * the EventBus. The controller knows nothing about the DOM; the View layer
- * knows nothing about the engines — they meet only at the bus.
+ * upgrade, miners, boss fights, prestige, quests, refills) and publishes
+ * every state transition on the EventBus. The controller knows nothing about
+ * the DOM; the View layer knows nothing about the engines — they meet only
+ * at the bus.
  */
-import { EconomyEngine } from './EconomyEngine.js';
+import { EconomyEngine, PRESTIGE_THRESHOLD } from './EconomyEngine.js';
 import { gameEvents } from './EventBus.js';
 import { GameStateManager } from './GameStateManager.js';
 import { MonetizationBridge } from './MonetizationBridge.js';
-import { SpinEngine } from './SpinEngine.js';
-import { DEFAULT_GAME_CONFIG, cloneProfile, } from './types.js';
+import { QuestEngine } from './QuestEngine.js';
+import { SlotEngine } from './SlotEngine.js';
+import { DEFAULT_GAME_CONFIG, cloneProfile, createEmptyMiners, creditGold, } from './types.js';
 /** Energy granted for a completed rewarded ad. */
 const AD_ENERGY_REWARD = 10;
-/** How often the live regen loop checks for accrued energy. */
-const REGEN_POLL_INTERVAL_MS = 1000;
+/** How often the live loop ticks (regen + passive income). */
+const TICK_INTERVAL_MS = 1000;
 export class GameController {
     /**
      * Loads (or initialises) the profile and announces it. Offline events that
@@ -26,12 +28,15 @@ export class GameController {
         this.stateManager = stateManager;
         this.bus = bus;
         this.now = now;
-        this.regenTimer = null;
+        /** Sub-1-gold passive income carried between ticks. */
+        this.passiveCarry = 0;
+        this.tickTimer = null;
         /** Guards against double-granting overlapping rewarded-ad requests. */
         this.adInFlight = false;
         const { state, logs } = this.stateManager.loadStateWithLogs();
         this.state = state;
         this.regenAnchorMs = this.now();
+        this.passiveAnchorMs = this.now();
         this.bus.emit('state:updated', cloneProfile(this.state));
         for (const message of logs) {
             this.bus.emit('ui:notification', {
@@ -44,15 +49,18 @@ export class GameController {
     getState() {
         return cloneProfile(this.state);
     }
+    // ---------------------------------------------------------------------------
+    // Use case: spin
+    // ---------------------------------------------------------------------------
     /**
-     * Use case: pull the lever. On success the result is broadcast for the
-     * slot animation; with no energy the refill popup is requested instead and
-     * null is returned.
+     * Pull the lever. On success the result is broadcast for the slot
+     * animation; with no energy the refill popup is requested instead and null
+     * is returned. Boss kills triggered by sword damage resolve inline.
      */
-    spin(roll) {
+    spin(rolls) {
         let result;
         try {
-            result = SpinEngine.executeSpin(this.state, roll);
+            result = SlotEngine.executeSpin(this.state, rolls);
         }
         catch {
             this.bus.emit('ui:popup_energy', {
@@ -61,24 +69,26 @@ export class GameController {
             });
             return null;
         }
+        if (this.state.bossHp !== null && this.state.bossHp <= 0) {
+            this.resolveBossKill();
+        }
         this.persistAndAnnounce();
         this.bus.emit('spin:result', result);
         return result;
     }
+    // ---------------------------------------------------------------------------
+    // Use case: dungeon upgrade
+    // ---------------------------------------------------------------------------
     /** Cost of the next dungeon upgrade, for rendering the upgrade button. */
     getNextUpgradeCost() {
         return EconomyEngine.getUpgradeCost(this.state.dungeonLevel);
     }
-    /**
-     * Use case: buy the next dungeon level with gold. Returns true when the
-     * upgrade was applied; an unaffordable upgrade emits a warning and changes
-     * nothing.
-     */
+    /** Buys the next payout level with gold. False when unaffordable. */
     upgradeDungeon() {
         const cost = this.getNextUpgradeCost();
         if (this.state.gold < cost) {
             this.bus.emit('ui:notification', {
-                message: `Upgrade requires ${EconomyEngine.formatCurrency(cost)} gold`,
+                message: `Amélioration : il faut ${EconomyEngine.formatCurrency(cost)} or`,
                 severity: 'warning',
             });
             return false;
@@ -87,15 +97,143 @@ export class GameController {
         this.state.dungeonLevel += 1;
         this.persistAndAnnounce();
         this.bus.emit('ui:notification', {
-            message: `Dungeon upgraded to level ${this.state.dungeonLevel}!`,
+            message: `Mine améliorée au niveau ${this.state.dungeonLevel} !`,
             severity: 'success',
         });
         return true;
     }
+    // ---------------------------------------------------------------------------
+    // Use case: miners (passive income)
+    // ---------------------------------------------------------------------------
+    /** Cost of the next unit of `tier` for the hire button. */
+    getMinerCost(tier) {
+        return EconomyEngine.getMinerCost(tier, this.state.miners[tier]);
+    }
+    /** Hires one unit of `tier` with gold. False when unaffordable. */
+    hireMiner(tier) {
+        const cost = this.getMinerCost(tier);
+        if (this.state.gold < cost) {
+            this.bus.emit('ui:notification', {
+                message: `Recrutement : il faut ${EconomyEngine.formatCurrency(cost)} or`,
+                severity: 'warning',
+            });
+            return false;
+        }
+        this.state.gold -= cost;
+        this.state.miners[tier] += 1;
+        this.persistAndAnnounce();
+        return true;
+    }
+    // ---------------------------------------------------------------------------
+    // Use case: boss fights & floors
+    // ---------------------------------------------------------------------------
     /**
-     * Use case: spend gems on the 50-energy pack. Returns true on success; a
-     * declined purchase (insufficient gems) emits an error notification.
+     * Engages the boss of the current floor. While the fight is active, sword
+     * symbols deal damage; defeating the boss advances the floor and drops a
+     * gem chest. Idempotent when a fight is already running.
      */
+    startBossFight() {
+        if (this.state.bossHp !== null) {
+            return false;
+        }
+        this.state.bossHp = EconomyEngine.getBossMaxHp(this.state.floor);
+        this.persistAndAnnounce();
+        this.bus.emit('ui:notification', {
+            message: `Le gardien de l’étage ${this.state.floor} surgit ! Frappez avec ⚔️`,
+            severity: 'info',
+        });
+        return true;
+    }
+    /** Retreats from the active fight (the boss heals fully). */
+    fleeBossFight() {
+        if (this.state.bossHp === null) {
+            return;
+        }
+        this.state.bossHp = null;
+        this.persistAndAnnounce();
+    }
+    resolveBossKill() {
+        const reward = EconomyEngine.getBossReward(this.state.floor);
+        this.state.bossHp = null;
+        this.state.stats.bossesKilled += 1;
+        this.state.floor += 1;
+        this.state.gems += reward;
+        this.bus.emit('ui:notification', {
+            message: `Boss vaincu ! Étage ${this.state.floor} débloqué, coffre : +${reward} gemmes`,
+            severity: 'success',
+        });
+    }
+    // ---------------------------------------------------------------------------
+    // Use case: prestige (Ascension)
+    // ---------------------------------------------------------------------------
+    /** Relics an ascension would grant right now (0 = locked). */
+    getPrestigeRelics() {
+        return EconomyEngine.getPrestigeRelics(this.state.stats.goldEarnedRun);
+    }
+    /** Gold-earned-this-run requirement for the prestige UI. */
+    getPrestigeThreshold() {
+        return PRESTIGE_THRESHOLD;
+    }
+    /**
+     * Resets the run (gold, miners, floor, upgrades, boss) in exchange for
+     * permanent relics. Gems, shields, relics, stats and quests survive.
+     * Energy refills as a send-off. False while below the threshold.
+     */
+    ascend() {
+        const relics = this.getPrestigeRelics();
+        if (relics <= 0) {
+            this.bus.emit('ui:notification', {
+                message: `Ascension : amassez ${EconomyEngine.formatCurrency(this.getPrestigeThreshold())} or dans ce cycle`,
+                severity: 'warning',
+            });
+            return false;
+        }
+        this.state.relics += relics;
+        this.state.stats.prestiges += 1;
+        this.state.stats.goldEarnedRun = 0;
+        this.state.gold = 0;
+        this.state.miners = createEmptyMiners();
+        this.state.floor = 1;
+        this.state.dungeonLevel = 0;
+        this.state.bossHp = null;
+        this.state.energy = Math.max(this.state.energy, this.state.maxEnergy);
+        this.passiveCarry = 0;
+        this.persistAndAnnounce();
+        this.bus.emit('ui:notification', {
+            message: `✨ Ascension ! +${relics} relique(s) — production ×${EconomyEngine.getRelicMultiplier(this.state.relics).toFixed(1)} permanente`,
+            severity: 'success',
+        });
+        return true;
+    }
+    // ---------------------------------------------------------------------------
+    // Use case: quests
+    // ---------------------------------------------------------------------------
+    /** Ids of quests whose reward can be collected right now. */
+    getClaimableQuests() {
+        return QuestEngine.claimableQuests(this.state);
+    }
+    /** Collects a completed quest's gem reward. False when not claimable. */
+    claimQuest(id) {
+        if (!QuestEngine.isClaimable(this.state, id)) {
+            return false;
+        }
+        const quest = QuestEngine.getQuest(id);
+        if (!quest) {
+            return false;
+        }
+        this.state.claimedQuests.push(id);
+        this.state.gems += quest.reward;
+        this.persistAndAnnounce();
+        this.bus.emit('ui:notification', {
+            message: `Quête « ${quest.title} » : +${quest.reward} gemmes`,
+            severity: 'success',
+        });
+        return true;
+    }
+    // ---------------------------------------------------------------------------
+    // Use case: energy refills
+    // ---------------------------------------------------------------------------
+    /** Spends gems on the 50-energy pack. False (with an error toast) if poor. */
     buyEnergyWithGems() {
         let purchased;
         try {
@@ -111,15 +249,15 @@ export class GameController {
         this.state = purchased;
         this.persistAndAnnounce();
         this.bus.emit('ui:notification', {
-            message: '+50 energy purchased',
+            message: '+50 énergie achetée',
             severity: 'success',
         });
         return true;
     }
     /**
-     * Use case: watch a rewarded ad for energy. Resolves true when the reward
-     * was granted. Concurrent calls while an ad is already playing resolve
-     * false immediately rather than queueing a second ad.
+     * Watches a rewarded ad for energy. Resolves true when the reward was
+     * granted. Concurrent calls while an ad is already playing resolve false
+     * immediately rather than queueing a second ad.
      */
     async watchAdForEnergy() {
         if (this.adInFlight) {
@@ -130,7 +268,7 @@ export class GameController {
             const completed = await MonetizationBridge.showRewardedAd();
             if (!completed) {
                 this.bus.emit('ui:notification', {
-                    message: 'Ad unavailable — try again soon',
+                    message: 'Pub indisponible — réessayez bientôt',
                     severity: 'error',
                 });
                 return false;
@@ -138,7 +276,7 @@ export class GameController {
             this.state.energy += AD_ENERGY_REWARD;
             this.persistAndAnnounce();
             this.bus.emit('ui:notification', {
-                message: `+${AD_ENERGY_REWARD} energy from ad`,
+                message: `+${AD_ENERGY_REWARD} énergie (pub)`,
                 severity: 'success',
             });
             return true;
@@ -147,11 +285,13 @@ export class GameController {
             this.adInFlight = false;
         }
     }
+    // ---------------------------------------------------------------------------
+    // Live loop: energy regen + passive income
+    // ---------------------------------------------------------------------------
     /**
      * Live (online) energy regeneration: grants 1 energy per regen interval of
      * real time while below the cap. Exposed publicly with an injectable clock
-     * so tests can drive it deterministically; start()/stop() wrap it in a
-     * polling timer for the running game.
+     * so tests can drive it deterministically.
      */
     tickRegen(nowMs = this.now()) {
         const regenMs = DEFAULT_GAME_CONFIG.energyRegenTimeSeconds * 1000;
@@ -174,18 +314,45 @@ export class GameController {
         }
         this.persistAndAnnounce();
     }
-    /** Starts the background regen loop. Idempotent. */
-    start() {
-        if (this.regenTimer !== null) {
+    /**
+     * Live passive income: credits miner output for the elapsed wall-clock
+     * time, carrying sub-1-gold fractions between ticks so slow economies
+     * lose nothing to rounding.
+     */
+    tickPassive(nowMs = this.now()) {
+        const elapsedMs = nowMs - this.passiveAnchorMs;
+        if (elapsedMs <= 0) {
             return;
         }
-        this.regenTimer = setInterval(() => this.tickRegen(), REGEN_POLL_INTERVAL_MS);
+        this.passiveAnchorMs = nowMs;
+        const rate = EconomyEngine.getPassiveRate(this.state);
+        if (rate <= 0) {
+            this.passiveCarry = 0;
+            return;
+        }
+        const earned = rate * (elapsedMs / 1000) + this.passiveCarry;
+        const whole = Math.floor(earned);
+        this.passiveCarry = earned - whole;
+        if (whole > 0) {
+            creditGold(this.state, whole);
+            this.persistAndAnnounce();
+        }
     }
-    /** Stops the background regen loop and persists a final save. */
+    /** Starts the background loop (regen + passive income). Idempotent. */
+    start() {
+        if (this.tickTimer !== null) {
+            return;
+        }
+        this.tickTimer = setInterval(() => {
+            this.tickRegen();
+            this.tickPassive();
+        }, TICK_INTERVAL_MS);
+    }
+    /** Stops the background loop and persists a final save. */
     stop() {
-        if (this.regenTimer !== null) {
-            clearInterval(this.regenTimer);
-            this.regenTimer = null;
+        if (this.tickTimer !== null) {
+            clearInterval(this.tickTimer);
+            this.tickTimer = null;
         }
         this.stateManager.saveState(this.state);
     }
