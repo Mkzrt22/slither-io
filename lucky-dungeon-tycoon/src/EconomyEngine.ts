@@ -7,7 +7,37 @@
  * non-throwing result, because UI render paths must never crash on bad data.
  */
 
-import { DEFAULT_GAME_CONFIG } from './types.js';
+import { DEFAULT_GAME_CONFIG, MINER_TIERS, MinerTier, UserProfile } from './types.js';
+
+/** Static balance sheet for one hireable miner tier. */
+export interface MinerConfig {
+  /** Display name used by the view layer. */
+  name: string;
+  /** Cost of the first unit. */
+  baseCost: number;
+  /** Geometric cost growth per unit already owned. */
+  costGrowth: number;
+  /** Gold per second produced by one unit at floor 1, before multipliers. */
+  baseRate: number;
+}
+
+export const MINER_CONFIGS: Readonly<Record<MinerTier, MinerConfig>> =
+  Object.freeze({
+    goblin: { name: 'Mineur gobelin', baseCost: 50, costGrowth: 1.15, baseRate: 1 },
+    skeleton: { name: 'Fossoyeur squelette', baseCost: 600, costGrowth: 1.17, baseRate: 9 },
+    golem: { name: 'Golem de forage', baseCost: 8_000, costGrowth: 1.19, baseRate: 65 },
+    dragon: { name: 'Dragon thésauriseur', baseCost: 110_000, costGrowth: 1.21, baseRate: 420 },
+  });
+
+/** Gold multiplier gained per dungeon floor beyond the first. */
+const FLOOR_GOLD_GROWTH = 1.3;
+/** Permanent gold multiplier granted by each prestige relic. */
+const RELIC_BONUS = 0.1;
+/** Boss HP at floor 1; grows faster than gold so upgrades stay relevant. */
+const BOSS_BASE_HP = 300;
+const BOSS_HP_GROWTH = 2.2;
+/** Gold-earned-this-run required before ascension unlocks. */
+export const PRESTIGE_THRESHOLD = 1_000_000;
 
 export class EconomyEngine {
   /**
@@ -111,6 +141,72 @@ export class EconomyEngine {
     // such as 999.9999999 scaling to a 1000.00 display value.
     const truncated = Math.min(Math.floor(scaled * 100) / 100, 999.99);
     return sign + truncated.toFixed(2) + EconomyEngine.SUFFIXES[tier];
+  }
+
+  // -------------------------------------------------------------------------
+  // v2 economy: floors, relics, miners, bosses, prestige
+  // -------------------------------------------------------------------------
+
+  /** Gold multiplier from the current floor: 1.3^(floor-1). */
+  public static getFloorMultiplier(floor: number): number {
+    const safeFloor = Math.max(1, EconomyEngine.sanitizeLevel(floor));
+    return Math.pow(FLOOR_GOLD_GROWTH, safeFloor - 1);
+  }
+
+  /** Permanent gold multiplier from prestige relics: 1 + 0.1/relic. */
+  public static getRelicMultiplier(relics: number): number {
+    return 1 + RELIC_BONUS * EconomyEngine.sanitizeLevel(relics);
+  }
+
+  /** Combined global gold multiplier for a profile. */
+  public static getGlobalMultiplier(state: UserProfile): number {
+    return (
+      EconomyEngine.getFloorMultiplier(state.floor) *
+      EconomyEngine.getRelicMultiplier(state.relics)
+    );
+  }
+
+  /** Cost of the next unit of `tier` given how many are already owned. */
+  public static getMinerCost(tier: MinerTier, owned: number): number {
+    const cfg = MINER_CONFIGS[tier];
+    return Math.round(
+      cfg.baseCost * Math.pow(cfg.costGrowth, EconomyEngine.sanitizeLevel(owned)),
+    );
+  }
+
+  /**
+   * Total passive income in gold/second for a profile, with floor and relic
+   * multipliers applied.
+   */
+  public static getPassiveRate(state: UserProfile): number {
+    let rate = 0;
+    for (const tier of MINER_TIERS) {
+      rate += MINER_CONFIGS[tier].baseRate * Math.max(0, state.miners[tier]);
+    }
+    return rate * EconomyEngine.getGlobalMultiplier(state);
+  }
+
+  /** Max HP of the boss guarding `floor`: 300 * 2.2^(floor-1). */
+  public static getBossMaxHp(floor: number): number {
+    const safeFloor = Math.max(1, EconomyEngine.sanitizeLevel(floor));
+    return Math.round(BOSS_BASE_HP * Math.pow(BOSS_HP_GROWTH, safeFloor - 1));
+  }
+
+  /** Gems found in the chest dropped by the boss of `floor`. */
+  public static getBossReward(floor: number): number {
+    return 3 + Math.max(1, EconomyEngine.sanitizeLevel(floor));
+  }
+
+  /**
+   * Relics granted by ascending now: sub-linear in gold earned this run so
+   * each prestige pushes the next threshold meaningfully further. Returns 0
+   * when the run has not reached the prestige threshold.
+   */
+  public static getPrestigeRelics(goldEarnedRun: number): number {
+    if (!Number.isFinite(goldEarnedRun) || goldEarnedRun < PRESTIGE_THRESHOLD) {
+      return 0;
+    }
+    return Math.max(1, Math.floor(Math.pow(goldEarnedRun / PRESTIGE_THRESHOLD, 0.45)));
   }
 
   /** Clamps a level to a non-negative integer; non-finite input becomes 0. */

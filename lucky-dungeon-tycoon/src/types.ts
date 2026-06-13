@@ -5,6 +5,27 @@
  * architecture depends on this file; this file depends on nothing.
  */
 
+/** The four hireable passive-income units, cheapest first. */
+export type MinerTier = 'goblin' | 'skeleton' | 'golem' | 'dragon';
+
+export const MINER_TIERS: readonly MinerTier[] = [
+  'goblin',
+  'skeleton',
+  'golem',
+  'dragon',
+];
+
+/** Lifetime counters driving quests and prestige math. */
+export interface PlayerStats {
+  /** Gold earned during the current prestige run (resets on ascension). */
+  goldEarnedRun: number;
+  /** Gold earned across all runs (never resets). */
+  goldEarnedAll: number;
+  totalSpins: number;
+  bossesKilled: number;
+  prestiges: number;
+}
+
 /**
  * The persisted player profile. This is the single source of truth for all
  * player-owned resources and progression state.
@@ -16,39 +37,67 @@ export interface UserProfile {
   gold: number;
   /** Hard (premium) currency. Always an integer >= 0. */
   gems: number;
-  /** Current spin energy. Integer in [0, maxEnergy]. */
+  /** Current spin energy. Integer >= 0 (may overfill past maxEnergy). */
   energy: number;
-  /** Energy cap. Integer >= 1. */
+  /** Energy soft cap for regeneration. Integer >= 1. */
   maxEnergy: number;
-  /** Current dungeon (upgrade) level. Integer >= 0. */
+  /** Spin-gain upgrade level (drives the base payout curve). */
   dungeonLevel: number;
   /** Raid-blocking shields. Integer in [0, MAX_SHIELDS]. */
   shields: number;
+  /** Current dungeon floor (>= 1). Scales payouts and boss difficulty. */
+  floor: number;
+  /** Remaining HP of the boss being fought, or null when not fighting. */
+  bossHp: number | null;
+  /** Hired passive-income units per tier. */
+  miners: Record<MinerTier, number>;
+  /** Prestige currency: each relic grants a permanent gold multiplier. */
+  relics: number;
+  /** Lifetime counters for quests/prestige. */
+  stats: PlayerStats;
+  /** Ids of quests whose reward has been collected. */
+  claimedQuests: string[];
   /** Unix epoch milliseconds of the last persisted save. */
   lastSaveTimestamp: number;
 }
 
-/** The four possible outcomes of a single slot-machine spin. */
-export type SpinResultType = 'GOLD_MIN' | 'GOLD_MAJ' | 'SHIELD' | 'RAID';
+/** The six slot-machine reel symbols. */
+export type SlotSymbol = 'COIN' | 'BAG' | 'GEM' | 'SHIELD' | 'SWORD' | 'SKULL';
+
+/** How the three reels combined. */
+export type SlotOutcome = 'JACKPOT' | 'PAIR' | 'SCATTER';
 
 /**
- * Immutable record describing the outcome of one spin. `stateSnapshot` is a
- * deep copy of the profile *after* the spin resolved, so the View layer can
- * render results without reaching back into mutable model state.
+ * Immutable record describing the outcome of one 3-reel spin. `stateSnapshot`
+ * is a deep copy of the profile *after* the spin resolved, so the View layer
+ * renders results without reaching into mutable model state.
  */
+export interface SlotSpinResult {
+  symbols: [SlotSymbol, SlotSymbol, SlotSymbol];
+  outcome: SlotOutcome;
+  /** Gold credited by this spin (after multipliers, before skull steals). */
+  goldGained: number;
+  /** Gold lost to a skull event during this spin (0 when none). */
+  goldStolen: number;
+  gemsGained: number;
+  shieldsGained: number;
+  /** Damage dealt to the active boss (0 when not fighting or no swords). */
+  bossDamage: number;
+  /** Human-readable one-line description for the event log. */
+  label: string;
+  energyConsumed: number;
+  timestamp: number;
+  stateSnapshot: UserProfile;
+}
+
+/** Legacy single-roll result kept for the v1 SpinEngine API. */
+export type SpinResultType = 'GOLD_MIN' | 'GOLD_MAJ' | 'SHIELD' | 'RAID';
+
 export interface SpinResult {
   type: SpinResultType;
-  /**
-   * The primary numeric payout of the spin. For gold outcomes this is the
-   * amount of gold granted; for a SHIELD outcome it is 1 when a shield was
-   * granted, or the compensatory gold amount when shields were already full.
-   */
   value: number;
-  /** Energy spent to execute this spin (always 1 in the current design). */
   energyConsumed: number;
-  /** Unix epoch milliseconds at which the spin resolved. */
   timestamp: number;
-  /** Deep snapshot of the profile after the spin was applied. */
   stateSnapshot: UserProfile;
 }
 
@@ -78,6 +127,22 @@ export const DEFAULT_GAME_CONFIG: Readonly<GameConfig> = Object.freeze({
 /** Maximum number of shields a player may stockpile. */
 export const MAX_SHIELDS = 3;
 
+/** Empty miner roster (all tiers at zero). */
+export function createEmptyMiners(): Record<MinerTier, number> {
+  return { goblin: 0, skeleton: 0, golem: 0, dragon: 0 };
+}
+
+/** Zeroed lifetime counters. */
+export function createEmptyStats(): PlayerStats {
+  return {
+    goldEarnedRun: 0,
+    goldEarnedAll: 0,
+    totalSpins: 0,
+    bossesKilled: 0,
+    prestiges: 0,
+  };
+}
+
 /**
  * Creates a brand-new, fully valid profile for a first-session player.
  * Centralised here so every layer (storage, tests, tooling) initialises
@@ -92,6 +157,12 @@ export function createDefaultProfile(now: number = Date.now()): UserProfile {
     maxEnergy: 30,
     dungeonLevel: 0,
     shields: 0,
+    floor: 1,
+    bossHp: null,
+    miners: createEmptyMiners(),
+    relics: 0,
+    stats: createEmptyStats(),
+    claimedQuests: [],
     lastSaveTimestamp: now,
   };
 }
@@ -106,9 +177,8 @@ function generateProfileId(): string {
 }
 
 /**
- * Returns a deep copy of a profile. UserProfile is intentionally flat, so a
- * field-by-field copy is both exhaustive and cheap. If a field is ever added
- * to UserProfile, the compiler forces this function to be updated.
+ * Returns a deep copy of a profile, field by field, so the compiler forces
+ * this function to be updated whenever the profile shape changes.
  */
 export function cloneProfile(state: UserProfile): UserProfile {
   return {
@@ -119,6 +189,37 @@ export function cloneProfile(state: UserProfile): UserProfile {
     maxEnergy: state.maxEnergy,
     dungeonLevel: state.dungeonLevel,
     shields: state.shields,
+    floor: state.floor,
+    bossHp: state.bossHp,
+    miners: {
+      goblin: state.miners.goblin,
+      skeleton: state.miners.skeleton,
+      golem: state.miners.golem,
+      dragon: state.miners.dragon,
+    },
+    relics: state.relics,
+    stats: {
+      goldEarnedRun: state.stats.goldEarnedRun,
+      goldEarnedAll: state.stats.goldEarnedAll,
+      totalSpins: state.stats.totalSpins,
+      bossesKilled: state.stats.bossesKilled,
+      prestiges: state.stats.prestiges,
+    },
+    claimedQuests: [...state.claimedQuests],
     lastSaveTimestamp: state.lastSaveTimestamp,
   };
+}
+
+/**
+ * Credits gold to a profile, updating the lifetime counters that quests and
+ * prestige read. Every gold *gain* in the game must flow through here;
+ * steals/penalties debit `gold` directly and never touch the counters.
+ */
+export function creditGold(state: UserProfile, amount: number): void {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return;
+  }
+  state.gold += amount;
+  state.stats.goldEarnedRun += amount;
+  state.stats.goldEarnedAll += amount;
 }

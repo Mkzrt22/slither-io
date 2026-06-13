@@ -91,16 +91,33 @@ try {
   await page.waitForSelector('#energy-popup.visible', { timeout: 3000 });
   expect(true, 'out-of-energy popup shown');
 
-  // Buying the gem pack from the popup overfills past maxEnergy.
+  // Buying the gem pack from the popup overfills past maxEnergy. Gem
+  // jackpots during the drain may have raised the balance, so assert the
+  // delta rather than an absolute value.
+  const gemsBefore = Number(await page.locator('#stat-gems').innerText());
   await page.click('#btn-popup-buy');
   await page.waitForFunction(() => document.getElementById('stat-energy').textContent === '50/30');
-  expect((await page.locator('#stat-gems').innerText()) === '15', 'purchase deducted 10 gems');
+  const gemsAfter = Number(await page.locator('#stat-gems').innerText());
+  expect(gemsAfter === gemsBefore - 10, `purchase deducted 10 gems (${gemsBefore} -> ${gemsAfter})`);
 
   // Persistence: gold AND purchased overfill must survive a reload.
   const goldBefore = await page.locator('#stat-gold').innerText();
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForFunction((g) => document.getElementById('stat-gold').textContent === g, goldBefore);
   expect((await page.locator('#stat-energy').innerText()) === '50/30', 'paid energy overfill survived reload');
+
+  // v2: engaging the floor guardian shows the HP bar.
+  await page.click('#btn-boss');
+  await page.waitForSelector('#boss-panel:not([hidden])', { timeout: 3000 });
+  expect(true, 'boss fight engages and shows the HP bar');
+
+  // v2: the miners tab lists all four hireable tiers.
+  await page.click('nav button[data-tab="tab-miners"]');
+  expect((await page.locator('#miners-list .card').count()) === 4, 'miners tab lists 4 tiers');
+
+  // v2: the quest book renders with progress bars.
+  await page.click('nav button[data-tab="tab-quests"]');
+  expect((await page.locator('#quests-list .card').count()) >= 5, 'quest book renders');
 
   expect(consoleErrors.length === 0, `no console errors (got: ${consoleErrors.join(' | ')})`);
   console.log('BROWSER E2E PASSED');

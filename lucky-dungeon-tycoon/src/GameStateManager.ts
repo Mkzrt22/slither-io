@@ -7,12 +7,19 @@
  * mobile, so every loaded value is treated as hostile until clamped.
  */
 
+import { EconomyEngine } from './EconomyEngine.js';
 import {
   DEFAULT_GAME_CONFIG,
   MAX_SHIELDS,
+  MINER_TIERS,
+  MinerTier,
+  PlayerStats,
   UserProfile,
   cloneProfile,
   createDefaultProfile,
+  createEmptyMiners,
+  createEmptyStats,
+  creditGold,
 } from './types.js';
 
 /** Minimal key-value contract satisfied by both DOM Storage and the fallback. */
@@ -58,6 +65,10 @@ const MAX_OFFLINE_SECONDS = 7 * 24 * 60 * 60;
  * save from minting unbounded spins.
  */
 const ENERGY_ABSOLUTE_CAP = 999;
+/** Miners only dig at half speed while the player is away... */
+const OFFLINE_PASSIVE_EFFICIENCY = 0.5;
+/** ...and only for the first 8 hours of any absence. */
+const MAX_OFFLINE_PASSIVE_SECONDS = 8 * 60 * 60;
 
 export class GameStateManager {
   private readonly store: KeyValueStore;
@@ -125,7 +136,9 @@ export class GameStateManager {
    *
    *  1. Energy regen: +1 energy per `energyRegenTimeSeconds` (300s), capped
    *     at `maxEnergy`.
-   *  2. Offline Raid Determinator: if the window is >= 4 hours, there is a
+   *  2. Passive income: miners keep digging at half efficiency while the
+   *     game is closed, credited for at most 8 hours per absence.
+   *  3. Offline Raid Determinator: if the window is >= 4 hours, there is a
    *     70% chance of an enemy AI attack. A shield (if any) absorbs it;
    *     otherwise the raid steals 15% of the player's gold.
    *
@@ -154,7 +167,20 @@ export class GameStateManager {
       logs.push(`Recovered ${granted} energy while away`);
     }
 
-    // --- 2. Offline Raid Determinator ---------------------------------------
+    // --- 2. Offline passive income -------------------------------------------
+    const passiveSeconds = Math.min(safeSeconds, MAX_OFFLINE_PASSIVE_SECONDS);
+    const rate = EconomyEngine.getPassiveRate(next);
+    if (rate > 0 && passiveSeconds > 0) {
+      const earned = Math.floor(rate * passiveSeconds * OFFLINE_PASSIVE_EFFICIENCY);
+      if (earned > 0) {
+        creditGold(next, earned);
+        logs.push(
+          `Vos mineurs ont extrait ${EconomyEngine.formatCurrency(earned)} or pendant votre absence`,
+        );
+      }
+    }
+
+    // --- 3. Offline Raid Determinator ---------------------------------------
     if (safeSeconds >= RAID_THRESHOLD_SECONDS) {
       const raidOccurred = this.rng() < RAID_CHANCE;
       if (raidOccurred) {
@@ -247,8 +273,56 @@ export class GameStateManager {
       maxEnergy,
       dungeonLevel: this.toBoundedInt(raw.dungeonLevel, defaults.dungeonLevel),
       shields: Math.min(this.toBoundedInt(raw.shields, defaults.shields), MAX_SHIELDS),
+      floor: Math.max(1, this.toBoundedInt(raw.floor, defaults.floor)),
+      bossHp: this.toBossHp(raw.bossHp),
+      miners: this.toMiners(raw.miners),
+      relics: this.toBoundedInt(raw.relics, defaults.relics),
+      stats: this.toStats(raw.stats),
+      claimedQuests: this.toStringArray(raw.claimedQuests),
       lastSaveTimestamp: this.toTimestamp(raw.lastSaveTimestamp, now),
     };
+  }
+
+  /** Active boss HP: a finite positive number, or null (no fight). */
+  private toBossHp(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+    return null;
+  }
+
+  /** Miner roster: each tier clamped to a non-negative integer. */
+  private toMiners(value: unknown): Record<MinerTier, number> {
+    const miners = createEmptyMiners();
+    if (typeof value === 'object' && value !== null) {
+      const raw = value as Record<string, unknown>;
+      for (const tier of MINER_TIERS) {
+        miners[tier] = this.toBoundedInt(raw[tier], 0);
+      }
+    }
+    return miners;
+  }
+
+  /** Lifetime counters: each clamped to a non-negative finite number. */
+  private toStats(value: unknown): PlayerStats {
+    const stats = createEmptyStats();
+    if (typeof value === 'object' && value !== null) {
+      const raw = value as Record<string, unknown>;
+      stats.goldEarnedRun = this.toBoundedNumber(raw.goldEarnedRun, 0);
+      stats.goldEarnedAll = this.toBoundedNumber(raw.goldEarnedAll, 0);
+      stats.totalSpins = this.toBoundedInt(raw.totalSpins, 0);
+      stats.bossesKilled = this.toBoundedInt(raw.bossesKilled, 0);
+      stats.prestiges = this.toBoundedInt(raw.prestiges, 0);
+    }
+    return stats;
+  }
+
+  /** Claimed-quest ids: strings only, deduplicated. */
+  private toStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return [...new Set(value.filter((v): v is string => typeof v === 'string'))];
   }
 
   /** Finite, non-negative number; otherwise the fallback. */

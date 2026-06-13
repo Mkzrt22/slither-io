@@ -6,7 +6,7 @@
  * both sides only know this bus and the domain types.
  */
 
-import { SpinResult, UserProfile } from './types.js';
+import { SlotSpinResult, UserProfile } from './types.js';
 
 /** Severity levels surfaced by toast/banner notifications. */
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
@@ -19,7 +19,7 @@ export interface GameEventMap {
   /** The authoritative profile changed; views should re-render. */
   'state:updated': UserProfile;
   /** A spin resolved; the slot UI should animate this outcome. */
-  'spin:result': SpinResult;
+  'spin:result': SlotSpinResult;
   /** The player ran out of energy; show the refill/ad popup. */
   'ui:popup_energy': { energy: number; maxEnergy: number };
   /** Generic toast/banner message. */

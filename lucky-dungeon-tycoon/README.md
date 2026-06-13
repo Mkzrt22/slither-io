@@ -66,17 +66,20 @@ Play Billing bridges.
 ```sh
 npm install
 npm run typecheck   # strict-mode compile, no emit
-npm test            # 50 unit tests on Node's built-in test runner
+npm test            # 77 unit tests on Node's built-in test runner
 npm run test:e2e    # headless-Chromium e2e (requires Playwright + Chromium)
 ```
 
 Compiles clean under `strict: true`. The unit suites (`tests/`) cover the
-economy curves, every formatter tier and degenerate input, all spin-band
-boundaries, raid/shield offline outcomes, anti-tamper state sanitisation,
-monetization paths, EventBus delivery semantics, and the controller use
-cases — all deterministic via the injectable RNG and roll parameters. The
-browser e2e (`e2e/browser.e2e.mjs`) drives the real UI: boot render, spins,
-the out-of-energy popup, gem purchase, and persistence across reload.
+economy curves, the formatter, the 3-reel slot combination table, miners and
+passive income (online and offline), boss fights and floor progression,
+prestige math and resets, the quest book, raid/shield offline outcomes,
+anti-tamper sanitisation (including v1 save migration), monetization paths,
+EventBus semantics, and the controller use cases — all deterministic via the
+injectable RNG and roll parameters. The browser e2e (`e2e/browser.e2e.mjs`)
+drives the real UI: boot render, spins, the out-of-energy popup, gem
+purchase, boss engagement, the miners and quests tabs, and persistence
+across reload.
 
 Both run in CI on every change under this directory
 (`.github/workflows/lucky-dungeon-tycoon.yml`).

@@ -87,10 +87,10 @@ test('offline raid logs are replayed as notifications on boot', () => {
 
 test('spin broadcasts the result and the persisted state', () => {
   const { controller, events, gsm } = harness();
-  const result = controller.spin(0.6); // GOLD_MAJ
+  const result = controller.spin([0.1, 0.1, 0.1]); // triple COIN jackpot
 
   assert.ok(result);
-  assert.equal(result.type, 'GOLD_MAJ');
+  assert.equal(result.outcome, 'JACKPOT');
   assert.equal(events['spin:result'].length, 1);
   assert.equal(events['state:updated'].length, 2); // boot + spin
   assert.equal(gsm.loadState().gold, result.stateSnapshot.gold);
@@ -98,7 +98,7 @@ test('spin broadcasts the result and the persisted state', () => {
 
 test('spinning with no energy requests the refill popup instead of throwing', () => {
   const { controller, events } = harness({ energy: 0 });
-  const result = controller.spin(0.1);
+  const result = controller.spin([0.1, 0.5, 0.9]);
 
   assert.equal(result, null);
   assert.equal(events['spin:result'].length, 0);
@@ -108,7 +108,7 @@ test('spinning with no energy requests the refill popup instead of throwing', ()
 
 test('emitted state is a snapshot, not a live reference', () => {
   const { controller, events } = harness();
-  controller.spin(0.1);
+  controller.spin([0.1, 0.5, 0.9]);
   const broadcast = events['state:updated'][1];
   broadcast.gold = -1;
   assert.notEqual(controller.getState().gold, -1);
@@ -173,14 +173,14 @@ test('tickRegen clamps at maxEnergy and does not bank time while full', () => {
 
   // A long stretch at full tank must not pay out retroactively after a spend.
   controller.tickRegen(t0 + 9_000_000);
-  controller.spin(0.1);
+  controller.spin([0.1, 0.5, 0.9]);
   controller.tickRegen(t0 + 9_001_000);
   assert.equal(controller.getState().energy, 29);
 });
 
 test('stop() persists the final state', () => {
   const { controller, gsm } = harness({ gold: 0 });
-  controller.spin(0.1);
+  controller.spin([0.1, 0.5, 0.9]);
   controller.stop();
   assert.equal(gsm.loadState().gold, controller.getState().gold);
 });
