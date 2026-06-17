@@ -12,6 +12,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Dungeon Tycoon" />
   <link rel="stylesheet" href="./web/styles.css" />
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.js" } }
+  </script>
 </head>
 <body>
   <div id="app">
@@ -109,8 +112,8 @@
         </div>
 
         <div class="iso-wrap">
-          <canvas id="iso" class="iso-scene"></canvas>
-          <div class="iso-hint">👆 Touchez un bâtiment pour l’améliorer</div>
+          <div id="iso-host" class="iso-scene"></div>
+          <div class="iso-hint">👆 Touchez un bâtiment · glissez pour pivoter</div>
         </div>
 
         <div class="advance-box">

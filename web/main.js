@@ -14,6 +14,7 @@ import { gameEvents } from '../src/EventBus.js';
 import { BUILDING_TYPES, MAX_SHIELDS, } from '../src/types.js';
 import { NumberTween, ParticleSystem, SlotReels } from './effects.js';
 import { IsoScene } from './iso.js';
+import { Iso3DScene, webglAvailable } from './iso3d.js';
 function el(id) {
     const node = document.getElementById(id);
     if (node === null) {
@@ -67,7 +68,7 @@ const buildingsListEl = el('buildings-list');
 const villageNameEl = el('village-name');
 const villageMultEl = el('village-mult');
 const villageEmojiEl = el('village-emoji');
-const isoCanvas = el('iso');
+const isoHostEl = el('iso-host');
 const advanceCountEl = el('advance-count');
 const advanceFillEl = el('advance-fill');
 const advanceBtn = el('btn-advance');
@@ -147,11 +148,31 @@ for (const type of BUILDING_TYPES) {
         buyBtn,
     });
 }
-// Isometric village scene — tapping a building upgrades it.
-const iso = new IsoScene(isoCanvas, (type) => {
+// Isometric village scene — real 3D when WebGL is available, else a 2D
+// canvas fallback. Tapping a building upgrades it.
+const onTapBuilding = (type) => {
     if (controller.upgradeBuilding(type))
         iso.coinPop(type);
-});
+};
+function makeIsoCanvas() {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'iso-canvas';
+    isoHostEl.appendChild(canvas);
+    return canvas;
+}
+const iso = createVillageRenderer();
+function createVillageRenderer() {
+    if (webglAvailable()) {
+        try {
+            return new Iso3DScene(makeIsoCanvas(), onTapBuilding);
+        }
+        catch (err) {
+            console.warn('[village] WebGL renderer failed, falling back to 2D', err);
+            isoHostEl.innerHTML = '';
+        }
+    }
+    return new IsoScene(makeIsoCanvas(), onTapBuilding);
+}
 advanceBtn.addEventListener('click', () => {
     if (controller.advanceVillage()) {
         particles.confetti(90);
