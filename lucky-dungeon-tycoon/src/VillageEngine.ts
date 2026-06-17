@@ -62,6 +62,41 @@ export class VillageEngine {
     return BUILDING_CONFIGS[type].baseProd * VillageEngine.clampLevel(level);
   }
 
+  /** Total cost to buy `count` consecutive levels of `type` from `fromLevel`. */
+  public static getBulkCost(type: BuildingType, fromLevel: number, count: number): number {
+    const cfg = BUILDING_CONFIGS[type];
+    const start = VillageEngine.clampLevel(fromLevel);
+    const n = Math.max(0, Math.floor(count));
+    let total = 0;
+    for (let i = 0; i < n; i++) {
+      total += Math.round(cfg.baseCost * Math.pow(cfg.costGrowth, start + i));
+    }
+    return total;
+  }
+
+  /**
+   * Largest number of consecutive levels of `type` affordable with `gold`
+   * from `fromLevel`, plus their total cost. Iteration is capped for safety.
+   */
+  public static getMaxAffordable(
+    type: BuildingType,
+    fromLevel: number,
+    gold: number,
+  ): { count: number; cost: number } {
+    const cfg = BUILDING_CONFIGS[type];
+    const start = VillageEngine.clampLevel(fromLevel);
+    const budget = Number.isFinite(gold) && gold > 0 ? gold : 0;
+    let count = 0;
+    let cost = 0;
+    while (count < 100_000) {
+      const next = Math.round(cfg.baseCost * Math.pow(cfg.costGrowth, start + count));
+      if (cost + next > budget) break;
+      cost += next;
+      count += 1;
+    }
+    return { count, cost };
+  }
+
   /** Sum of all building levels in the profile. */
   public static getTotalLevels(state: UserProfile): number {
     let total = 0;

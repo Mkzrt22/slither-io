@@ -23,6 +23,14 @@ import {
 import { NumberTween, ParticleSystem, SlotReels } from './effects.js';
 import { IsoScene } from './iso.js';
 import { Iso3DScene, webglAvailable } from './iso3d.js';
+import { Sfx } from './sfx.js';
+
+type BuyMode = 1 | 10 | 'max';
+
+/** Light haptic tap where supported (no-op elsewhere). */
+function buzz(ms: number): void {
+  try { navigator.vibrate?.(ms); } catch { /* unsupported */ }
+}
 
 /** Common shape both the 3D (WebGL) and 2D (canvas) village renderers expose. */
 interface VillageRenderer {
@@ -91,6 +99,17 @@ const popupBuyBtn = el<HTMLButtonElement>('btn-popup-buy');
 const popupAdBtn = el<HTMLButtonElement>('btn-popup-ad');
 const popupCloseBtn = el<HTMLButtonElement>('btn-popup-close');
 
+const offlineModal = el<HTMLDivElement>('offline-modal');
+const offlineAmountEl = el<HTMLDivElement>('offline-amount');
+const offlineDetailEl = el<HTMLParagraphElement>('offline-detail');
+const offlineX2Btn = el<HTMLButtonElement>('btn-offline-x2');
+const offlineOkBtn = el<HTMLButtonElement>('btn-offline-ok');
+const settingsModal = el<HTMLDivElement>('settings-modal');
+const settingsBtn = el<HTMLButtonElement>('btn-settings');
+const settingsCloseBtn = el<HTMLButtonElement>('btn-settings-close');
+const soundBtn = el<HTMLButtonElement>('btn-sound');
+const resetBtn = el<HTMLButtonElement>('btn-reset');
+
 const buildingsListEl = el<HTMLDivElement>('buildings-list');
 const villageNameEl = el<HTMLDivElement>('village-name');
 const villageMultEl = el<HTMLDivElement>('village-mult');
@@ -109,6 +128,8 @@ const statsSummaryEl = el<HTMLDivElement>('stats-summary');
 
 // --- Effects -----------------------------------------------------------------
 
+const sfx = new Sfx();
+let buyMode: BuyMode = 1;
 const particles = new ParticleSystem(fxCanvas);
 const cellPx = 76;
 const tokenHtml = (s: SlotSymbol): string =>
@@ -180,9 +201,7 @@ for (const type of BUILDING_TYPES) {
     </div>
     <button data-buy>Améliorer</button>`;
   const buyBtn = card.querySelector<HTMLButtonElement>('[data-buy]')!;
-  buyBtn.addEventListener('click', () => {
-    if (controller.upgradeBuilding(type)) iso.coinPop(type);
-  });
+  buyBtn.addEventListener('click', () => buyBuilding(type));
   buildingsListEl.appendChild(card);
   buildingCards.set(type, {
     levelEl: card.querySelector<HTMLElement>('[data-level]')!,
@@ -191,11 +210,35 @@ for (const type of BUILDING_TYPES) {
   });
 }
 
+/** Shared building-purchase action (cards + 3D tap), honouring the buy mode. */
+function buyBuilding(type: BuildingType): void {
+  sfx.unlock();
+  const bought = controller.buyBuilding(type, buyMode);
+  if (bought > 0) {
+    iso.coinPop(type);
+    sfx.upgrade();
+    buzz(12);
+  } else {
+    sfx.error();
+  }
+}
+
 // Isometric village scene — real 3D when WebGL is available, else a 2D
 // canvas fallback. Tapping a building upgrades it.
-const onTapBuilding = (type: BuildingType): void => {
-  if (controller.upgradeBuilding(type)) iso.coinPop(type);
-};
+const onTapBuilding = (type: BuildingType): void => buyBuilding(type);
+
+// Buy-mode toggle (×1 / ×10 / Max).
+const buyModeButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>('#buy-modes button'),
+);
+for (const btn of buyModeButtons) {
+  btn.addEventListener('click', () => {
+    const m = btn.dataset.mode;
+    buyMode = m === 'max' ? 'max' : (Number(m) as 1 | 10);
+    for (const other of buyModeButtons) other.classList.toggle('active', other === btn);
+    render(controller.getState());
+  });
+}
 
 function makeIsoCanvas(): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
@@ -323,12 +366,16 @@ function render(state: UserProfile): void {
   for (const type of BUILDING_TYPES) {
     const level = state.buildings[type];
     const card = buildingCards.get(type)!;
-    const cost = VillageEngine.getBuildingCost(type, level);
     const perLevel = BUILDING_CONFIGS[type].baseProd * globalMult;
     card.levelEl.textContent = String(level);
     card.rateEl.textContent = fmt(Math.round(perLevel * level));
-    card.buyBtn.innerHTML = `Améliorer<br/>${fmt(cost)}`;
-    card.buyBtn.disabled = state.gold < cost;
+
+    const plan = buyMode === 'max'
+      ? VillageEngine.getMaxAffordable(type, level, state.gold)
+      : { count: buyMode, cost: VillageEngine.getBulkCost(type, level, buyMode) };
+    const label = buyMode === 1 ? 'Améliorer' : `Améliorer ×${plan.count || buyMode}`;
+    card.buyBtn.innerHTML = `${label}<br/>${fmt(plan.cost)}`;
+    card.buyBtn.disabled = plan.count < 1 || state.gold < plan.cost;
   }
   iso.setState(state);
 
@@ -409,6 +456,22 @@ gameEvents.on('spin:result', showSpinResult);
 gameEvents.on('ui:notification', (n) => appendLog(n.message, n.severity));
 gameEvents.on('ui:popup_energy', () => popupEl.classList.add('visible'));
 
+let pendingOfflineGold = 0;
+gameEvents.on('ui:offline_earnings', (s) => {
+  pendingOfflineGold = s.goldEarned;
+  offlineAmountEl.textContent = `+${fmt(s.goldEarned)} or`;
+  const bits: string[] = [];
+  const hrs = Math.floor(s.seconds / 3600);
+  const mins = Math.floor((s.seconds % 3600) / 60);
+  bits.push(`absent ${hrs > 0 ? hrs + ' h ' : ''}${mins} min`);
+  if (s.energyEarned > 0) bits.push(`+${s.energyEarned} ⚡`);
+  if (s.raidGold > 0) bits.push(`raid −${fmt(s.raidGold)} or`);
+  if (s.shieldBlocked) bits.push('🛡️ raid bloqué');
+  offlineDetailEl.textContent = bits.join(' · ');
+  offlineX2Btn.hidden = s.goldEarned <= 0;
+  offlineModal.classList.add('visible');
+});
+
 // --- Boot --------------------------------------------------------------------
 
 const controller = new GameController();
@@ -417,12 +480,52 @@ requestAnimationFrame(() => { particles.resize(); iso.resize(); });
 
 // --- Wire view -> model ------------------------------------------------------
 
-spinBtn.addEventListener('click', () => controller.spin());
-bossBtn.addEventListener('click', () => controller.startBossFight());
+spinBtn.addEventListener('click', () => { sfx.unlock(); sfx.click(); controller.spin(); });
+bossBtn.addEventListener('click', () => { sfx.click(); controller.startBossFight(); });
 fleeBtn.addEventListener('click', () => controller.fleeBossFight());
-upgradeBtn.addEventListener('click', () => controller.upgradeDungeon());
-buyEnergyBtn.addEventListener('click', () => controller.buyEnergyWithGems());
-ascendBtn.addEventListener('click', () => controller.ascend());
+upgradeBtn.addEventListener('click', () => { sfx.unlock(); if (controller.upgradeDungeon()) { sfx.upgrade(); buzz(12); } });
+buyEnergyBtn.addEventListener('click', () => { sfx.unlock(); controller.buyEnergyWithGems(); });
+ascendBtn.addEventListener('click', () => {
+  sfx.unlock();
+  if (controller.ascend()) { sfx.jackpot(); buzz(30); particles.confetti(120); }
+});
+
+// Spin payoff sounds.
+gameEvents.on('spin:result', (r) => {
+  window.setTimeout(() => {
+    if (r.outcome === 'JACKPOT') { sfx.jackpot(); buzz(25); }
+    else if (r.goldStolen > 0) sfx.error();
+    else sfx.coin();
+  }, 1450);
+});
+
+// Offline-earnings modal actions.
+offlineOkBtn.addEventListener('click', () => { sfx.coin(); offlineModal.classList.remove('visible'); });
+offlineX2Btn.addEventListener('click', async () => {
+  offlineX2Btn.disabled = true;
+  const ok = await controller.watchAdForEnergy();
+  if (ok && pendingOfflineGold > 0) {
+    controller.grantBonusGold(pendingOfflineGold);
+    sfx.jackpot();
+  }
+  offlineX2Btn.disabled = false;
+  offlineModal.classList.remove('visible');
+});
+
+// Settings modal.
+function refreshSoundBtn(): void {
+  soundBtn.textContent = sfx.isMuted() ? '🔇 Son : coupé' : '🔊 Son : activé';
+}
+refreshSoundBtn();
+settingsBtn.addEventListener('click', () => { sfx.unlock(); settingsModal.classList.add('visible'); });
+settingsCloseBtn.addEventListener('click', () => settingsModal.classList.remove('visible'));
+soundBtn.addEventListener('click', () => { sfx.setMuted(!sfx.isMuted()); refreshSoundBtn(); if (!sfx.isMuted()) sfx.coin(); });
+resetBtn.addEventListener('click', () => {
+  if (window.confirm('Réinitialiser toute la progression ? Cette action est irréversible.')) {
+    controller.resetProgress();
+    window.location.reload();
+  }
+});
 
 const runAd = async (button: HTMLButtonElement): Promise<void> => {
   button.disabled = true;
@@ -443,5 +546,8 @@ popupAdBtn.addEventListener('click', () => {
   void runAd(watchAdBtn);
 });
 popupCloseBtn.addEventListener('click', () => popupEl.classList.remove('visible'));
+
+// Unlock audio on the very first interaction (mobile autoplay policy).
+window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
 
 window.addEventListener('pagehide', () => controller.stop());

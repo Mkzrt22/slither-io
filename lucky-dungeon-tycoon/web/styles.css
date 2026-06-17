@@ -51,7 +51,7 @@ body {
 /* ============================== TOP HUD ============================== */
 .hud {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, 1fr) auto;
   gap: 7px;
   position: sticky;
   top: 0;
@@ -78,6 +78,28 @@ body {
 .chip-gold { border-color: rgba(246,194,68,0.4); }
 .chip-gem { border-color: rgba(95,212,245,0.35); }
 .chip-relic { border-color: rgba(192,138,245,0.35); }
+
+.hud-gear {
+  width: 40px; border-radius: 13px; border: 1px solid var(--edge);
+  background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.18)), var(--panel);
+  color: var(--text); font-size: 1.05rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Buy-mode toggle */
+.buildings-head { display: flex; align-items: center; justify-content: space-between; }
+.buy-modes { display: flex; gap: 4px; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 10px; border: 1px solid var(--edge); }
+.buy-modes button {
+  padding: 6px 11px; border: none; border-radius: 7px; font-size: 0.78rem; font-weight: 800;
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.buy-modes button.active { background: linear-gradient(180deg, var(--gold-2), var(--gold)); color: #2a1d05; }
+
+/* Offline modal */
+.offline-amount { font-size: 1.9rem; font-weight: 900; color: var(--gold-2); text-shadow: 0 2px 12px rgba(246,194,68,0.5); }
+.offline-detail { font-size: 0.78rem; color: var(--muted); min-height: 1em; }
+.settings-version { font-size: 0.72rem; color: var(--muted); }
+.btn-danger { color: #ffb4b4 !important; border-color: rgba(240,99,108,0.45) !important; }
 
 /* ============================== TABS ============================== */
 main { flex: 1; display: flex; flex-direction: column; }

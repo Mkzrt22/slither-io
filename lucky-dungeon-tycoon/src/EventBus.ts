@@ -22,6 +22,14 @@ export interface GameEventMap {
   'spin:result': SlotSpinResult;
   /** The player ran out of energy; show the refill/ad popup. */
   'ui:popup_energy': { energy: number; maxEnergy: number };
+  /** Returning after an absence; show the welcome-back earnings modal. */
+  'ui:offline_earnings': {
+    seconds: number;
+    energyEarned: number;
+    goldEarned: number;
+    raidGold: number;
+    shieldBlocked: boolean;
+  };
   /** Generic toast/banner message. */
   'ui:notification': { message: string; severity: NotificationSeverity };
 }

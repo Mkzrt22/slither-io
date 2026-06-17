@@ -124,6 +124,51 @@ test('an unaffordable building upgrade warns and changes nothing', () => {
   assert.ok(notes.some((n) => n.severity === 'warning'));
 });
 
+test('bulk cost sums consecutive level costs', () => {
+  const a = VillageEngine.getBuildingCost('mine', 0);
+  const b = VillageEngine.getBuildingCost('mine', 1);
+  const c = VillageEngine.getBuildingCost('mine', 2);
+  assert.equal(VillageEngine.getBulkCost('mine', 0, 3), a + b + c);
+});
+
+test('getMaxAffordable returns the largest batch within budget', () => {
+  const budget = VillageEngine.getBulkCost('mine', 0, 5);
+  const max = VillageEngine.getMaxAffordable('mine', 0, budget);
+  assert.equal(max.count, 5);
+  assert.equal(max.cost, budget);
+  // One gold short of the 5th level only affords 4.
+  assert.equal(VillageEngine.getMaxAffordable('mine', 0, budget - 1).count, 4);
+});
+
+test('buyBuilding ×10 requires affording the whole batch', () => {
+  const cost10 = VillageEngine.getBulkCost('mine', 0, 10);
+  const poor = harness({ gold: cost10 - 1 });
+  assert.equal(poor.controller.buyBuilding('mine', 10), 0);
+  assert.equal(poor.controller.getState().buildings.mine, 0);
+
+  const rich = harness({ gold: cost10 });
+  assert.equal(rich.controller.buyBuilding('mine', 10), 10);
+  assert.equal(rich.controller.getState().buildings.mine, 10);
+  assert.equal(rich.controller.getState().gold, 0);
+});
+
+test('buyBuilding max buys as many levels as gold allows', () => {
+  const budget = VillageEngine.getBulkCost('farm', 0, 7) + 3;
+  const { controller } = harness({ gold: budget });
+  const bought = controller.buyBuilding('farm', 'max');
+  assert.equal(bought, 7);
+  assert.equal(controller.getState().buildings.farm, 7);
+  assert.equal(controller.getState().gold, 3); // remainder below the 8th cost
+});
+
+test('grantBonusGold credits gold and lifetime stats', () => {
+  const { controller } = harness({ gold: 100 });
+  controller.grantBonusGold(250);
+  const s = controller.getState();
+  assert.equal(s.gold, 350);
+  assert.equal(s.stats.goldEarnedAll, 250);
+});
+
 test('advanceVillage requires the threshold, then boosts production permanently', () => {
   const notReady = harness({ gold: 0, buildings: withBuildings({ mine: 10 }) });
   assert.equal(notReady.controller.canAdvanceVillage(), false);

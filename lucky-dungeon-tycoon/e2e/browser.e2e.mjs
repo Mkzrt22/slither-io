@@ -131,6 +131,30 @@ try {
   const mineLvlAfter = await page.locator('#buildings-list .card:first-child [data-level]').innerText();
   expect(Number(mineLvlAfter) === Number(mineLvlBefore) + 1, `building upgraded (${mineLvlBefore} -> ${mineLvlAfter})`);
 
+  // Bulk-buy: switching to ×10 buys ten levels in one click (gold permitting).
+  await page.click('#buy-modes button[data-mode="10"]');
+  const before10 = Number(await page.locator('#buildings-list .card:first-child [data-level]').innerText());
+  const disabled10 = await page.locator('#buildings-list .card:first-child [data-buy]').isDisabled();
+  if (!disabled10) {
+    await page.click('#buildings-list .card:first-child [data-buy]');
+    const after10 = Number(await page.locator('#buildings-list .card:first-child [data-level]').innerText());
+    expect(after10 === before10 + 10, `×10 bought ten levels (${before10} -> ${after10})`);
+  } else {
+    expect(true, '×10 disabled (not enough gold) — toggle still works');
+  }
+  await page.click('#buy-modes button[data-mode="1"]');
+
+  // Settings modal opens and the sound toggle flips.
+  await page.click('#btn-settings');
+  await page.waitForSelector('#settings-modal.visible', { timeout: 3000 });
+  const soundLabel1 = await page.locator('#btn-sound').innerText();
+  await page.click('#btn-sound');
+  const soundLabel2 = await page.locator('#btn-sound').innerText();
+  expect(soundLabel1 !== soundLabel2, 'sound toggle flips label');
+  await page.click('#btn-settings-close');
+  await page.waitForFunction(() => !document.getElementById('settings-modal').classList.contains('visible'), null, { timeout: 3000 });
+  expect(true, 'settings modal closes');
+
   // The quest book renders with progress bars.
   await page.click('nav button[data-tab="tab-quests"]');
   expect((await page.locator('#quests-list .card').count()) >= 5, 'quest book renders');

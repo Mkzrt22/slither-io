@@ -41,6 +41,8 @@ export class GameController {
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   /** Guards against double-granting overlapping rewarded-ad requests. */
   private adInFlight = false;
+  /** Gold produced offline on the most recent load. */
+  private lastOfflineGold = 0;
 
   /**
    * Loads (or initialises) the profile and announces it. Offline events that
@@ -52,18 +54,44 @@ export class GameController {
     private readonly bus: EventBus = gameEvents,
     private readonly now: () => number = Date.now,
   ) {
-    const { state, logs } = this.stateManager.loadStateWithLogs();
+    const { state, logs, summary } = this.stateManager.loadStateWithLogs();
     this.state = state;
+    this.lastOfflineGold = summary.goldEarned;
     this.regenAnchorMs = this.now();
     this.passiveAnchorMs = this.now();
 
     this.bus.emit('state:updated', cloneProfile(this.state));
-    for (const message of logs) {
-      this.bus.emit('ui:notification', {
-        message,
-        severity: message.startsWith('Raid stole') ? 'warning' : 'info',
-      });
+
+    // A meaningful absence gets a structured welcome-back modal; brief gaps
+    // (and the very first launch) stay silent.
+    const meaningful =
+      summary.seconds >= 60 &&
+      (summary.goldEarned > 0 || summary.energyEarned > 0 ||
+        summary.raidGold > 0 || summary.shieldBlocked);
+    if (meaningful) {
+      this.bus.emit('ui:offline_earnings', { ...summary });
+    } else {
+      for (const message of logs) {
+        this.bus.emit('ui:notification', {
+          message,
+          severity: message.startsWith('Raid stole') ? 'warning' : 'info',
+        });
+      }
     }
+  }
+
+  /** Gold produced offline on the last load (for the ×2 ad bonus). */
+  public getLastOfflineGold(): number {
+    return this.lastOfflineGold;
+  }
+
+  /** Grants bonus gold (e.g. doubling offline earnings after a rewarded ad). */
+  public grantBonusGold(amount: number): void {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
+    creditGold(this.state, Math.floor(amount));
+    this.persistAndAnnounce();
   }
 
   /** Read-only snapshot of the live profile for imperative callers. */
@@ -142,18 +170,42 @@ export class GameController {
 
   /** Upgrades one building level with gold. False when unaffordable. */
   public upgradeBuilding(type: BuildingType): boolean {
-    const cost = this.getBuildingCost(type);
-    if (this.state.gold < cost) {
+    return this.buyBuilding(type, 1) > 0;
+  }
+
+  /**
+   * Resolves how many levels of `type` a purchase mode would buy and its
+   * total cost. `'max'` returns as many as currently affordable.
+   */
+  public getBuildingPlan(
+    type: BuildingType,
+    mode: 1 | 10 | 'max',
+  ): { count: number; cost: number } {
+    const level = this.state.buildings[type];
+    if (mode === 'max') {
+      return VillageEngine.getMaxAffordable(type, level, this.state.gold);
+    }
+    return { count: mode, cost: VillageEngine.getBulkCost(type, level, mode) };
+  }
+
+  /**
+   * Buys building levels per `mode`. Fixed modes (1, 10) require affording the
+   * whole batch; `'max'` buys as many as gold allows. Returns the number of
+   * levels actually purchased (0 = nothing, with a warning).
+   */
+  public buyBuilding(type: BuildingType, mode: 1 | 10 | 'max'): number {
+    const plan = this.getBuildingPlan(type, mode);
+    if (plan.count < 1 || this.state.gold < plan.cost) {
       this.bus.emit('ui:notification', {
-        message: `Amélioration : il faut ${EconomyEngine.formatCurrency(cost)} or`,
+        message: `Amélioration : pas assez d’or (${EconomyEngine.formatCurrency(plan.cost)})`,
         severity: 'warning',
       });
-      return false;
+      return 0;
     }
-    this.state.gold -= cost;
-    this.state.buildings[type] += 1;
+    this.state.gold -= plan.cost;
+    this.state.buildings[type] += plan.count;
     this.persistAndAnnounce();
-    return true;
+    return plan.count;
   }
 
   /** True when the village can advance (enough total building levels). */
@@ -459,6 +511,12 @@ export class GameController {
       this.tickRegen();
       this.tickPassive();
     }, TICK_INTERVAL_MS);
+  }
+
+  /** Wipes the saved profile (the caller typically reloads afterwards). */
+  public resetProgress(): void {
+    this.stop();
+    this.stateManager.clearState();
   }
 
   /** Stops the background loop and persists a final save. */

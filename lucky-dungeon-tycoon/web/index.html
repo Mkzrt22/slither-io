@@ -36,6 +36,7 @@
         <span class="chip-ic">🔮</span>
         <span class="chip-val" id="stat-relics">0</span>
       </div>
+      <button class="hud-gear" id="btn-settings" aria-label="Réglages">⚙️</button>
     </header>
 
     <main>
@@ -125,9 +126,13 @@
           <button id="btn-advance" class="btn-advance">🚩 Village suivant</button>
         </div>
 
-        <div class="panel-head">
+        <div class="panel-head buildings-head">
           <h2>🏗️ Bâtiments</h2>
-          <p>Améliorez vos bâtiments : ils produisent de l’or en continu (même hors-ligne) et font progresser le village.</p>
+          <div class="buy-modes" id="buy-modes">
+            <button data-mode="1" class="active">×1</button>
+            <button data-mode="10">×10</button>
+            <button data-mode="max">Max</button>
+          </div>
         </div>
         <div id="buildings-list" class="cards"></div>
       </section>
@@ -172,6 +177,31 @@
       <button data-tab="tab-quests"><span class="nav-badge" id="quests-badge"></span><span class="nav-ic">📜</span><span class="nav-lbl">Quêtes</span></button>
       <button data-tab="tab-prestige"><span class="nav-ic">🔮</span><span class="nav-lbl">Ascension</span></button>
     </nav>
+  </div>
+
+  <!-- ============================= OFFLINE EARNINGS ============================= -->
+  <div id="offline-modal" class="modal" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-ic">🌙</div>
+      <h2>Bon retour&nbsp;!</h2>
+      <p id="offline-sub">Pendant votre absence&nbsp;:</p>
+      <div class="offline-amount" id="offline-amount">+0</div>
+      <p class="offline-detail" id="offline-detail"></p>
+      <button id="btn-offline-x2" class="btn-modal-primary">📺 Doubler (×2) via pub</button>
+      <button id="btn-offline-ok" class="btn-modal">Récupérer</button>
+    </div>
+  </div>
+
+  <!-- ============================= SETTINGS ============================= -->
+  <div id="settings-modal" class="modal" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-ic">⚙️</div>
+      <h2>Réglages</h2>
+      <button id="btn-sound" class="btn-modal">🔊 Son : activé</button>
+      <button id="btn-reset" class="btn-modal btn-danger">🗑️ Réinitialiser la progression</button>
+      <p class="settings-version">Lucky Dungeon Tycoon · v7</p>
+      <button id="btn-settings-close" class="btn-modal-ghost">Fermer</button>
+    </div>
   </div>
 
   <!-- ============================= ENERGY POPUP ============================= -->

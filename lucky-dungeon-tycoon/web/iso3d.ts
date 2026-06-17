@@ -1,51 +1,53 @@
 /**
  * iso3d.ts — Real-3D village renderer (Three.js / WebGL).
  *
- * Renders the village as a true 3D isometric tycoon scene: a stone platform,
- * six buildings that physically rise as they level up, low-poly workers that
- * walk around casting shadows, gold-coin pops on upgrade, a sun with soft
- * shadow mapping, drag-to-rotate, and raycast tap-to-upgrade. Conforms to the
- * same VillageRenderer shape as the 2D fallback (`iso.ts`).
+ * A true 3D isometric tycoon scene: a stone platform with grass and trees,
+ * six visually distinct buildings that physically rise as they level up, a
+ * day/night cycle (moving sun, warm windows and lamps that glow at dusk),
+ * chimney smoke, low-poly workers casting shadows, gold-coin pops, drag to
+ * rotate, pinch/wheel to zoom, and raycast tap-to-upgrade.
  *
  * Three.js is vendored locally (web/vendor/three.module.js) and resolved via
- * the document import map, so the game still works fully offline.
+ * the document import map, so the game still works fully offline. Conforms to
+ * the same VillageRenderer shape as the 2D fallback (`iso.ts`).
  */
 
 import * as THREE from 'three';
 import { BUILDING_TYPES, BuildingType, UserProfile } from '../src/types.js';
 import { BUILDING_CONFIGS } from '../src/VillageEngine.js';
 
-/** Logical grid position (0..6) of each building, centred on the platform. */
 const LAYOUT: Record<BuildingType, { gx: number; gy: number }> = {
   mine: { gx: 1.4, gy: 1.4 },
   farm: { gx: 4.6, gy: 1.4 },
   sawmill: { gx: 1.2, gy: 4.4 },
   market: { gx: 3.0, gy: 3.0 },
   blacksmith: { gx: 4.8, gy: 4.6 },
-  castle: { gx: 3.0, gy: 5.6 },
+  castle: { gx: 3.0, gy: 5.7 },
 };
 
 interface Palette { body: number; roof: number; trim: number; }
 const PALETTES: Record<BuildingType, Palette> = {
   mine:       { body: 0x8b8f99, roof: 0xcaa24a, trim: 0x5d626b },
-  farm:       { body: 0xcaa36a, roof: 0x7fc25a, trim: 0x8a6e44 },
+  farm:       { body: 0xd9b277, roof: 0x7fc25a, trim: 0x8a6e44 },
   sawmill:    { body: 0xb07d4f, roof: 0x8a5a36, trim: 0x6a4326 },
-  market:     { body: 0xc98a5a, roof: 0xd24f52, trim: 0x8c5d38 },
+  market:     { body: 0xd49a63, roof: 0xd24f52, trim: 0x8c5d38 },
   blacksmith: { body: 0x767b88, roof: 0xe0773c, trim: 0x4a4e58 },
-  castle:     { body: 0x9aa0ad, roof: 0x8a6fd6, trim: 0x666b78 },
+  castle:     { body: 0xaab0bd, roof: 0x8a6fd6, trim: 0x666b78 },
 };
 
-/** Village-themed platform/sky tints, cycled per village. */
+/** Per-village daytime sky/ground/grass tints, cycled. */
 const THEMES = [
-  { ground: 0x7c6a52, grass: 0x6f8a4a, sky: 0x213048, fog: 0x2a2036 },
-  { ground: 0x84766a, grass: 0x7a9a55, sky: 0x2a2440, fog: 0x241c34 },
-  { ground: 0x6f6256, grass: 0x5f7d46, sky: 0x18243a, fog: 0x18203a },
-  { ground: 0x8a7a64, grass: 0x86a05c, sky: 0x32263e, fog: 0x281e36 },
+  { ground: 0x7c6a52, grass: 0x6f8a4a, sky: 0x9fd0ff },
+  { ground: 0x84766a, grass: 0x7a9a55, sky: 0xb8d8e8 },
+  { ground: 0x6f6256, grass: 0x5f7d46, sky: 0xa8c8e0 },
+  { ground: 0x8a7a64, grass: 0x86a05c, sky: 0xc0d8e8 },
 ];
+const NIGHT_SKY = new THREE.Color(0x10131f);
 
-const TILE = 2.0; // world units per logical tile
+const TILE = 2.0;
 const GRID = 7;
 const HALF = (GRID * TILE) / 2;
+const DAY_CYCLE = 100; // seconds for a full day/night loop
 
 function tileToWorld(gx: number, gy: number): { x: number; z: number } {
   return { x: gx * TILE - HALF, z: gy * TILE - HALF };
@@ -59,11 +61,10 @@ interface Building3D {
   level: number;
   shownHeight: number;
 }
-
 interface Worker3D { mesh: THREE.Group; x: number; z: number; tx: number; tz: number; speed: number; pause: number; phase: number; }
 interface Coin3D { mesh: THREE.Mesh; vy: number; life: number; }
+interface Smoke3D { mesh: THREE.Mesh; vy: number; life: number; }
 
-/** Returns true if a WebGL context can be created (used to pick the renderer). */
 export function webglAvailable(): boolean {
   try {
     const c = document.createElement('canvas');
@@ -77,7 +78,7 @@ export class Iso3DScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.OrthographicCamera;
-  private readonly world = new THREE.Group(); // rotated by drag
+  private readonly world = new THREE.Group();
   private readonly sun: THREE.DirectionalLight;
   private readonly hemi: THREE.HemisphereLight;
   private readonly platform: THREE.Mesh;
@@ -86,18 +87,32 @@ export class Iso3DScene {
   private readonly buildings = new Map<BuildingType, Building3D>();
   private workers: Worker3D[] = [];
   private coins: Coin3D[] = [];
+  private smoke: Smoke3D[] = [];
+  /** Emissive materials (windows, lamps) brightened at night. */
+  private readonly nightMats: THREE.MeshStandardMaterial[] = [];
   private readonly raycaster = new THREE.Raycaster();
 
   private raf = 0;
   private last = 0;
   private t = 0;
-  private yaw = 0.0;
-  private targetYaw = 0.0;
+  private dayT = 18; // start mid-morning
+  private smokeTimer = 0;
+
+  private yaw = 0;
+  private targetYaw = 0;
+  private viewSize = 16;
+  private targetViewSize = 16;
+  private aspect = 1;
+  private themeVillage = 0;
+  private daySky = new THREE.Color(0x9fd0ff);
+
+  // Pointer state (drag rotate + pinch zoom + tap)
+  private readonly pointers = new Map<number, { x: number; y: number }>();
   private dragging = false;
   private dragMoved = 0;
   private lastPX = 0;
-  private viewSize = 16;
-  private themeIndex = 0;
+  private lastPinch = 0;
+  private pinching = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -117,7 +132,6 @@ export class Iso3DScene {
 
     this.scene.add(this.world);
 
-    // Lighting
     this.hemi = new THREE.HemisphereLight(0xcfe0ff, 0x5a4d3a, 1.05);
     this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xfff1d6, 2.3);
@@ -125,12 +139,11 @@ export class Iso3DScene {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(1024, 1024);
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
-    sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 80;
+    sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 90;
     this.sun.shadow.bias = -0.0004;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
 
-    // Platform (stone plate + thicker base)
     const theme = THEMES[0];
     this.platform = new THREE.Mesh(
       new THREE.BoxGeometry(GRID * TILE + 1.2, 1.0, GRID * TILE + 1.2),
@@ -144,28 +157,45 @@ export class Iso3DScene {
       new THREE.BoxGeometry(GRID * TILE + 2.2, 2.2, GRID * TILE + 2.2),
       new THREE.MeshStandardMaterial({ color: 0x3a3340, roughness: 1 }),
     );
-    base.position.y = -2.1;
-    base.receiveShadow = true;
+    base.position.y = -2.1; base.receiveShadow = true;
     this.world.add(base);
 
-    // A patch of grass skirt around the plate for warmth
     this.grass = new THREE.Mesh(
       new THREE.BoxGeometry(GRID * TILE + 5.5, 0.6, GRID * TILE + 5.5),
       new THREE.MeshStandardMaterial({ color: theme.grass, roughness: 1 }),
     );
-    this.grass.position.y = -1.0;
-    this.grass.receiveShadow = true;
+    this.grass.position.y = -1.0; this.grass.receiveShadow = true;
     this.world.add(this.grass);
 
+    this.buildPaths();
     this.buildBuildings();
     this.decorate();
-    this.applyTheme(0);
+    this.applyTheme(1);
     this.resize();
 
     window.addEventListener('resize', () => this.resize());
     canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
     window.addEventListener('pointerup', (e) => this.onPointerUp(e));
+    window.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+    canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
+  }
+
+  /** Light stone paths from the central market toward each building. */
+  private buildPaths(): void {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x9c8b6e, roughness: 1 });
+    const c = tileToWorld(LAYOUT.market.gx, LAYOUT.market.gy);
+    for (const type of BUILDING_TYPES) {
+      if (type === 'market') continue;
+      const b = tileToWorld(LAYOUT[type].gx, LAYOUT[type].gy);
+      const dx = b.x - c.x, dz = b.z - c.z;
+      const len = Math.hypot(dx, dz);
+      const path = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, len), mat);
+      path.position.set((b.x + c.x) / 2, 0.04, (b.z + c.z) / 2);
+      path.rotation.y = Math.atan2(dx, dz);
+      path.receiveShadow = true;
+      this.world.add(path);
+    }
   }
 
   private buildBuildings(): void {
@@ -179,11 +209,9 @@ export class Iso3DScene {
         new THREE.BoxGeometry(1.5, 1, 1.5),
         new THREE.MeshStandardMaterial({ color: pal.body, roughness: 0.8 }),
       );
-      body.castShadow = true; body.receiveShadow = true;
-      body.position.y = 0.5;
+      body.castShadow = true; body.receiveShadow = true; body.position.y = 0.5;
       group.add(body);
 
-      // Door
       const door = new THREE.Mesh(
         new THREE.BoxGeometry(0.5, 0.7, 0.08),
         new THREE.MeshStandardMaterial({ color: pal.trim, roughness: 0.9 }),
@@ -195,36 +223,114 @@ export class Iso3DScene {
         new THREE.ConeGeometry(1.25, 1.0, 4),
         new THREE.MeshStandardMaterial({ color: pal.roof, roughness: 0.7, flatShading: true }),
       );
-      roof.castShadow = true;
-      roof.rotation.y = Math.PI / 4;
-      roof.position.y = 1.5;
+      roof.castShadow = true; roof.rotation.y = Math.PI / 4; roof.position.y = 1.5;
       group.add(roof);
 
-      // Invisible pick proxy spanning the building for easy tapping
+      // Two warm windows that light up at night.
+      this.addWindow(group, -0.4, 0.78, 0.5);
+      this.addWindow(group, 0.4, 0.78, 0.5);
+
+      this.addDetails(type, group, pal);
+
       const pickMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(2, 4, 2),
+        new THREE.BoxGeometry(2.2, 5, 2.2),
         new THREE.MeshBasicMaterial({ visible: false }),
       );
-      pickMesh.position.y = 2;
-      pickMesh.userData.type = type;
+      pickMesh.position.y = 2.2; pickMesh.userData.type = type;
       group.add(pickMesh);
 
-      group.visible = false; // shown once built (level > 0)
+      group.visible = false;
       this.world.add(group);
       this.buildings.set(type, { group, body, roof, pickMesh, level: 0, shownHeight: 1 });
     }
   }
 
-  /** Decorative trees + lamp posts around the platform edge. */
+  private addWindow(group: THREE.Group, x: number, y: number, z: number): void {
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x3a3320, emissive: 0xffce6a, emissiveIntensity: 0, roughness: 0.5,
+    });
+    const win = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.3, 0.06), mat);
+    win.position.set(x, y, z);
+    group.add(win);
+    this.nightMats.push(mat);
+  }
+
+  /** Type-specific props that make each building recognisable. */
+  private addDetails(type: BuildingType, group: THREE.Group, pal: Palette): void {
+    const std = (color: number, rough = 0.85): THREE.MeshStandardMaterial =>
+      new THREE.MeshStandardMaterial({ color, roughness: rough });
+    const add = (m: THREE.Mesh, x: number, y: number, z: number): void => {
+      m.position.set(x, y, z); m.castShadow = true; group.add(m);
+    };
+
+    switch (type) {
+      case 'mine': {
+        const cart = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.7), std(0x4a4e58));
+        add(cart, 1.0, 0.2, 0.9);
+        const ore = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16), std(0xf6c244, 0.4));
+        add(ore, 1.0, 0.42, 0.9);
+        break;
+      }
+      case 'farm': {
+        const silo = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 1.1, 12), std(0xc9c2b0));
+        add(silo, 1.0, 0.55, -0.6);
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.3, 12), std(0x9a5a3a));
+        add(cap, 1.0, 1.25, -0.6);
+        const field = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.9), std(0x6f9a44, 1));
+        field.receiveShadow = true; field.castShadow = false;
+        field.position.set(0, 0.05, 1.4); group.add(field);
+        break;
+      }
+      case 'sawmill': {
+        for (let i = 0; i < 3; i++) {
+          const log = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.0, 8), std(0x8a5a36));
+          log.rotation.z = Math.PI / 2;
+          add(log, 1.05, 0.18 + i * 0.32, 0.7 - (i % 2) * 0.18);
+        }
+        break;
+      }
+      case 'market': {
+        const awning = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.1, 0.7), std(0xe24b4b));
+        awning.position.set(0, 1.05, 0.95); awning.rotation.x = -0.5; awning.castShadow = true;
+        group.add(awning);
+        for (let i = -1; i <= 1; i += 2) {
+          const crate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), std(0xb0813f));
+          add(crate, i * 0.5, 0.18, 1.05);
+        }
+        break;
+      }
+      case 'blacksmith': {
+        const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.9, 8), std(0x3a3a40));
+        add(chimney, 0.5, 1.4, -0.4);
+        const anvil = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.22), std(0x2c2c34, 0.5));
+        add(anvil, 1.0, 0.2, 0.8);
+        break;
+      }
+      case 'castle': {
+        for (const sx of [-0.85, 0.85]) {
+          const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.4, 1.7, 10), std(pal.body));
+          add(tower, sx, 0.85, -0.2);
+          const top = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.6, 10), std(pal.roof));
+          add(top, sx, 1.95, -0.2);
+        }
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6), std(0x6b5a3a));
+        add(pole, 0, 2.3, 0);
+        const flag = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.26, 0.03), std(0xf6c244, 0.6));
+        add(flag, 0.22, 2.5, 0);
+        break;
+      }
+    }
+  }
+
+  /** Decorative trees + glowing lamp posts around the platform. */
   private decorate(): void {
     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 1 });
     const leafMat = new THREE.MeshStandardMaterial({ color: 0x4e8a3c, roughness: 0.9, flatShading: true });
-    const spots: Array<[number, number]> = [
+    const treeSpots: Array<[number, number]> = [
       [-HALF - 1.6, -HALF - 1.6], [HALF + 1.6, -HALF - 1.6],
       [-HALF - 1.6, HALF + 1.6], [HALF + 1.6, HALF + 1.6],
-      [0, -HALF - 1.8], [0, HALF + 1.8],
     ];
-    for (const [x, z] of spots) {
+    for (const [x, z] of treeSpots) {
       const tree = new THREE.Group();
       const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.9, 6), trunkMat);
       trunk.position.y = 0.15; trunk.castShadow = true;
@@ -235,20 +341,27 @@ export class Iso3DScene {
       tree.scale.setScalar(0.85 + Math.random() * 0.4);
       this.world.add(tree);
     }
+
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x35302a, roughness: 1 });
+    const lampSpots: Array<[number, number]> = [[0, -HALF - 1.2], [0, HALF + 1.2], [-HALF - 1.2, 0], [HALF + 1.2, 0]];
+    for (const [x, z] of lampSpots) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.4, 6), postMat);
+      post.position.set(x, -0.2, z); post.castShadow = true;
+      this.world.add(post);
+      const bulbMat = new THREE.MeshStandardMaterial({ color: 0x4a4020, emissive: 0xffd070, emissiveIntensity: 0 });
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), bulbMat);
+      bulb.position.set(x, 0.6, z);
+      this.world.add(bulb);
+      this.nightMats.push(bulbMat);
+    }
   }
 
   private makeWorker(): Worker3D {
     const group = new THREE.Group();
     const hue = new THREE.Color().setHSL(Math.random(), 0.5, 0.55);
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.18, 0.32, 4, 8),
-      new THREE.MeshStandardMaterial({ color: hue, roughness: 0.8 }),
-    );
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.32, 4, 8), new THREE.MeshStandardMaterial({ color: hue, roughness: 0.8 }));
     body.castShadow = true; body.position.y = 0.42;
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16, 12, 10),
-      new THREE.MeshStandardMaterial({ color: 0xf1d3a8, roughness: 0.7 }),
-    );
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), new THREE.MeshStandardMaterial({ color: 0xf1d3a8, roughness: 0.7 }));
     head.castShadow = true; head.position.y = 0.78;
     group.add(body); group.add(head);
     const x = (Math.random() - 0.5) * GRID * TILE * 0.7;
@@ -260,11 +373,11 @@ export class Iso3DScene {
 
   private applyTheme(village: number): void {
     const theme = THEMES[(Math.max(1, village) - 1) % THEMES.length];
-    this.themeIndex = village;
+    this.themeVillage = village;
     (this.platform.material as THREE.MeshStandardMaterial).color.setHex(theme.ground);
     (this.grass.material as THREE.MeshStandardMaterial).color.setHex(theme.grass);
-    this.scene.background = new THREE.Color(theme.sky);
-    this.scene.fog = new THREE.Fog(theme.fog, 60, 110);
+    this.daySky = new THREE.Color(theme.sky);
+    this.scene.fog = new THREE.Fog(theme.sky, 70, 120);
   }
 
   public setState(state: UserProfile): void {
@@ -275,29 +388,23 @@ export class Iso3DScene {
       b.group.visible = b.level > 0;
       total += b.level;
     }
-    if (state.village !== this.themeIndex) {
-      this.applyTheme(state.village);
-    }
+    if (state.village !== this.themeVillage) this.applyTheme(state.village);
     const target = Math.min(14, 3 + Math.floor(total / 3));
     while (this.workers.length < target) this.workers.push(this.makeWorker());
-    while (this.workers.length > target) {
-      const w = this.workers.pop();
-      if (w) this.world.remove(w.mesh);
-    }
+    while (this.workers.length > target) { const w = this.workers.pop(); if (w) this.world.remove(w.mesh); }
     this.ensureRunning();
   }
 
-  /** Target height (world units) of a building's body for its level. */
   private bodyHeight(type: BuildingType, level: number): number {
-    const base = type === 'castle' ? 1.8 : 1.0;
-    return base + Math.min(level, 28) * 0.22;
+    const base = type === 'castle' ? 1.6 : 1.0;
+    return base + Math.min(level, 28) * 0.2;
   }
 
   public coinPop(type: BuildingType): void {
     const b = this.buildings.get(type);
     if (!b) return;
     const top = b.shownHeight + 1.6;
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 8; i++) {
       const mesh = new THREE.Mesh(
         new THREE.CylinderGeometry(0.18, 0.18, 0.05, 12),
         new THREE.MeshStandardMaterial({ color: 0xffd95a, metalness: 0.6, roughness: 0.3, emissive: 0x4a3a00 }),
@@ -310,28 +417,38 @@ export class Iso3DScene {
     this.ensureRunning();
   }
 
-  public resize(): void {
-    const rect = this.canvas.getBoundingClientRect();
-    const w = Math.max(1, rect.width);
-    const h = Math.max(1, rect.height);
-    this.renderer.setSize(w, h, false);
-    const aspect = w / h;
+  private spawnSmoke(): void {
+    const b = this.buildings.get('blacksmith');
+    if (!b || !b.group.visible) return;
+    const mat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.55, roughness: 1 });
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), mat);
+    puff.position.set(b.group.position.x + 0.5, b.shownHeight + 1.4, b.group.position.z - 0.4);
+    this.world.add(puff);
+    this.smoke.push({ mesh: puff, vy: 0.7 + Math.random() * 0.4, life: 0 });
+  }
+
+  private updateCameraFrustum(): void {
     const vs = this.viewSize;
-    this.camera.left = (-vs * aspect) / 2;
-    this.camera.right = (vs * aspect) / 2;
+    this.camera.left = (-vs * this.aspect) / 2;
+    this.camera.right = (vs * this.aspect) / 2;
     this.camera.top = vs / 2;
     this.camera.bottom = -vs / 2;
     this.camera.updateProjectionMatrix();
+  }
+
+  public resize(): void {
+    const rect = this.canvas.getBoundingClientRect();
+    const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
+    this.renderer.setSize(w, h, false);
+    this.aspect = w / h;
+    this.updateCameraFrustum();
   }
 
   public start(): void { this.ensureRunning(); }
   public stop(): void { if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; } }
 
   private ensureRunning(): void {
-    if (this.raf === 0) {
-      this.last = performance.now();
-      this.raf = requestAnimationFrame((t) => this.loop(t));
-    }
+    if (this.raf === 0) { this.last = performance.now(); this.raf = requestAnimationFrame((t) => this.loop(t)); }
   }
 
   private loop(now: number): void {
@@ -342,7 +459,6 @@ export class Iso3DScene {
       this.update(dt);
       this.renderer.render(this.scene, this.camera);
     } catch (err) {
-      // A GPU/context loss must not spam the console or wedge the game.
       console.warn('[village] 3D render halted', err);
       this.stop();
       return;
@@ -351,12 +467,18 @@ export class Iso3DScene {
   }
 
   private update(dt: number): void {
-    // Smooth drag rotation + gentle idle drift.
-    if (!this.dragging) this.targetYaw += dt * 0.05;
+    // Rotation (drag + gentle idle drift) and smooth zoom.
+    if (!this.dragging && !this.pinching) this.targetYaw += dt * 0.05;
     this.yaw += (this.targetYaw - this.yaw) * Math.min(1, dt * 8);
     this.world.rotation.y = this.yaw;
+    if (Math.abs(this.viewSize - this.targetViewSize) > 0.001) {
+      this.viewSize += (this.targetViewSize - this.viewSize) * Math.min(1, dt * 8);
+      this.updateCameraFrustum();
+    }
 
-    // Buildings rise toward their target height.
+    this.updateDayNight();
+
+    // Buildings rise toward their level height.
     for (const type of BUILDING_TYPES) {
       const b = this.buildings.get(type)!;
       if (!b.group.visible) continue;
@@ -374,14 +496,11 @@ export class Iso3DScene {
       const dx = w.tx - w.x, dz = w.tz - w.z;
       const d = Math.hypot(dx, dz);
       if (d < 0.15) {
-        w.tx = (Math.random() - 0.5) * bound * 2;
-        w.tz = (Math.random() - 0.5) * bound * 2;
+        w.tx = (Math.random() - 0.5) * bound * 2; w.tz = (Math.random() - 0.5) * bound * 2;
         w.pause = Math.random() * 1.6;
       } else {
-        w.x += (dx / d) * w.speed * dt;
-        w.z += (dz / d) * w.speed * dt;
-        w.mesh.position.x = w.x;
-        w.mesh.position.z = w.z;
+        w.x += (dx / d) * w.speed * dt; w.z += (dz / d) * w.speed * dt;
+        w.mesh.position.x = w.x; w.mesh.position.z = w.z;
         w.mesh.rotation.y = Math.atan2(dx, dz);
         w.mesh.position.y = Math.abs(Math.sin((this.t + w.phase) * 9)) * 0.07;
       }
@@ -389,39 +508,85 @@ export class Iso3DScene {
 
     // Coins arc up and fade.
     for (const c of this.coins) {
-      c.life += dt;
-      c.vy -= 9 * dt;
-      c.mesh.position.y += c.vy * dt;
-      c.mesh.rotation.z += dt * 8;
-      const s = Math.max(0, 1 - c.life);
-      c.mesh.scale.setScalar(s);
+      c.life += dt; c.vy -= 9 * dt; c.mesh.position.y += c.vy * dt; c.mesh.rotation.z += dt * 8;
+      c.mesh.scale.setScalar(Math.max(0, 1 - c.life));
     }
-    this.coins = this.coins.filter((c) => {
-      if (c.life >= 1) { this.world.remove(c.mesh); return false; }
-      return true;
-    });
+    this.coins = this.coins.filter((c) => { if (c.life >= 1) { this.world.remove(c.mesh); return false; } return true; });
+
+    // Chimney smoke.
+    this.smokeTimer -= dt;
+    if (this.smokeTimer <= 0) { this.smokeTimer = 0.55; this.spawnSmoke(); }
+    for (const s of this.smoke) {
+      s.life += dt; s.mesh.position.y += s.vy * dt;
+      s.mesh.scale.setScalar(1 + s.life * 1.4);
+      (s.mesh.material as THREE.MeshStandardMaterial).opacity = Math.max(0, 0.55 * (1 - s.life / 2));
+    }
+    this.smoke = this.smoke.filter((s) => { if (s.life >= 2) { this.world.remove(s.mesh); return false; } return true; });
   }
 
-  // --- Pointer: drag to rotate, tap to upgrade --------------------------------
+  private updateDayNight(): void {
+    this.dayT += 1 / 60; // ~1 unit/frame; cycle length in seconds approx
+    const phase = (this.dayT / DAY_CYCLE) % 1;
+    const elev = Math.sin(phase * Math.PI * 2);
+    const day = Math.max(0, Math.min(1, (elev + 0.25) / 0.6));
+    const night = 1 - day;
+
+    const ang = phase * Math.PI * 2;
+    this.sun.position.set(Math.cos(ang) * 22, 6 + Math.max(0, Math.sin(ang)) * 26, Math.sin(ang) * 14 + 6);
+    this.sun.intensity = 0.15 + day * 2.2;
+    this.hemi.intensity = 0.32 + day * 0.78;
+
+    const sky = this.daySky.clone().lerp(NIGHT_SKY, night);
+    this.scene.background = sky;
+    if (this.scene.fog) (this.scene.fog as THREE.Fog).color.copy(sky);
+
+    const glow = night * 1.7;
+    for (const m of this.nightMats) m.emissiveIntensity = glow;
+  }
+
+  // --- Pointer & wheel: drag rotate, pinch zoom, tap upgrade -----------------
 
   private onPointerDown(e: PointerEvent): void {
-    this.dragging = true;
-    this.dragMoved = 0;
-    this.lastPX = e.clientX;
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.pointers.size === 1) { this.dragging = true; this.dragMoved = 0; this.lastPX = e.clientX; }
+    if (this.pointers.size === 2) { this.pinching = true; this.lastPinch = this.pinchDistance(); }
   }
 
   private onPointerMove(e: PointerEvent): void {
-    if (!this.dragging) return;
-    const dx = e.clientX - this.lastPX;
-    this.lastPX = e.clientX;
-    this.dragMoved += Math.abs(dx);
-    this.targetYaw -= dx * 0.008;
+    if (!this.pointers.has(e.pointerId)) return;
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.pinching && this.pointers.size >= 2) {
+      const d = this.pinchDistance();
+      if (this.lastPinch > 0 && d > 0) {
+        this.targetViewSize = Math.max(9, Math.min(26, this.targetViewSize * (this.lastPinch / d)));
+      }
+      this.lastPinch = d;
+    } else if (this.dragging) {
+      const dx = e.clientX - this.lastPX; this.lastPX = e.clientX;
+      this.dragMoved += Math.abs(dx);
+      this.targetYaw -= dx * 0.008;
+    }
   }
 
   private onPointerUp(e: PointerEvent): void {
-    if (!this.dragging) return;
-    this.dragging = false;
-    if (this.dragMoved < 6) this.tap(e);
+    const had = this.pointers.delete(e.pointerId);
+    if (!had) return;
+    if (this.pointers.size < 2) { this.pinching = false; this.lastPinch = 0; }
+    if (this.pointers.size === 0) {
+      if (this.dragging && this.dragMoved < 6) this.tap(e);
+      this.dragging = false;
+    }
+  }
+
+  private onWheel(e: WheelEvent): void {
+    e.preventDefault();
+    this.targetViewSize = Math.max(9, Math.min(26, this.targetViewSize + e.deltaY * 0.01));
+  }
+
+  private pinchDistance(): number {
+    const pts = [...this.pointers.values()];
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
   }
 
   private tap(e: PointerEvent): void {
@@ -432,7 +597,7 @@ export class Iso3DScene {
     );
     this.raycaster.setFromCamera(ndc, this.camera);
     const picks: THREE.Mesh[] = [];
-    for (const b of this.buildings.values()) picks.push(b.pickMesh);
+    for (const b of this.buildings.values()) if (b.group.visible) picks.push(b.pickMesh);
     const hits = this.raycaster.intersectObjects(picks, false);
     if (hits.length > 0) {
       const type = hits[0].object.userData.type as BuildingType | undefined;

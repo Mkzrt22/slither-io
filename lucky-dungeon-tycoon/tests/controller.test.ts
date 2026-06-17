@@ -47,11 +47,13 @@ function harness(seed?: Partial<UserProfile>): Harness {
     'state:updated': [],
     'spin:result': [],
     'ui:popup_energy': [],
+    'ui:offline_earnings': [],
     'ui:notification': [],
   };
   bus.on('state:updated', (p) => events['state:updated'].push(p));
   bus.on('spin:result', (r) => events['spin:result'].push(r));
   bus.on('ui:popup_energy', (p) => events['ui:popup_energy'].push(p));
+  bus.on('ui:offline_earnings', (p) => events['ui:offline_earnings'].push(p));
   bus.on('ui:notification', (n) => events['ui:notification'].push(n));
 
   const controller = new GameController(gsm, bus);
@@ -65,7 +67,7 @@ test('construction announces the loaded state on the bus', () => {
   assert.equal(controller.getState().gold, 555);
 });
 
-test('offline raid logs are replayed as notifications on boot', () => {
+test('a meaningful absence emits a structured offline-earnings summary', () => {
   const store = new FakeStore();
   const fourHoursAgo = Date.now() - 14_400_000;
   store.setItem('hkey', JSON.stringify({
@@ -76,13 +78,12 @@ test('offline raid logs are replayed as notifications on boot', () => {
   }));
   const gsm = new GameStateManager('hkey', () => 0.0, store); // raid guaranteed
   const bus = new EventBus();
-  const notes: GameEventMap['ui:notification'][] = [];
-  bus.on('ui:notification', (n) => notes.push(n));
+  const summaries: GameEventMap['ui:offline_earnings'][] = [];
+  bus.on('ui:offline_earnings', (s) => summaries.push(s));
 
   new GameController(gsm, bus);
-  const raidNote = notes.find((n) => n.message.includes('Raid stole'));
-  assert.ok(raidNote);
-  assert.equal(raidNote.severity, 'warning');
+  assert.equal(summaries.length, 1);
+  assert.equal(summaries[0].raidGold, 150); // 15% of 1000, no shields
 });
 
 test('spin broadcasts the result and the persisted state', () => {

@@ -25,6 +25,20 @@ import {
   creditGold,
 } from './types.js';
 
+/** Structured summary of what happened while the player was away. */
+export interface OfflineSummary {
+  /** Total offline window credited, in seconds. */
+  seconds: number;
+  /** Energy regenerated. */
+  energyEarned: number;
+  /** Gold produced by buildings/miners offline. */
+  goldEarned: number;
+  /** Gold lost to an unblocked raid (0 if none). */
+  raidGold: number;
+  /** Whether a shield absorbed a raid. */
+  shieldBlocked: boolean;
+}
+
 /** Minimal key-value contract satisfied by both DOM Storage and the fallback. */
 interface KeyValueStore {
   getItem(key: string): string | null;
@@ -107,14 +121,21 @@ export class GameStateManager {
    * Same as loadState, but also surfaces the human-readable offline event log
    * ("Shield blocked raid", "+N energy", ...) for the welcome-back popup.
    */
-  public loadStateWithLogs(): { state: UserProfile; logs: string[] } {
+  public loadStateWithLogs(): {
+    state: UserProfile;
+    logs: string[];
+    summary: OfflineSummary;
+  } {
     const now = Date.now();
     const raw = this.readRaw();
 
     if (raw === null) {
       const fresh = createDefaultProfile(now);
       this.saveState(fresh);
-      return { state: fresh, logs: [] };
+      return {
+        state: fresh, logs: [],
+        summary: { seconds: 0, energyEarned: 0, goldEarned: 0, raidGold: 0, shieldBlocked: false },
+      };
     }
 
     const loaded = this.sanitizeProfile(raw, now);
@@ -128,10 +149,10 @@ export class GameStateManager {
       MAX_OFFLINE_SECONDS,
     );
 
-    const { state, logs } = this.applyOfflineRegen(loaded, timeDiffSeconds);
+    const { state, logs, summary } = this.applyOfflineRegen(loaded, timeDiffSeconds);
     state.lastSaveTimestamp = now;
     this.saveState(state);
-    return { state, logs };
+    return { state, logs, summary };
   }
 
   /**
@@ -151,14 +172,18 @@ export class GameStateManager {
   public applyOfflineRegen(
     state: UserProfile,
     timeDiffSeconds: number,
-  ): { state: UserProfile; logs: string[] } {
+  ): { state: UserProfile; logs: string[]; summary: OfflineSummary } {
     const next = cloneProfile(state);
     const logs: string[] = [];
+    const summary: OfflineSummary = {
+      seconds: 0, energyEarned: 0, goldEarned: 0, raidGold: 0, shieldBlocked: false,
+    };
 
     const safeSeconds =
       Number.isFinite(timeDiffSeconds) && timeDiffSeconds > 0
         ? Math.min(Math.floor(timeDiffSeconds), MAX_OFFLINE_SECONDS)
         : 0;
+    summary.seconds = safeSeconds;
 
     // --- 1. Energy recovery -------------------------------------------------
     const regenerated = Math.floor(
@@ -167,6 +192,7 @@ export class GameStateManager {
     if (regenerated > 0 && next.energy < next.maxEnergy) {
       const granted = Math.min(regenerated, next.maxEnergy - next.energy);
       next.energy += granted;
+      summary.energyEarned = granted;
       logs.push(`Recovered ${granted} energy while away`);
     }
 
@@ -177,9 +203,8 @@ export class GameStateManager {
       const earned = Math.floor(rate * passiveSeconds * OFFLINE_PASSIVE_EFFICIENCY);
       if (earned > 0) {
         creditGold(next, earned);
-        logs.push(
-          `Vos mineurs ont extrait ${EconomyEngine.formatCurrency(earned)} or pendant votre absence`,
-        );
+        summary.goldEarned = earned;
+        logs.push(`Production hors-ligne : +${EconomyEngine.formatCurrency(earned)} or`);
       }
     }
 
@@ -189,16 +214,18 @@ export class GameStateManager {
       if (raidOccurred) {
         if (next.shields > 0) {
           next.shields -= 1;
+          summary.shieldBlocked = true;
           logs.push('Shield blocked raid');
         } else {
           const stolen = Math.floor(next.gold * RAID_GOLD_TAX);
           next.gold = Math.max(0, next.gold - stolen);
+          summary.raidGold = stolen;
           logs.push(`Raid stole ${stolen} gold`);
         }
       }
     }
 
-    return { state: next, logs };
+    return { state: next, logs, summary };
   }
 
   /**

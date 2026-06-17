@@ -200,7 +200,8 @@ test('miners earn at half rate offline, capped at 8 hours', () => {
 
   const oneHour = gsm.applyOfflineRegen(p, 3_600);
   assert.equal(oneHour.state.gold, 10 * 3_600 * 0.5);
-  assert.ok(oneHour.logs.some((l) => l.includes('mineurs')));
+  assert.ok(oneHour.logs.some((l) => l.includes('hors-ligne')));
+  assert.equal(oneHour.summary.goldEarned, 10 * 3_600 * 0.5);
 
   const twoDays = gsm.applyOfflineRegen(p, 48 * 3_600);
   assert.equal(twoDays.state.gold, 10 * 8 * 3_600 * 0.5); // 8h cap
