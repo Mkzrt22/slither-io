@@ -10,7 +10,8 @@ UI event bus) at the edge. No module imports anything from a view layer.
 | File | Layer | Responsibility |
 | --- | --- | --- |
 | `types.ts` | Domain | `UserProfile`, `SpinResult`, `GameConfig`, profile factory/clone helpers. Zero dependencies. |
-| `EconomyEngine.ts` | Domain service | Geometric upgrade-cost and gain curves; short-scale currency formatter (K…Dc, scientific fallback). |
+| `EconomyEngine.ts` | Domain service | Geometric curves, short-scale formatter, global multiplier (floor × relic × village), passive-rate aggregation. |
+| `VillageEngine.ts` | Domain service | Village/building progression: six upgradeable buildings, costs/production, advancement thresholds, village multipliers. |
 | `GameStateManager.ts` | Infrastructure | localStorage persistence (in-memory fallback), offline energy regen, 4-hour offline raid determinator, anti-tamper sanitisation of loaded state. |
 | `SpinEngine.ts` | Domain service | Energy-gated weighted-random spin loop (50/25/15/10 reward table) with deterministic roll injection for tests. |
 | `MonetizationBridge.ts` | Infrastructure | Mock rewarded-ad gateway (1s latency, 95% fill) and gem→energy IAP with non-mutating purchase semantics. |
@@ -66,7 +67,7 @@ Play Billing bridges.
 ```sh
 npm install
 npm run typecheck   # strict-mode compile, no emit
-npm test            # 77 unit tests on Node's built-in test runner
+npm test            # 92 unit tests on Node's built-in test runner
 npm run test:e2e    # headless-Chromium e2e (requires Playwright + Chromium)
 ```
 

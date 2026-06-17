@@ -37,7 +37,7 @@
 
     <main>
       <!-- ========================= TAB: DONJON ========================= -->
-      <section id="tab-mine" class="tab active">
+      <section id="tab-mine" class="tab">
         <div class="scene" id="scene">
           <div class="scene-wall"></div>
           <div class="scene-pillars"></div>
@@ -96,13 +96,34 @@
         <ul id="log" class="log" aria-label="Journal"></ul>
       </section>
 
-      <!-- ========================= TAB: MINEURS ========================= -->
-      <section id="tab-miners" class="tab">
-        <div class="panel-head">
-          <h2>👷 Vos mineurs</h2>
-          <p>Ils extraient de l’or en continu — même hors-ligne (mi-régime, 8&nbsp;h max).</p>
+      <!-- ========================= TAB: VILLAGE ========================= -->
+      <section id="tab-village" class="tab active">
+        <div class="village-header">
+          <div class="village-id">
+            <span class="village-emoji" id="village-emoji">🏰</span>
+            <div>
+              <div class="village-name" id="village-name">Hameau</div>
+              <div class="village-mult" id="village-mult">×1.0 production</div>
+            </div>
+          </div>
         </div>
-        <div id="miners-list" class="cards"></div>
+
+        <div class="village-pano" id="village-pano"></div>
+
+        <div class="advance-box">
+          <div class="advance-label">
+            <span>Progression vers le village suivant</span>
+            <span id="advance-count">0 / 24</span>
+          </div>
+          <div class="advance-track"><div class="advance-fill" id="advance-fill"></div></div>
+          <button id="btn-advance" class="btn-advance">🚩 Village suivant</button>
+        </div>
+
+        <div class="panel-head">
+          <h2>🏗️ Bâtiments</h2>
+          <p>Améliorez vos bâtiments : ils produisent de l’or en continu (même hors-ligne) et font progresser le village.</p>
+        </div>
+        <div id="buildings-list" class="cards"></div>
       </section>
 
       <!-- ========================= TAB: QUÊTES ========================= -->
@@ -132,7 +153,7 @@
           <div id="stats-summary"></div>
           <div class="mini-stats">
             <div><span class="mini-ic">🛡️</span><span id="stat-shields">0/3</span></div>
-            <div><span class="mini-ic">⛏️</span><span id="stat-miners">0</span></div>
+            <div><span class="mini-ic">🏗️</span><span id="stat-buildings">0</span></div>
           </div>
         </div>
       </section>
@@ -140,8 +161,8 @@
 
     <!-- ============================= BOTTOM NAV ============================= -->
     <nav class="nav" aria-label="Navigation">
-      <button data-tab="tab-mine" class="active"><span class="nav-ic">🎰</span><span class="nav-lbl">Donjon</span></button>
-      <button data-tab="tab-miners"><span class="nav-ic">👷</span><span class="nav-lbl">Mineurs</span></button>
+      <button data-tab="tab-village" class="active"><span class="nav-ic">🏘️</span><span class="nav-lbl">Village</span></button>
+      <button data-tab="tab-mine"><span class="nav-ic">🎰</span><span class="nav-lbl">Donjon</span></button>
       <button data-tab="tab-quests"><span class="nav-badge" id="quests-badge"></span><span class="nav-ic">📜</span><span class="nav-lbl">Quêtes</span></button>
       <button data-tab="tab-prestige"><span class="nav-ic">🔮</span><span class="nav-lbl">Ascension</span></button>
     </nav>

@@ -9,6 +9,8 @@
 
 import { EconomyEngine } from './EconomyEngine.js';
 import {
+  BUILDING_TYPES,
+  BuildingType,
   DEFAULT_GAME_CONFIG,
   MAX_SHIELDS,
   MINER_TIERS,
@@ -17,6 +19,7 @@ import {
   UserProfile,
   cloneProfile,
   createDefaultProfile,
+  createEmptyBuildings,
   createEmptyMiners,
   createEmptyStats,
   creditGold,
@@ -275,6 +278,8 @@ export class GameStateManager {
       shields: Math.min(this.toBoundedInt(raw.shields, defaults.shields), MAX_SHIELDS),
       floor: Math.max(1, this.toBoundedInt(raw.floor, defaults.floor)),
       bossHp: this.toBossHp(raw.bossHp),
+      village: Math.max(1, this.toBoundedInt(raw.village, defaults.village)),
+      buildings: this.toBuildings(raw.buildings),
       miners: this.toMiners(raw.miners),
       relics: this.toBoundedInt(raw.relics, defaults.relics),
       stats: this.toStats(raw.stats),
@@ -301,6 +306,18 @@ export class GameStateManager {
       }
     }
     return miners;
+  }
+
+  /** Building roster: each type clamped to a non-negative integer level. */
+  private toBuildings(value: unknown): Record<BuildingType, number> {
+    const buildings = createEmptyBuildings();
+    if (typeof value === 'object' && value !== null) {
+      const raw = value as Record<string, unknown>;
+      for (const type of BUILDING_TYPES) {
+        buildings[type] = this.toBoundedInt(raw[type], 0);
+      }
+    }
+    return buildings;
   }
 
   /** Lifetime counters: each clamped to a non-negative finite number. */

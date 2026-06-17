@@ -7,7 +7,8 @@
  * non-throwing result, because UI render paths must never crash on bad data.
  */
 
-import { DEFAULT_GAME_CONFIG, MINER_TIERS, MinerTier, UserProfile } from './types.js';
+import { BUILDING_TYPES, DEFAULT_GAME_CONFIG, MINER_TIERS, MinerTier, UserProfile } from './types.js';
+import { VillageEngine } from './VillageEngine.js';
 
 /** Static balance sheet for one hireable miner tier. */
 export interface MinerConfig {
@@ -158,11 +159,12 @@ export class EconomyEngine {
     return 1 + RELIC_BONUS * EconomyEngine.sanitizeLevel(relics);
   }
 
-  /** Combined global gold multiplier for a profile. */
+  /** Combined global gold multiplier for a profile (floor × relic × village). */
   public static getGlobalMultiplier(state: UserProfile): number {
     return (
       EconomyEngine.getFloorMultiplier(state.floor) *
-      EconomyEngine.getRelicMultiplier(state.relics)
+      EconomyEngine.getRelicMultiplier(state.relics) *
+      VillageEngine.getVillageMultiplier(state.village)
     );
   }
 
@@ -175,13 +177,17 @@ export class EconomyEngine {
   }
 
   /**
-   * Total passive income in gold/second for a profile, with floor and relic
-   * multipliers applied.
+   * Total passive income in gold/second for a profile: village buildings plus
+   * legacy miners, all scaled by the global (floor × relic × village)
+   * multiplier.
    */
   public static getPassiveRate(state: UserProfile): number {
     let rate = 0;
     for (const tier of MINER_TIERS) {
       rate += MINER_CONFIGS[tier].baseRate * Math.max(0, state.miners[tier]);
+    }
+    for (const type of BUILDING_TYPES) {
+      rate += VillageEngine.getBuildingProduction(type, state.buildings[type]);
     }
     return rate * EconomyEngine.getGlobalMultiplier(state);
   }

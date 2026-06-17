@@ -14,12 +14,15 @@ import { GameStateManager } from './GameStateManager.js';
 import { MonetizationBridge } from './MonetizationBridge.js';
 import { QuestEngine } from './QuestEngine.js';
 import { SlotEngine } from './SlotEngine.js';
+import { VillageEngine } from './VillageEngine.js';
 import {
+  BuildingType,
   DEFAULT_GAME_CONFIG,
   MinerTier,
   SlotSpinResult,
   UserProfile,
   cloneProfile,
+  createEmptyBuildings,
   createEmptyMiners,
   creditGold,
 } from './types.js';
@@ -129,7 +132,60 @@ export class GameController {
   }
 
   // ---------------------------------------------------------------------------
-  // Use case: miners (passive income)
+  // Use case: village buildings (primary passive income & progression)
+  // ---------------------------------------------------------------------------
+
+  /** Cost of the next level of `type` for the upgrade button. */
+  public getBuildingCost(type: BuildingType): number {
+    return VillageEngine.getBuildingCost(type, this.state.buildings[type]);
+  }
+
+  /** Upgrades one building level with gold. False when unaffordable. */
+  public upgradeBuilding(type: BuildingType): boolean {
+    const cost = this.getBuildingCost(type);
+    if (this.state.gold < cost) {
+      this.bus.emit('ui:notification', {
+        message: `Amélioration : il faut ${EconomyEngine.formatCurrency(cost)} or`,
+        severity: 'warning',
+      });
+      return false;
+    }
+    this.state.gold -= cost;
+    this.state.buildings[type] += 1;
+    this.persistAndAnnounce();
+    return true;
+  }
+
+  /** True when the village can advance (enough total building levels). */
+  public canAdvanceVillage(): boolean {
+    return VillageEngine.canAdvance(this.state);
+  }
+
+  /**
+   * Advances to the next village: a permanent global production boost and a
+   * new theme. Buildings and gold are kept (pure forward progression); only
+   * the requirement to advance again rises. False when not yet eligible.
+   */
+  public advanceVillage(): boolean {
+    if (!this.canAdvanceVillage()) {
+      const needed = VillageEngine.getRequiredLevels(this.state.village);
+      this.bus.emit('ui:notification', {
+        message: `Village suivant : améliorez vos bâtiments (${VillageEngine.getTotalLevels(this.state)}/${needed} niveaux)`,
+        severity: 'warning',
+      });
+      return false;
+    }
+    this.state.village += 1;
+    this.persistAndAnnounce();
+    this.bus.emit('ui:notification', {
+      message: `🎉 Bienvenue à ${VillageEngine.getVillageName(this.state.village)} ! Production ×${VillageEngine.getVillageMultiplier(this.state.village).toFixed(1)}`,
+      severity: 'success',
+    });
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Use case: miners (legacy passive income)
   // ---------------------------------------------------------------------------
 
   /** Cost of the next unit of `tier` for the hire button. */
@@ -231,6 +287,8 @@ export class GameController {
     this.state.stats.goldEarnedRun = 0;
     this.state.gold = 0;
     this.state.miners = createEmptyMiners();
+    this.state.buildings = createEmptyBuildings();
+    this.state.village = 1;
     this.state.floor = 1;
     this.state.dungeonLevel = 0;
     this.state.bossHp = null;

@@ -75,6 +75,12 @@ try {
   await page.waitForFunction(() => document.getElementById('stat-energy').textContent === '30/30');
   expect((await page.locator('#stat-gems').innerText()) === '25', 'fresh profile boots with 25 gems');
 
+  // The village is the landing tab and lists six buildings.
+  expect((await page.locator('#buildings-list .card').count()) === 6, 'village lists 6 buildings');
+
+  // The Donjon (slot) tab holds the spin machine.
+  await page.click('nav button[data-tab="tab-mine"]');
+
   // Spinning consumes energy, pays out, and feeds the log.
   for (let i = 0; i < 5; i++) await page.click('#btn-spin');
   expect((await page.locator('#stat-energy').innerText()) === '25/30', '5 spins consume 5 energy');
@@ -109,16 +115,23 @@ try {
   const goldAfter = await page.locator('#stat-gold').innerText();
   expect(goldAfter !== '0', `gold persisted across reload (${goldAfter})`);
 
-  // v2: engaging the floor guardian shows the HP bar.
+  // After reload the village is the active tab again; go to the Donjon tab.
+  await page.click('nav button[data-tab="tab-mine"]');
+
+  // Engaging the floor guardian shows the HP bar.
   await page.click('#btn-boss');
   await page.waitForSelector('#boss-panel:not([hidden])', { timeout: 3000 });
   expect(true, 'boss fight engages and shows the HP bar');
 
-  // v2: the miners tab lists all four hireable tiers.
-  await page.click('nav button[data-tab="tab-miners"]');
-  expect((await page.locator('#miners-list .card').count()) === 4, 'miners tab lists 4 tiers');
+  // Village: upgrading a building (the mine starts at 30 gold) raises its level.
+  await page.click('nav button[data-tab="tab-village"]');
+  expect((await page.locator('#buildings-list .card').count()) === 6, 'building list renders 6 cards');
+  const mineLvlBefore = await page.locator('#buildings-list .card:first-child [data-level]').innerText();
+  await page.click('#buildings-list .card:first-child [data-buy]');
+  const mineLvlAfter = await page.locator('#buildings-list .card:first-child [data-level]').innerText();
+  expect(Number(mineLvlAfter) === Number(mineLvlBefore) + 1, `building upgraded (${mineLvlBefore} -> ${mineLvlAfter})`);
 
-  // v2: the quest book renders with progress bars.
+  // The quest book renders with progress bars.
   await page.click('nav button[data-tab="tab-quests"]');
   expect((await page.locator('#quests-list .card').count()) >= 5, 'quest book renders');
 

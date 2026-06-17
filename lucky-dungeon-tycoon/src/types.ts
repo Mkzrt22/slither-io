@@ -15,6 +15,24 @@ export const MINER_TIERS: readonly MinerTier[] = [
   'dragon',
 ];
 
+/** The six upgradeable village buildings, cheapest first. */
+export type BuildingType =
+  | 'mine'
+  | 'farm'
+  | 'sawmill'
+  | 'market'
+  | 'blacksmith'
+  | 'castle';
+
+export const BUILDING_TYPES: readonly BuildingType[] = [
+  'mine',
+  'farm',
+  'sawmill',
+  'market',
+  'blacksmith',
+  'castle',
+];
+
 /** Lifetime counters driving quests and prestige math. */
 export interface PlayerStats {
   /** Gold earned during the current prestige run (resets on ascension). */
@@ -49,7 +67,11 @@ export interface UserProfile {
   floor: number;
   /** Remaining HP of the boss being fought, or null when not fighting. */
   bossHp: number | null;
-  /** Hired passive-income units per tier. */
+  /** Current village (>= 1). Scales global production and theme. */
+  village: number;
+  /** Upgrade level of each village building (0 = not built). */
+  buildings: Record<BuildingType, number>;
+  /** Hired passive-income units per tier (legacy income source). */
   miners: Record<MinerTier, number>;
   /** Prestige currency: each relic grants a permanent gold multiplier. */
   relics: number;
@@ -132,6 +154,11 @@ export function createEmptyMiners(): Record<MinerTier, number> {
   return { goblin: 0, skeleton: 0, golem: 0, dragon: 0 };
 }
 
+/** Empty building roster (all levels at zero). */
+export function createEmptyBuildings(): Record<BuildingType, number> {
+  return { mine: 0, farm: 0, sawmill: 0, market: 0, blacksmith: 0, castle: 0 };
+}
+
 /** Zeroed lifetime counters. */
 export function createEmptyStats(): PlayerStats {
   return {
@@ -159,6 +186,8 @@ export function createDefaultProfile(now: number = Date.now()): UserProfile {
     shields: 0,
     floor: 1,
     bossHp: null,
+    village: 1,
+    buildings: createEmptyBuildings(),
     miners: createEmptyMiners(),
     relics: 0,
     stats: createEmptyStats(),
@@ -191,6 +220,15 @@ export function cloneProfile(state: UserProfile): UserProfile {
     shields: state.shields,
     floor: state.floor,
     bossHp: state.bossHp,
+    village: state.village,
+    buildings: {
+      mine: state.buildings.mine,
+      farm: state.buildings.farm,
+      sawmill: state.buildings.sawmill,
+      market: state.buildings.market,
+      blacksmith: state.buildings.blacksmith,
+      castle: state.buildings.castle,
+    },
     miners: {
       goblin: state.miners.goblin,
       skeleton: state.miners.skeleton,
