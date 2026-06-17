@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsc -p tsconfig.test.json && node --test \"dist-test/tests/**/*.test.js\"",
-    "build:web": "tsc -p tsconfig.web.json && cp web/index.html web/manifest.webmanifest web/sw.js dist-web/ && mkdir -p dist-web/web dist-web/icons && cp web/styles.css dist-web/web/ && cp web/icons/*.png dist-web/icons/",
+    "build:web": "tsc -p tsconfig.web.json && cp web/index.html web/manifest.webmanifest web/sw.js dist-web/ && mkdir -p dist-web/web dist-web/icons dist-web/vendor && cp web/styles.css dist-web/web/ && cp web/icons/*.png dist-web/icons/ && cp web/vendor/*.js dist-web/vendor/",
     "test:e2e": "npm run build:web && node e2e/browser.e2e.mjs",
     "serve:web": "npm run build:web && npx -y http-server dist-web -p 8080 -c-1 -o /",
     "sync:mobile": "npm run build:web && npx cap copy"
@@ -16,9 +16,11 @@
     "@capacitor/cli": "^6.2.1",
     "@capacitor/ios": "^6.2.1",
     "@types/node": "^22.0.0",
+    "@types/three": "^0.160.0",
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "@capacitor/core": "^6.2.1"
+    "@capacitor/core": "^6.2.1",
+    "three": "^0.160.0"
   }
 }

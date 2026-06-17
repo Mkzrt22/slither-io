@@ -29,6 +29,16 @@ rules live in the view. Run it with:
 npm run serve:web   # builds and serves http://localhost:8080/
 ```
 
+### Real-time 3D village (`web/iso3d.ts`)
+
+The village is rendered in **real 3D via WebGL (Three.js)**: an orthographic
+isometric camera, soft shadow-mapped sunlight, buildings that physically rise
+as they level up, low-poly workers, decorative trees, drag-to-rotate, and
+raycast tap-to-upgrade. Three.js is **vendored locally**
+(`web/vendor/three.module.js`, resolved through the document import map) so
+the game stays fully offline/installable. When WebGL is unavailable the view
+falls back automatically to a 2D canvas isometric renderer (`web/iso.ts`).
+
 ## Play from a phone (PWA — no app store needed)
 
 The web build is an installable PWA, deployed automatically to GitHub Pages

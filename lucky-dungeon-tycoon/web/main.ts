@@ -22,6 +22,16 @@ import {
 } from '../src/types.js';
 import { NumberTween, ParticleSystem, SlotReels } from './effects.js';
 import { IsoScene } from './iso.js';
+import { Iso3DScene, webglAvailable } from './iso3d.js';
+
+/** Common shape both the 3D (WebGL) and 2D (canvas) village renderers expose. */
+interface VillageRenderer {
+  setState(state: UserProfile): void;
+  resize(): void;
+  coinPop(type: BuildingType): void;
+  start(): void;
+  stop(): void;
+}
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -85,7 +95,7 @@ const buildingsListEl = el<HTMLDivElement>('buildings-list');
 const villageNameEl = el<HTMLDivElement>('village-name');
 const villageMultEl = el<HTMLDivElement>('village-mult');
 const villageEmojiEl = el<HTMLSpanElement>('village-emoji');
-const isoCanvas = el<HTMLCanvasElement>('iso');
+const isoHostEl = el<HTMLDivElement>('iso-host');
 const advanceCountEl = el<HTMLSpanElement>('advance-count');
 const advanceFillEl = el<HTMLDivElement>('advance-fill');
 const advanceBtn = el<HTMLButtonElement>('btn-advance');
@@ -181,10 +191,32 @@ for (const type of BUILDING_TYPES) {
   });
 }
 
-// Isometric village scene — tapping a building upgrades it.
-const iso = new IsoScene(isoCanvas, (type) => {
+// Isometric village scene — real 3D when WebGL is available, else a 2D
+// canvas fallback. Tapping a building upgrades it.
+const onTapBuilding = (type: BuildingType): void => {
   if (controller.upgradeBuilding(type)) iso.coinPop(type);
-});
+};
+
+function makeIsoCanvas(): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.className = 'iso-canvas';
+  isoHostEl.appendChild(canvas);
+  return canvas;
+}
+
+const iso: VillageRenderer = createVillageRenderer();
+
+function createVillageRenderer(): VillageRenderer {
+  if (webglAvailable()) {
+    try {
+      return new Iso3DScene(makeIsoCanvas(), onTapBuilding);
+    } catch (err) {
+      console.warn('[village] WebGL renderer failed, falling back to 2D', err);
+      isoHostEl.innerHTML = '';
+    }
+  }
+  return new IsoScene(makeIsoCanvas(), onTapBuilding);
+}
 
 advanceBtn.addEventListener('click', () => {
   if (controller.advanceVillage()) {
