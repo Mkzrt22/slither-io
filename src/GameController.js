@@ -34,17 +34,42 @@ export class GameController {
         this.tickTimer = null;
         /** Guards against double-granting overlapping rewarded-ad requests. */
         this.adInFlight = false;
-        const { state, logs } = this.stateManager.loadStateWithLogs();
+        /** Gold produced offline on the most recent load. */
+        this.lastOfflineGold = 0;
+        const { state, logs, summary } = this.stateManager.loadStateWithLogs();
         this.state = state;
+        this.lastOfflineGold = summary.goldEarned;
         this.regenAnchorMs = this.now();
         this.passiveAnchorMs = this.now();
         this.bus.emit('state:updated', cloneProfile(this.state));
-        for (const message of logs) {
-            this.bus.emit('ui:notification', {
-                message,
-                severity: message.startsWith('Raid stole') ? 'warning' : 'info',
-            });
+        // A meaningful absence gets a structured welcome-back modal; brief gaps
+        // (and the very first launch) stay silent.
+        const meaningful = summary.seconds >= 60 &&
+            (summary.goldEarned > 0 || summary.energyEarned > 0 ||
+                summary.raidGold > 0 || summary.shieldBlocked);
+        if (meaningful) {
+            this.bus.emit('ui:offline_earnings', { ...summary });
         }
+        else {
+            for (const message of logs) {
+                this.bus.emit('ui:notification', {
+                    message,
+                    severity: message.startsWith('Raid stole') ? 'warning' : 'info',
+                });
+            }
+        }
+    }
+    /** Gold produced offline on the last load (for the ×2 ad bonus). */
+    getLastOfflineGold() {
+        return this.lastOfflineGold;
+    }
+    /** Grants bonus gold (e.g. doubling offline earnings after a rewarded ad). */
+    grantBonusGold(amount) {
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return;
+        }
+        creditGold(this.state, Math.floor(amount));
+        this.persistAndAnnounce();
     }
     /** Read-only snapshot of the live profile for imperative callers. */
     getState() {
@@ -112,18 +137,37 @@ export class GameController {
     }
     /** Upgrades one building level with gold. False when unaffordable. */
     upgradeBuilding(type) {
-        const cost = this.getBuildingCost(type);
-        if (this.state.gold < cost) {
+        return this.buyBuilding(type, 1) > 0;
+    }
+    /**
+     * Resolves how many levels of `type` a purchase mode would buy and its
+     * total cost. `'max'` returns as many as currently affordable.
+     */
+    getBuildingPlan(type, mode) {
+        const level = this.state.buildings[type];
+        if (mode === 'max') {
+            return VillageEngine.getMaxAffordable(type, level, this.state.gold);
+        }
+        return { count: mode, cost: VillageEngine.getBulkCost(type, level, mode) };
+    }
+    /**
+     * Buys building levels per `mode`. Fixed modes (1, 10) require affording the
+     * whole batch; `'max'` buys as many as gold allows. Returns the number of
+     * levels actually purchased (0 = nothing, with a warning).
+     */
+    buyBuilding(type, mode) {
+        const plan = this.getBuildingPlan(type, mode);
+        if (plan.count < 1 || this.state.gold < plan.cost) {
             this.bus.emit('ui:notification', {
-                message: `Amélioration : il faut ${EconomyEngine.formatCurrency(cost)} or`,
+                message: `Amélioration : pas assez d’or (${EconomyEngine.formatCurrency(plan.cost)})`,
                 severity: 'warning',
             });
-            return false;
+            return 0;
         }
-        this.state.gold -= cost;
-        this.state.buildings[type] += 1;
+        this.state.gold -= plan.cost;
+        this.state.buildings[type] += plan.count;
         this.persistAndAnnounce();
-        return true;
+        return plan.count;
     }
     /** True when the village can advance (enough total building levels). */
     canAdvanceVillage() {
@@ -398,6 +442,11 @@ export class GameController {
             this.tickRegen();
             this.tickPassive();
         }, TICK_INTERVAL_MS);
+    }
+    /** Wipes the saved profile (the caller typically reloads afterwards). */
+    resetProgress() {
+        this.stop();
+        this.stateManager.clearState();
     }
     /** Stops the background loop and persists a final save. */
     stop() {

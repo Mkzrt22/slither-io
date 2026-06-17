@@ -78,7 +78,10 @@ export class GameStateManager {
         if (raw === null) {
             const fresh = createDefaultProfile(now);
             this.saveState(fresh);
-            return { state: fresh, logs: [] };
+            return {
+                state: fresh, logs: [],
+                summary: { seconds: 0, energyEarned: 0, goldEarned: 0, raidGold: 0, shieldBlocked: false },
+            };
         }
         const loaded = this.sanitizeProfile(raw, now);
         // Timestamp validation: a save stamped in the future means the device
@@ -86,10 +89,10 @@ export class GameStateManager {
         // offline time rather than a negative window.
         const elapsedMs = Math.max(0, now - loaded.lastSaveTimestamp);
         const timeDiffSeconds = Math.min(Math.floor(elapsedMs / 1000), MAX_OFFLINE_SECONDS);
-        const { state, logs } = this.applyOfflineRegen(loaded, timeDiffSeconds);
+        const { state, logs, summary } = this.applyOfflineRegen(loaded, timeDiffSeconds);
         state.lastSaveTimestamp = now;
         this.saveState(state);
-        return { state, logs };
+        return { state, logs, summary };
     }
     /**
      * Pure offline simulation over a window of `timeDiffSeconds`:
@@ -108,14 +111,19 @@ export class GameStateManager {
     applyOfflineRegen(state, timeDiffSeconds) {
         const next = cloneProfile(state);
         const logs = [];
+        const summary = {
+            seconds: 0, energyEarned: 0, goldEarned: 0, raidGold: 0, shieldBlocked: false,
+        };
         const safeSeconds = Number.isFinite(timeDiffSeconds) && timeDiffSeconds > 0
             ? Math.min(Math.floor(timeDiffSeconds), MAX_OFFLINE_SECONDS)
             : 0;
+        summary.seconds = safeSeconds;
         // --- 1. Energy recovery -------------------------------------------------
         const regenerated = Math.floor(safeSeconds / DEFAULT_GAME_CONFIG.energyRegenTimeSeconds);
         if (regenerated > 0 && next.energy < next.maxEnergy) {
             const granted = Math.min(regenerated, next.maxEnergy - next.energy);
             next.energy += granted;
+            summary.energyEarned = granted;
             logs.push(`Recovered ${granted} energy while away`);
         }
         // --- 2. Offline passive income -------------------------------------------
@@ -125,7 +133,8 @@ export class GameStateManager {
             const earned = Math.floor(rate * passiveSeconds * OFFLINE_PASSIVE_EFFICIENCY);
             if (earned > 0) {
                 creditGold(next, earned);
-                logs.push(`Vos mineurs ont extrait ${EconomyEngine.formatCurrency(earned)} or pendant votre absence`);
+                summary.goldEarned = earned;
+                logs.push(`Production hors-ligne : +${EconomyEngine.formatCurrency(earned)} or`);
             }
         }
         // --- 3. Offline Raid Determinator ---------------------------------------
@@ -134,16 +143,18 @@ export class GameStateManager {
             if (raidOccurred) {
                 if (next.shields > 0) {
                     next.shields -= 1;
+                    summary.shieldBlocked = true;
                     logs.push('Shield blocked raid');
                 }
                 else {
                     const stolen = Math.floor(next.gold * RAID_GOLD_TAX);
                     next.gold = Math.max(0, next.gold - stolen);
+                    summary.raidGold = stolen;
                     logs.push(`Raid stole ${stolen} gold`);
                 }
             }
         }
-        return { state: next, logs };
+        return { state: next, logs, summary };
     }
     /**
      * Persists the profile, stamping `lastSaveTimestamp` so the next launch
