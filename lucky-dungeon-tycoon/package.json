@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsc -p tsconfig.test.json && node --test \"dist-test/tests/**/*.test.js\"",
-    "build:web": "tsc -p tsconfig.web.json && cp web/index.html web/manifest.webmanifest web/sw.js dist-web/ && mkdir -p dist-web/icons && cp web/icons/*.png dist-web/icons/",
+    "build:web": "tsc -p tsconfig.web.json && cp web/index.html web/manifest.webmanifest web/sw.js dist-web/ && mkdir -p dist-web/web dist-web/icons && cp web/styles.css dist-web/web/ && cp web/icons/*.png dist-web/icons/",
     "test:e2e": "npm run build:web && node e2e/browser.e2e.mjs",
     "serve:web": "npm run build:web && npx -y http-server dist-web -p 8080 -c-1 -o /",
     "sync:mobile": "npm run build:web && npx cap copy"

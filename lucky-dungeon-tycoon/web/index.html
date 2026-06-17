@@ -2,308 +2,160 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Lucky Dungeon Tycoon</title>
   <link rel="manifest" href="./manifest.webmanifest" />
-  <meta name="theme-color" content="#14101f" />
+  <meta name="theme-color" content="#0d0a16" />
   <link rel="icon" type="image/png" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Dungeon Tycoon" />
-  <style>
-    :root {
-      --bg: #14101f;
-      --panel: #221a35;
-      --panel-edge: #3b2d5c;
-      --gold: #f6c244;
-      --gem: #5fd4f5;
-      --relic: #c08af5;
-      --text: #efe9ff;
-      --muted: #9b8fc0;
-      --success: #6fe08a;
-      --warning: #f0a84b;
-      --error: #f06d6d;
-      --hp: #f06d6d;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; }
-    body {
-      background: radial-gradient(circle at 50% 0%, #241b3d 0%, var(--bg) 70%);
-      color: var(--text);
-      font-family: "Segoe UI", system-ui, sans-serif;
-      display: flex;
-      justify-content: center;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-    main {
-      width: 100%;
-      max-width: 430px;
-      padding: 12px 14px 84px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    h1 {
-      text-align: center;
-      font-size: 1.15rem;
-      letter-spacing: 0.08em;
-      color: var(--gold);
-      text-shadow: 0 2px 8px rgba(246, 194, 68, 0.35);
-    }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
-    }
-    .stat {
-      background: var(--panel);
-      border: 1px solid var(--panel-edge);
-      border-radius: 10px;
-      padding: 7px 4px;
-      text-align: center;
-    }
-    .stat .label { font-size: 0.58rem; color: var(--muted); text-transform: uppercase; }
-    .stat .value { font-size: 0.9rem; font-weight: 700; margin-top: 2px; display: block; }
-    #stat-gold { color: var(--gold); }
-    #stat-gems { color: var(--gem); }
-    #stat-relics { color: var(--relic); }
-    #stat-rate { color: var(--success); }
-    section.tab { display: none; flex-direction: column; gap: 12px; }
-    section.tab.active { display: flex; }
-    #reel {
-      background: var(--panel);
-      border: 2px solid var(--panel-edge);
-      border-radius: 16px;
-      min-height: 96px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 18px;
-      font-size: 2.4rem;
-      font-weight: 800;
-    }
-    #reel-label {
-      text-align: center;
-      min-height: 1.2em;
-      font-size: 0.85rem;
-      color: var(--muted);
-    }
-    .reel-pop { animation: pop 0.45s ease-out; }
-    @keyframes pop {
-      0% { transform: scale(0.6); opacity: 0.2; }
-      70% { transform: scale(1.12); }
-      100% { transform: scale(1); opacity: 1; }
-    }
-    button {
-      border: none;
-      border-radius: 12px;
-      padding: 13px;
-      font-size: 0.98rem;
-      font-weight: 700;
-      color: #1c142e;
-      background: var(--gold);
-      cursor: pointer;
-      transition: filter 0.15s, transform 0.05s;
-    }
-    button:active { transform: scale(0.98); }
-    button:disabled { filter: grayscale(0.8) brightness(0.6); cursor: not-allowed; }
-    #btn-spin { font-size: 1.2rem; padding: 16px; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .row button, .ghost { background: var(--panel); color: var(--text); border: 1px solid var(--panel-edge); }
-    #btn-upgrade { background: #4a3a7a; color: var(--text); }
-    #boss-panel {
-      background: var(--panel);
-      border: 1px solid var(--panel-edge);
-      border-radius: 12px;
-      padding: 10px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    #boss-title { font-size: 0.85rem; font-weight: 700; }
-    .hp-track { background: rgba(0,0,0,0.4); border-radius: 8px; height: 14px; overflow: hidden; }
-    #boss-hp-fill { background: var(--hp); height: 100%; width: 100%; transition: width 0.3s; }
-    #log {
-      list-style: none;
-      font-size: 0.78rem;
-      min-height: 96px;
-      background: rgba(0, 0, 0, 0.25);
-      border-radius: 10px;
-      padding: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .log-info { color: var(--muted); }
-    .log-success { color: var(--success); }
-    .log-warning { color: var(--warning); }
-    .log-error { color: var(--error); }
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--panel-edge);
-      border-radius: 12px;
-      padding: 12px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .card .info { flex: 1; min-width: 0; }
-    .card .name { font-weight: 700; font-size: 0.9rem; }
-    .card .desc { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
-    .card button { padding: 10px 12px; font-size: 0.82rem; white-space: nowrap; }
-    .progress-track { background: rgba(0,0,0,0.4); border-radius: 6px; height: 6px; overflow: hidden; margin-top: 6px; }
-    .progress-fill { background: var(--gem); height: 100%; transition: width 0.3s; }
-    .panel-note { font-size: 0.8rem; color: var(--muted); text-align: center; padding: 0 8px; }
-    nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      display: flex;
-      justify-content: center;
-      background: rgba(20, 16, 31, 0.96);
-      border-top: 1px solid var(--panel-edge);
-      padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
-      backdrop-filter: blur(8px);
-    }
-    nav .tabs { display: flex; width: 100%; max-width: 430px; }
-    nav button {
-      flex: 1;
-      background: transparent;
-      color: var(--muted);
-      font-size: 0.72rem;
-      padding: 6px 2px;
-      border-radius: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-    }
-    nav button .icon { font-size: 1.25rem; }
-    nav button.active { color: var(--gold); }
-    nav button .badge {
-      position: absolute;
-      transform: translate(16px, -2px);
-      background: var(--error);
-      color: #fff;
-      font-size: 0.6rem;
-      border-radius: 8px;
-      padding: 1px 5px;
-      display: none;
-    }
-    #energy-popup {
-      position: fixed;
-      inset: 0;
-      background: rgba(10, 6, 20, 0.8);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      z-index: 10;
-    }
-    #energy-popup.visible { display: flex; }
-    .popup-card {
-      background: var(--panel);
-      border: 1px solid var(--panel-edge);
-      border-radius: 16px;
-      padding: 24px;
-      width: 100%;
-      max-width: 320px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      text-align: center;
-    }
-    .popup-card h2 { font-size: 1.1rem; color: var(--gold); }
-    .popup-card p { font-size: 0.85rem; color: var(--muted); }
-    #btn-popup-close { background: transparent; color: var(--muted); padding: 6px; font-weight: 400; }
-  </style>
+  <link rel="stylesheet" href="./web/styles.css" />
 </head>
 <body>
-  <main>
-    <h1>⚒ LUCKY DUNGEON TYCOON ⚒</h1>
-
-    <section class="stats" aria-label="Ressources">
-      <div class="stat"><span class="label">Or</span><span class="value" id="stat-gold">0</span></div>
-      <div class="stat"><span class="label">Gemmes</span><span class="value" id="stat-gems">0</span></div>
-      <div class="stat"><span class="label">Énergie</span><span class="value" id="stat-energy">0/0</span></div>
-      <div class="stat"><span class="label">Étage</span><span class="value" id="stat-level">1</span></div>
-      <div class="stat"><span class="label">Or/s</span><span class="value" id="stat-rate">0</span></div>
-      <div class="stat"><span class="label">Reliques</span><span class="value" id="stat-relics">0</span></div>
-      <div class="stat"><span class="label">Boucliers</span><span class="value" id="stat-shields">0/3</span></div>
-      <div class="stat"><span class="label">Mineurs</span><span class="value" id="stat-miners">0</span></div>
-    </section>
-
-    <!-- ===================== Onglet MINE ===================== -->
-    <section id="tab-mine" class="tab active">
-      <div id="boss-panel" hidden>
-        <div id="boss-title">Gardien de l’étage</div>
-        <div class="hp-track"><div id="boss-hp-fill"></div></div>
+  <div id="app">
+    <!-- ============================= TOP HUD ============================= -->
+    <header class="hud">
+      <div class="chip chip-gold">
+        <span class="chip-ic">🪙</span>
+        <span class="chip-val" id="stat-gold">0</span>
       </div>
-
-      <div id="reel"><span>❔</span><span>❔</span><span>❔</span></div>
-      <div id="reel-label">Tirez le levier !</div>
-
-      <button id="btn-spin">🎰 SPIN (1 ⚡)</button>
-      <button id="btn-boss" class="ghost">⚔️ Défier le gardien de l’étage</button>
-      <button id="btn-upgrade">⬆ Améliorer la mine</button>
-      <div class="row">
-        <button id="btn-buy-energy">💎 +50 Énergie (10)</button>
-        <button id="btn-watch-ad">📺 Pub : +10 Énergie</button>
+      <div class="chip chip-gem">
+        <span class="chip-ic">💎</span>
+        <span class="chip-val" id="stat-gems">0</span>
       </div>
+      <div class="chip chip-energy">
+        <span class="chip-ic">⚡</span>
+        <span class="chip-val" id="stat-energy">0/0</span>
+      </div>
+      <div class="chip chip-relic">
+        <span class="chip-ic">🔮</span>
+        <span class="chip-val" id="stat-relics">0</span>
+      </div>
+    </header>
 
-      <ul id="log" aria-label="Journal"></ul>
-    </section>
+    <main>
+      <!-- ========================= TAB: DONJON ========================= -->
+      <section id="tab-mine" class="tab active">
+        <div class="scene" id="scene">
+          <div class="scene-wall"></div>
+          <div class="scene-pillars"></div>
+          <div class="scene-floor"></div>
+          <div class="torch torch-l"><span class="flame"></span></div>
+          <div class="torch torch-r"><span class="flame"></span></div>
 
-    <!-- ===================== Onglet MINEURS ===================== -->
-    <section id="tab-miners" class="tab">
-      <p class="panel-note">Les mineurs extraient de l’or en continu — même quand le jeu est fermé (à mi-régime, 8 h max).</p>
-      <div id="miners-list"></div>
-    </section>
+          <div class="floor-banner">ÉTAGE <span id="stat-level">1</span></div>
+          <div class="rate-badge">⛏️ <span id="stat-rate">0</span> /s</div>
 
-    <!-- ===================== Onglet QUÊTES ===================== -->
-    <section id="tab-quests" class="tab">
-      <p class="panel-note">Accomplissez des hauts faits pour gagner des gemmes.</p>
-      <div id="quests-list"></div>
-    </section>
+          <!-- Boss stage (hidden unless fighting) -->
+          <div class="boss-stage" id="boss-panel" hidden>
+            <div class="boss-name" id="boss-title">Gardien</div>
+            <div class="boss-sprite" id="boss-sprite">👹</div>
+            <div class="boss-hpbar">
+              <div class="boss-hp-fill" id="boss-hp-fill"></div>
+              <span class="boss-hp-text" id="boss-hp-text"></span>
+            </div>
+          </div>
 
-    <!-- ===================== Onglet ASCENSION ===================== -->
-    <section id="tab-prestige" class="tab">
-      <p class="panel-note" id="prestige-note"></p>
-      <div class="card">
-        <div class="info">
-          <div class="name">✨ Ascension</div>
-          <div class="desc">Réinitialise or, mineurs, étages et améliorations. Conserve gemmes, boucliers et reliques. Chaque relique : +10 % d’or, pour toujours.</div>
-          <div class="progress-track"><div class="progress-fill" id="prestige-progress"></div></div>
+          <!-- Slot machine -->
+          <div class="machine" id="machine">
+            <div class="machine-marquee">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <div class="reel-window" id="reel">
+              <div class="reel-col"><div class="reel-strip"></div></div>
+              <div class="reel-col"><div class="reel-strip"></div></div>
+              <div class="reel-col"><div class="reel-strip"></div></div>
+              <div class="payline"></div>
+            </div>
+            <div class="machine-base"></div>
+          </div>
+
+          <div class="hoard" id="hoard"></div>
+          <div class="reel-label" id="reel-label">Tirez le levier&nbsp;!</div>
+          <canvas id="fx"></canvas>
         </div>
-        <button id="btn-ascend">Ascendre</button>
-      </div>
-      <div class="card">
-        <div class="info">
-          <div class="name">📜 Statistiques</div>
-          <div class="desc" id="stats-summary"></div>
+
+        <button id="btn-spin" class="btn-spin">
+          <span class="btn-spin-glow"></span>
+          <span class="btn-spin-main">TOURNER</span>
+          <span class="btn-spin-sub">1 ⚡</span>
+        </button>
+
+        <div class="action-row">
+          <button id="btn-boss" class="btn-action btn-boss">⚔️<span>Défier le gardien</span></button>
+          <button id="btn-flee" class="btn-action btn-flee" hidden>🏃<span>Fuir</span></button>
+          <button id="btn-upgrade" class="btn-action btn-upgrade">⬆️<span>Améliorer</span></button>
         </div>
-      </div>
-    </section>
-  </main>
+        <div class="action-row">
+          <button id="btn-buy-energy" class="btn-action">💎<span>+50 énergie</span></button>
+          <button id="btn-watch-ad" class="btn-action">📺<span>Pub +10 ⚡</span></button>
+        </div>
 
-  <nav aria-label="Navigation">
-    <div class="tabs">
-      <button data-tab="tab-mine" class="active"><span class="icon">⛏️</span>Mine</button>
-      <button data-tab="tab-miners"><span class="icon">👷</span>Mineurs</button>
-      <button data-tab="tab-quests"><span class="badge" id="quests-badge"></span><span class="icon">📜</span>Quêtes</button>
-      <button data-tab="tab-prestige"><span class="icon">✨</span>Ascension</button>
-    </div>
-  </nav>
+        <ul id="log" class="log" aria-label="Journal"></ul>
+      </section>
 
-  <div id="energy-popup" role="dialog" aria-modal="true" aria-labelledby="popup-title">
-    <div class="popup-card">
-      <h2 id="popup-title">Plus d’énergie !</h2>
-      <p>L’énergie revient 1 toutes les 5 minutes — ou rechargez :</p>
-      <button id="btn-popup-buy">💎 50 énergie (10 gemmes)</button>
-      <button id="btn-popup-ad">📺 Pub (+10 énergie)</button>
-      <button id="btn-popup-close">Attendre</button>
+      <!-- ========================= TAB: MINEURS ========================= -->
+      <section id="tab-miners" class="tab">
+        <div class="panel-head">
+          <h2>👷 Vos mineurs</h2>
+          <p>Ils extraient de l’or en continu — même hors-ligne (mi-régime, 8&nbsp;h max).</p>
+        </div>
+        <div id="miners-list" class="cards"></div>
+      </section>
+
+      <!-- ========================= TAB: QUÊTES ========================= -->
+      <section id="tab-quests" class="tab">
+        <div class="panel-head">
+          <h2>📜 Hauts faits</h2>
+          <p>Accomplissez des objectifs pour gagner des gemmes.</p>
+        </div>
+        <div id="quests-list" class="cards"></div>
+      </section>
+
+      <!-- ========================= TAB: ASCENSION ========================= -->
+      <section id="tab-prestige" class="tab">
+        <div class="panel-head">
+          <h2>🔮 Ascension</h2>
+          <p id="prestige-note"></p>
+        </div>
+        <div class="prestige-card">
+          <div class="prestige-orb">🔮</div>
+          <div class="prestige-mult" id="prestige-mult">×1.0</div>
+          <div class="prestige-track"><div class="prestige-fill" id="prestige-progress"></div></div>
+          <button id="btn-ascend" class="btn-ascend">Ascendre</button>
+          <p class="prestige-desc">Réinitialise or, mineurs, étages et améliorations.<br/>Conserve gemmes, boucliers et reliques. Chaque relique : <b>+10 % d’or, pour toujours</b>.</p>
+        </div>
+        <div class="stats-card">
+          <h3>📊 Statistiques</h3>
+          <div id="stats-summary"></div>
+          <div class="mini-stats">
+            <div><span class="mini-ic">🛡️</span><span id="stat-shields">0/3</span></div>
+            <div><span class="mini-ic">⛏️</span><span id="stat-miners">0</span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============================= BOTTOM NAV ============================= -->
+    <nav class="nav" aria-label="Navigation">
+      <button data-tab="tab-mine" class="active"><span class="nav-ic">🎰</span><span class="nav-lbl">Donjon</span></button>
+      <button data-tab="tab-miners"><span class="nav-ic">👷</span><span class="nav-lbl">Mineurs</span></button>
+      <button data-tab="tab-quests"><span class="nav-badge" id="quests-badge"></span><span class="nav-ic">📜</span><span class="nav-lbl">Quêtes</span></button>
+      <button data-tab="tab-prestige"><span class="nav-ic">🔮</span><span class="nav-lbl">Ascension</span></button>
+    </nav>
+  </div>
+
+  <!-- ============================= ENERGY POPUP ============================= -->
+  <div id="energy-popup" class="modal" role="dialog" aria-modal="true" aria-labelledby="popup-title">
+    <div class="modal-card">
+      <div class="modal-ic">⚡</div>
+      <h2 id="popup-title">Plus d’énergie&nbsp;!</h2>
+      <p>L’énergie revient 1 toutes les 5 minutes — ou rechargez maintenant&nbsp;:</p>
+      <button id="btn-popup-buy" class="btn-modal-primary">💎 50 énergie (10 gemmes)</button>
+      <button id="btn-popup-ad" class="btn-modal">📺 Pub (+10 énergie)</button>
+      <button id="btn-popup-close" class="btn-modal-ghost">Attendre</button>
     </div>
   </div>
 
@@ -311,9 +163,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(() => {
-          /* offline support is progressive enhancement; the game runs without it */
-        });
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
       });
     }
   </script>
