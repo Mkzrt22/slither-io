@@ -13,6 +13,7 @@ import { QUESTS } from '../src/QuestEngine.js';
 import { gameEvents } from '../src/EventBus.js';
 import { BUILDING_TYPES, MAX_SHIELDS, } from '../src/types.js';
 import { NumberTween, ParticleSystem, SlotReels } from './effects.js';
+import { IsoScene } from './iso.js';
 function el(id) {
     const node = document.getElementById(id);
     if (node === null) {
@@ -66,7 +67,7 @@ const buildingsListEl = el('buildings-list');
 const villageNameEl = el('village-name');
 const villageMultEl = el('village-mult');
 const villageEmojiEl = el('village-emoji');
-const villagePanoEl = el('village-pano');
+const isoCanvas = el('iso');
 const advanceCountEl = el('advance-count');
 const advanceFillEl = el('advance-fill');
 const advanceBtn = el('btn-advance');
@@ -117,13 +118,14 @@ for (const btn of tabButtons) {
         if (btn.dataset.tab === 'tab-mine') {
             particles.resize();
         }
+        if (btn.dataset.tab === 'tab-village') {
+            iso.resize();
+        }
     });
 }
 const buildingCards = new Map();
-const panoSlots = new Map();
 for (const type of BUILDING_TYPES) {
     const cfg = BUILDING_CONFIGS[type];
-    // Upgrade card
     const card = document.createElement('div');
     card.className = 'card building-card';
     card.innerHTML = `
@@ -134,20 +136,22 @@ for (const type of BUILDING_TYPES) {
     </div>
     <button data-buy>Améliorer</button>`;
     const buyBtn = card.querySelector('[data-buy]');
-    buyBtn.addEventListener('click', () => controller.upgradeBuilding(type));
+    buyBtn.addEventListener('click', () => {
+        if (controller.upgradeBuilding(type))
+            iso.coinPop(type);
+    });
     buildingsListEl.appendChild(card);
     buildingCards.set(type, {
         levelEl: card.querySelector('[data-level]'),
         rateEl: card.querySelector('[data-rate]'),
         buyBtn,
     });
-    // Panorama silhouette
-    const slot = document.createElement('div');
-    slot.className = 'pano-b';
-    slot.innerHTML = `${cfg.icon}<small data-lvl>0</small>`;
-    villagePanoEl.appendChild(slot);
-    panoSlots.set(type, { el: slot, lvlEl: slot.querySelector('[data-lvl]') });
 }
+// Isometric village scene — tapping a building upgrades it.
+const iso = new IsoScene(isoCanvas, (type) => {
+    if (controller.upgradeBuilding(type))
+        iso.coinPop(type);
+});
 advanceBtn.addEventListener('click', () => {
     if (controller.advanceVillage()) {
         particles.confetti(90);
@@ -236,7 +240,7 @@ function render(state) {
     advanceFillEl.style.width = `${Math.round(VillageEngine.getAdvanceProgress(state) * 100)}%`;
     advanceBtn.disabled = !canAdvance;
     advanceBtn.classList.toggle('ready', canAdvance);
-    // Buildings (cards + panorama silhouettes)
+    // Buildings (upgrade cards) + isometric scene
     const globalMult = EconomyEngine.getGlobalMultiplier(state);
     for (const type of BUILDING_TYPES) {
         const level = state.buildings[type];
@@ -247,12 +251,8 @@ function render(state) {
         card.rateEl.textContent = fmt(Math.round(perLevel * level));
         card.buyBtn.innerHTML = `Améliorer<br/>${fmt(cost)}`;
         card.buyBtn.disabled = state.gold < cost;
-        const slot = panoSlots.get(type);
-        const k = Math.min(1, level / 15);
-        slot.el.style.setProperty('--b-scale', (0.55 + k * 0.85).toFixed(2));
-        slot.el.style.setProperty('--b-op', (0.3 + k * 0.7).toFixed(2));
-        slot.lvlEl.textContent = level > 0 ? String(level) : '';
     }
+    iso.setState(state);
     // Quests
     let claimable = 0;
     for (const quest of QUESTS) {
@@ -331,7 +331,7 @@ gameEvents.on('ui:popup_energy', () => popupEl.classList.add('visible'));
 // --- Boot --------------------------------------------------------------------
 const controller = new GameController();
 controller.start();
-requestAnimationFrame(() => particles.resize());
+requestAnimationFrame(() => { particles.resize(); iso.resize(); });
 // --- Wire view -> model ------------------------------------------------------
 spinBtn.addEventListener('click', () => controller.spin());
 bossBtn.addEventListener('click', () => controller.startBossFight());
