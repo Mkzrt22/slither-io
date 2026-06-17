@@ -6,6 +6,7 @@
  * "was it claimed?"; the controller owns the claim transaction.
  */
 import { MINER_TIERS } from './types.js';
+import { VillageEngine } from './VillageEngine.js';
 function ratio(value, target) {
     if (!Number.isFinite(value) || value <= 0) {
         return 0;
@@ -40,6 +41,22 @@ export const QUESTS = [
         reward: 10,
         isComplete: (s) => totalMiners(s) >= 10,
         progress: (s) => ratio(totalMiners(s), 10),
+    },
+    {
+        id: 'builder',
+        title: 'Bâtisseur',
+        description: 'Atteindre 20 niveaux de bâtiments cumulés',
+        reward: 12,
+        isComplete: (s) => VillageEngine.getTotalLevels(s) >= 20,
+        progress: (s) => ratio(VillageEngine.getTotalLevels(s), 20),
+    },
+    {
+        id: 'pioneer',
+        title: 'Pionnier',
+        description: 'Fonder un 3ᵉ village',
+        reward: 30,
+        isComplete: (s) => s.village >= 3,
+        progress: (s) => ratio(s.village, 3),
     },
     {
         id: 'first_boss',

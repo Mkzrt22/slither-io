@@ -6,11 +6,12 @@
  * particle bursts, eased counters, a reactive boss). No game rules live
  * here — the model is complete and testable without this file.
  */
-import { EconomyEngine, MINER_CONFIGS, PRESTIGE_THRESHOLD } from '../src/EconomyEngine.js';
+import { EconomyEngine, PRESTIGE_THRESHOLD } from '../src/EconomyEngine.js';
+import { BUILDING_CONFIGS, VillageEngine } from '../src/VillageEngine.js';
 import { GameController } from '../src/GameController.js';
 import { QUESTS } from '../src/QuestEngine.js';
 import { gameEvents } from '../src/EventBus.js';
-import { MAX_SHIELDS, MINER_TIERS, } from '../src/types.js';
+import { BUILDING_TYPES, MAX_SHIELDS, } from '../src/types.js';
 import { NumberTween, ParticleSystem, SlotReels } from './effects.js';
 function el(id) {
     const node = document.getElementById(id);
@@ -29,12 +30,6 @@ const SYMBOL_EMOJI = {
     SWORD: '⚔️',
     SKULL: '💀',
 };
-const MINER_EMOJI = {
-    goblin: '👺',
-    skeleton: '💀',
-    golem: '🗿',
-    dragon: '🐲',
-};
 /** Boss face by floor band, so deeper floors feel different. */
 function bossEmoji(floor) {
     const faces = ['👹', '👺', '🧟', '🐲', '👿', '💀', '🦇', '🐉'];
@@ -52,7 +47,7 @@ const floorEl = el('stat-level');
 const floorBannerEl = document.querySelector('.floor-banner');
 const rateEl = el('stat-rate');
 const shieldsEl = el('stat-shields');
-const minersStatEl = el('stat-miners');
+const buildingsStatEl = el('stat-buildings');
 const bossPanelEl = el('boss-panel');
 const bossTitleEl = el('boss-title');
 const bossSpriteEl = el('boss-sprite');
@@ -67,7 +62,14 @@ const watchAdBtn = el('btn-watch-ad');
 const popupBuyBtn = el('btn-popup-buy');
 const popupAdBtn = el('btn-popup-ad');
 const popupCloseBtn = el('btn-popup-close');
-const minersListEl = el('miners-list');
+const buildingsListEl = el('buildings-list');
+const villageNameEl = el('village-name');
+const villageMultEl = el('village-mult');
+const villageEmojiEl = el('village-emoji');
+const villagePanoEl = el('village-pano');
+const advanceCountEl = el('advance-count');
+const advanceFillEl = el('advance-fill');
+const advanceBtn = el('btn-advance');
 const questsListEl = el('quests-list');
 const questsBadgeEl = el('quests-badge');
 const prestigeNoteEl = el('prestige-note');
@@ -117,31 +119,44 @@ for (const btn of tabButtons) {
         }
     });
 }
-const minerCards = new Map();
-for (const tier of MINER_TIERS) {
-    const cfg = MINER_CONFIGS[tier];
+const buildingCards = new Map();
+const panoSlots = new Map();
+for (const type of BUILDING_TYPES) {
+    const cfg = BUILDING_CONFIGS[type];
+    // Upgrade card
     const card = document.createElement('div');
-    card.className = 'card miner-card';
+    card.className = 'card building-card';
     card.innerHTML = `
-    <div class="m-avatar">${MINER_EMOJI[tier]}</div>
-    <div class="m-info">
-      <div class="m-name">${cfg.name} <b>×<span data-count>0</span></b></div>
-      <div class="m-stat"><span class="up" data-rate>0</span> or/s chacun</div>
+    <div class="b-avatar">${cfg.icon}</div>
+    <div class="b-info">
+      <div class="b-name">${cfg.name} <b>Niv. <span data-level>0</span></b></div>
+      <div class="b-stat"><span class="up" data-rate>0</span> or/s</div>
     </div>
-    <button data-buy>Recruter</button>`;
+    <button data-buy>Améliorer</button>`;
     const buyBtn = card.querySelector('[data-buy]');
-    buyBtn.addEventListener('click', () => controller.hireMiner(tier));
-    minersListEl.appendChild(card);
-    minerCards.set(tier, {
-        countEl: card.querySelector('[data-count]'),
+    buyBtn.addEventListener('click', () => controller.upgradeBuilding(type));
+    buildingsListEl.appendChild(card);
+    buildingCards.set(type, {
+        levelEl: card.querySelector('[data-level]'),
         rateEl: card.querySelector('[data-rate]'),
         buyBtn,
     });
+    // Panorama silhouette
+    const slot = document.createElement('div');
+    slot.className = 'pano-b';
+    slot.innerHTML = `${cfg.icon}<small data-lvl>0</small>`;
+    villagePanoEl.appendChild(slot);
+    panoSlots.set(type, { el: slot, lvlEl: slot.querySelector('[data-lvl]') });
 }
+advanceBtn.addEventListener('click', () => {
+    if (controller.advanceVillage()) {
+        particles.confetti(90);
+    }
+});
 const questCards = new Map();
 const QUEST_ICONS = {
     first_vein: '🪙', spin_100: '🎰', foreman: '👷', first_boss: '⚔️',
-    floor_5: '🧗', magnate: '👑', ascended: '🔮',
+    floor_5: '🧗', magnate: '👑', ascended: '🔮', builder: '🏗️', pioneer: '🚩',
 };
 for (const quest of QUESTS) {
     const card = document.createElement('div');
@@ -173,8 +188,8 @@ function render(state) {
     floorEl.textContent = String(state.floor);
     rateEl.textContent = fmt(Math.round(EconomyEngine.getPassiveRate(state)));
     shieldsEl.textContent = `${state.shields}/${MAX_SHIELDS}`;
-    const totalMiners = MINER_TIERS.reduce((sum, t) => sum + state.miners[t], 0);
-    minersStatEl.textContent = String(totalMiners);
+    const totalLevels = VillageEngine.getTotalLevels(state);
+    buildingsStatEl.textContent = String(totalLevels);
     // Hoard grows with logarithmic wealth.
     const wealth = Math.max(0, Math.log10(state.gold + 1) / 9); // ~0..1 across 1e9
     hoardEl.style.setProperty('--hoard-x', (0.35 + wealth * 0.9).toFixed(2));
@@ -209,14 +224,34 @@ function render(state) {
         lastBossHp = null;
         bossBtn.innerHTML = `⚔️<span>Défier (étage ${state.floor})</span>`;
     }
-    // Miners
-    for (const tier of MINER_TIERS) {
-        const card = minerCards.get(tier);
-        const cost = EconomyEngine.getMinerCost(tier, state.miners[tier]);
-        card.countEl.textContent = String(state.miners[tier]);
-        card.rateEl.textContent = fmt(Math.round(MINER_CONFIGS[tier].baseRate * EconomyEngine.getGlobalMultiplier(state)));
-        card.buyBtn.innerHTML = `Recruter<br/>${fmt(cost)}`;
+    // Village header
+    villageNameEl.textContent = `${VillageEngine.getVillageName(state.village)} · Niv. ${state.village}`;
+    villageMultEl.textContent = `×${VillageEngine.getVillageMultiplier(state.village).toFixed(1)} production`;
+    const villageEmojis = ['🏕️', '🏘️', '🏙️', '🏰', '🏯', '🌆'];
+    villageEmojiEl.textContent = villageEmojis[(state.village - 1) % villageEmojis.length];
+    // Village advancement
+    const required = VillageEngine.getRequiredLevels(state.village);
+    const canAdvance = VillageEngine.canAdvance(state);
+    advanceCountEl.textContent = `${totalLevels} / ${required}`;
+    advanceFillEl.style.width = `${Math.round(VillageEngine.getAdvanceProgress(state) * 100)}%`;
+    advanceBtn.disabled = !canAdvance;
+    advanceBtn.classList.toggle('ready', canAdvance);
+    // Buildings (cards + panorama silhouettes)
+    const globalMult = EconomyEngine.getGlobalMultiplier(state);
+    for (const type of BUILDING_TYPES) {
+        const level = state.buildings[type];
+        const card = buildingCards.get(type);
+        const cost = VillageEngine.getBuildingCost(type, level);
+        const perLevel = BUILDING_CONFIGS[type].baseProd * globalMult;
+        card.levelEl.textContent = String(level);
+        card.rateEl.textContent = fmt(Math.round(perLevel * level));
+        card.buyBtn.innerHTML = `Améliorer<br/>${fmt(cost)}`;
         card.buyBtn.disabled = state.gold < cost;
+        const slot = panoSlots.get(type);
+        const k = Math.min(1, level / 15);
+        slot.el.style.setProperty('--b-scale', (0.55 + k * 0.85).toFixed(2));
+        slot.el.style.setProperty('--b-op', (0.3 + k * 0.7).toFixed(2));
+        slot.lvlEl.textContent = level > 0 ? String(level) : '';
     }
     // Quests
     let claimable = 0;

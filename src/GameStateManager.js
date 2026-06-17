@@ -7,7 +7,7 @@
  * mobile, so every loaded value is treated as hostile until clamped.
  */
 import { EconomyEngine } from './EconomyEngine.js';
-import { DEFAULT_GAME_CONFIG, MAX_SHIELDS, MINER_TIERS, cloneProfile, createDefaultProfile, createEmptyMiners, createEmptyStats, creditGold, } from './types.js';
+import { BUILDING_TYPES, DEFAULT_GAME_CONFIG, MAX_SHIELDS, MINER_TIERS, cloneProfile, createDefaultProfile, createEmptyBuildings, createEmptyMiners, createEmptyStats, creditGold, } from './types.js';
 /** In-memory store used when no DOM localStorage exists (tests, Node, SSR). */
 class MemoryStore {
     constructor() {
@@ -210,6 +210,8 @@ export class GameStateManager {
             shields: Math.min(this.toBoundedInt(raw.shields, defaults.shields), MAX_SHIELDS),
             floor: Math.max(1, this.toBoundedInt(raw.floor, defaults.floor)),
             bossHp: this.toBossHp(raw.bossHp),
+            village: Math.max(1, this.toBoundedInt(raw.village, defaults.village)),
+            buildings: this.toBuildings(raw.buildings),
             miners: this.toMiners(raw.miners),
             relics: this.toBoundedInt(raw.relics, defaults.relics),
             stats: this.toStats(raw.stats),
@@ -234,6 +236,17 @@ export class GameStateManager {
             }
         }
         return miners;
+    }
+    /** Building roster: each type clamped to a non-negative integer level. */
+    toBuildings(value) {
+        const buildings = createEmptyBuildings();
+        if (typeof value === 'object' && value !== null) {
+            const raw = value;
+            for (const type of BUILDING_TYPES) {
+                buildings[type] = this.toBoundedInt(raw[type], 0);
+            }
+        }
+        return buildings;
     }
     /** Lifetime counters: each clamped to a non-negative finite number. */
     toStats(value) {

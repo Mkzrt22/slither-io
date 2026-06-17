@@ -6,7 +6,8 @@
  * numeric input (including NaN, ±Infinity and negatives) produces a defined,
  * non-throwing result, because UI render paths must never crash on bad data.
  */
-import { DEFAULT_GAME_CONFIG, MINER_TIERS } from './types.js';
+import { BUILDING_TYPES, DEFAULT_GAME_CONFIG, MINER_TIERS } from './types.js';
+import { VillageEngine } from './VillageEngine.js';
 export const MINER_CONFIGS = Object.freeze({
     goblin: { name: 'Mineur gobelin', baseCost: 50, costGrowth: 1.15, baseRate: 1 },
     skeleton: { name: 'Fossoyeur squelette', baseCost: 600, costGrowth: 1.17, baseRate: 9 },
@@ -108,10 +109,11 @@ export class EconomyEngine {
     static getRelicMultiplier(relics) {
         return 1 + RELIC_BONUS * EconomyEngine.sanitizeLevel(relics);
     }
-    /** Combined global gold multiplier for a profile. */
+    /** Combined global gold multiplier for a profile (floor × relic × village). */
     static getGlobalMultiplier(state) {
         return (EconomyEngine.getFloorMultiplier(state.floor) *
-            EconomyEngine.getRelicMultiplier(state.relics));
+            EconomyEngine.getRelicMultiplier(state.relics) *
+            VillageEngine.getVillageMultiplier(state.village));
     }
     /** Cost of the next unit of `tier` given how many are already owned. */
     static getMinerCost(tier, owned) {
@@ -119,13 +121,17 @@ export class EconomyEngine {
         return Math.round(cfg.baseCost * Math.pow(cfg.costGrowth, EconomyEngine.sanitizeLevel(owned)));
     }
     /**
-     * Total passive income in gold/second for a profile, with floor and relic
-     * multipliers applied.
+     * Total passive income in gold/second for a profile: village buildings plus
+     * legacy miners, all scaled by the global (floor × relic × village)
+     * multiplier.
      */
     static getPassiveRate(state) {
         let rate = 0;
         for (const tier of MINER_TIERS) {
             rate += MINER_CONFIGS[tier].baseRate * Math.max(0, state.miners[tier]);
+        }
+        for (const type of BUILDING_TYPES) {
+            rate += VillageEngine.getBuildingProduction(type, state.buildings[type]);
         }
         return rate * EconomyEngine.getGlobalMultiplier(state);
     }

@@ -10,6 +10,14 @@ export const MINER_TIERS = [
     'golem',
     'dragon',
 ];
+export const BUILDING_TYPES = [
+    'mine',
+    'farm',
+    'sawmill',
+    'market',
+    'blacksmith',
+    'castle',
+];
 /** Canonical default configuration used by the engines below. */
 export const DEFAULT_GAME_CONFIG = Object.freeze({
     baseGoldCost: 100,
@@ -23,6 +31,10 @@ export const MAX_SHIELDS = 3;
 /** Empty miner roster (all tiers at zero). */
 export function createEmptyMiners() {
     return { goblin: 0, skeleton: 0, golem: 0, dragon: 0 };
+}
+/** Empty building roster (all levels at zero). */
+export function createEmptyBuildings() {
+    return { mine: 0, farm: 0, sawmill: 0, market: 0, blacksmith: 0, castle: 0 };
 }
 /** Zeroed lifetime counters. */
 export function createEmptyStats() {
@@ -50,6 +62,8 @@ export function createDefaultProfile(now = Date.now()) {
         shields: 0,
         floor: 1,
         bossHp: null,
+        village: 1,
+        buildings: createEmptyBuildings(),
         miners: createEmptyMiners(),
         relics: 0,
         stats: createEmptyStats(),
@@ -80,6 +94,15 @@ export function cloneProfile(state) {
         shields: state.shields,
         floor: state.floor,
         bossHp: state.bossHp,
+        village: state.village,
+        buildings: {
+            mine: state.buildings.mine,
+            farm: state.buildings.farm,
+            sawmill: state.buildings.sawmill,
+            market: state.buildings.market,
+            blacksmith: state.buildings.blacksmith,
+            castle: state.buildings.castle,
+        },
         miners: {
             goblin: state.miners.goblin,
             skeleton: state.miners.skeleton,
