@@ -57,9 +57,27 @@ export class VillageEngine {
     return Math.round(cfg.baseCost * Math.pow(cfg.costGrowth, safeLevel));
   }
 
-  /** Base gold/second produced by `type` at `level` (no global multipliers). */
+  /** Levels between milestones; each milestone doubles a building's output. */
+  public static readonly MILESTONE_EVERY = 25;
+
+  /** Milestone multiplier for a building at `level`: 2^floor(level/25). */
+  public static getBuildingMultiplier(level: number): number {
+    return Math.pow(2, Math.floor(VillageEngine.clampLevel(level) / VillageEngine.MILESTONE_EVERY));
+  }
+
+  /** Levels remaining until this building's next milestone (×2) bonus. */
+  public static levelsToNextMilestone(level: number): number {
+    const l = VillageEngine.clampLevel(level);
+    return VillageEngine.MILESTONE_EVERY - (l % VillageEngine.MILESTONE_EVERY);
+  }
+
+  /**
+   * Base gold/second produced by `type` at `level`, including its milestone
+   * multiplier (no global multipliers).
+   */
   public static getBuildingProduction(type: BuildingType, level: number): number {
-    return BUILDING_CONFIGS[type].baseProd * VillageEngine.clampLevel(level);
+    const l = VillageEngine.clampLevel(level);
+    return BUILDING_CONFIGS[type].baseProd * l * VillageEngine.getBuildingMultiplier(l);
   }
 
   /** Total cost to buy `count` consecutive levels of `type` from `fromLevel`. */

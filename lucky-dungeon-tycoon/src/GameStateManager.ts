@@ -309,10 +309,22 @@ export class GameStateManager {
       buildings: this.toBuildings(raw.buildings),
       miners: this.toMiners(raw.miners),
       relics: this.toBoundedInt(raw.relics, defaults.relics),
+      boostEndsAt: this.toBoostEnd(raw.boostEndsAt, now),
       stats: this.toStats(raw.stats),
       claimedQuests: this.toStringArray(raw.claimedQuests),
       lastSaveTimestamp: this.toTimestamp(raw.lastSaveTimestamp, now),
     };
+  }
+
+  /**
+   * Boost end timestamp: a finite epoch-ms value, capped at `now + 24h` so a
+   * hand-edited save cannot grant a permanent production boost.
+   */
+  private toBoostEnd(value: unknown, now: number): number {
+    if (typeof value === 'number' && Number.isFinite(value) && value > now) {
+      return Math.min(Math.floor(value), now + 24 * 60 * 60 * 1000);
+    }
+    return 0;
   }
 
   /** Active boss HP: a finite positive number, or null (no fight). */

@@ -114,6 +114,7 @@ export class Iso3DScene {
   private readonly pointers = new Map<number, { x: number; y: number }>();
   private dragging = false; private dragMoved = 0; private lastPX = 0;
   private lastPinch = 0; private pinching = false;
+  private boostSpeed = 1;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -553,6 +554,9 @@ export class Iso3DScene {
     this.renderer.setSize(w, h, false); this.aspect = w / h; this.updateCameraFrustum();
   }
 
+  /** Speeds up the bustle while a production boost is active. */
+  public setBoost(active: boolean): void { this.boostSpeed = active ? 2.2 : 1; }
+
   public start(): void { this.ensureRunning(); }
   public stop(): void { if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; } }
 
@@ -592,9 +596,9 @@ export class Iso3DScene {
     for (const w of this.workers) {
       if (w.pause > 0) { w.pause -= dt; continue; }
       const dx = w.tx - w.x, dz = w.tz - w.z; const d = Math.hypot(dx, dz);
-      if (d < 0.15) { w.tx = (Math.random() - 0.5) * bound * 2; w.tz = (Math.random() - 0.5) * bound * 2; w.pause = Math.random() * 1.6; }
+      if (d < 0.15) { w.tx = (Math.random() - 0.5) * bound * 2; w.tz = (Math.random() - 0.5) * bound * 2; w.pause = (Math.random() * 1.6) / this.boostSpeed; }
       else {
-        w.x += (dx / d) * w.speed * dt; w.z += (dz / d) * w.speed * dt;
+        w.x += (dx / d) * w.speed * this.boostSpeed * dt; w.z += (dz / d) * w.speed * this.boostSpeed * dt;
         w.mesh.position.x = w.x; w.mesh.position.z = w.z;
         w.mesh.rotation.y = Math.atan2(dx, dz);
         w.mesh.position.y = Math.abs(Math.sin((this.t + w.phase) * 9)) * 0.07;

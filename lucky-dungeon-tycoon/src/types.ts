@@ -75,6 +75,8 @@ export interface UserProfile {
   miners: Record<MinerTier, number>;
   /** Prestige currency: each relic grants a permanent gold multiplier. */
   relics: number;
+  /** Epoch ms when the active production Rush boost ends (0 = no boost). */
+  boostEndsAt: number;
   /** Lifetime counters for quests/prestige. */
   stats: PlayerStats;
   /** Ids of quests whose reward has been collected. */
@@ -190,6 +192,7 @@ export function createDefaultProfile(now: number = Date.now()): UserProfile {
     buildings: createEmptyBuildings(),
     miners: createEmptyMiners(),
     relics: 0,
+    boostEndsAt: 0,
     stats: createEmptyStats(),
     claimedQuests: [],
     lastSaveTimestamp: now,
@@ -236,6 +239,7 @@ export function cloneProfile(state: UserProfile): UserProfile {
       dragon: state.miners.dragon,
     },
     relics: state.relics,
+    boostEndsAt: state.boostEndsAt,
     stats: {
       goldEarnedRun: state.stats.goldEarnedRun,
       goldEarnedAll: state.stats.goldEarnedAll,

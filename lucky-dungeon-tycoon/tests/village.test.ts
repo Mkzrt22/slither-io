@@ -169,6 +169,58 @@ test('grantBonusGold credits gold and lifetime stats', () => {
   assert.equal(s.stats.goldEarnedAll, 250);
 });
 
+test('milestone multiplier doubles production every 25 levels', () => {
+  assert.equal(VillageEngine.getBuildingMultiplier(0), 1);
+  assert.equal(VillageEngine.getBuildingMultiplier(24), 1);
+  assert.equal(VillageEngine.getBuildingMultiplier(25), 2);
+  assert.equal(VillageEngine.getBuildingMultiplier(50), 4);
+  assert.equal(
+    VillageEngine.getBuildingProduction('mine', 25),
+    BUILDING_CONFIGS.mine.baseProd * 25 * 2,
+  );
+});
+
+test('levelsToNextMilestone counts down within each band', () => {
+  assert.equal(VillageEngine.levelsToNextMilestone(0), 25);
+  assert.equal(VillageEngine.levelsToNextMilestone(24), 1);
+  assert.equal(VillageEngine.levelsToNextMilestone(25), 25);
+});
+
+test('Rush boost doubles live passive income until it expires', () => {
+  const store = new FakeStore();
+  store.setItem('bk', JSON.stringify({
+    ...createDefaultProfile(), lastSaveTimestamp: Date.now(),
+    gold: 0, buildings: withBuildings({ mine: 1 }), // 1 gold/s
+  }));
+  let t = 1_000_000;
+  const gsm = new GameStateManager('bk', () => 0.99, store);
+  const ctrl = new GameController(gsm, new EventBus(), () => t);
+
+  assert.equal(ctrl.getBoostFactor(), 1);
+  ctrl.activateBoost();
+  assert.equal(ctrl.getBoostFactor(), 2);
+
+  ctrl.tickPassive(t);   // anchor
+  t += 10_000;
+  ctrl.tickPassive(t);   // 10s × 1/s × boost 2 = 20
+  assert.equal(ctrl.getState().gold, 20);
+
+  t += 60_000;           // boost expired
+  assert.equal(ctrl.getBoostFactor(), 1);
+});
+
+test('a future-tampered boost is capped at 24h', () => {
+  const store = new FakeStore();
+  const now = Date.now();
+  store.setItem('bc', JSON.stringify({
+    ...createDefaultProfile(), lastSaveTimestamp: now,
+    boostEndsAt: now + 10 * 24 * 3600 * 1000,
+  }));
+  const gsm = new GameStateManager('bc', () => 0.99, store);
+  const s = gsm.loadState();
+  assert.ok(s.boostEndsAt > now && s.boostEndsAt <= now + 24 * 3600 * 1000 + 5000);
+});
+
 test('advanceVillage requires the threshold, then boosts production permanently', () => {
   const notReady = harness({ gold: 0, buildings: withBuildings({ mine: 10 }) });
   assert.equal(notReady.controller.canAdvanceVillage(), false);

@@ -39,6 +39,13 @@ interface VillageRenderer {
   coinPop(type: BuildingType): void;
   start(): void;
   stop(): void;
+  /** Optional: react to an active production boost (3D speeds up the bustle). */
+  setBoost?(active: boolean): void;
+}
+
+/** Pure boost factor from a profile snapshot (avoids touching the controller). */
+function boostFactorOf(state: UserProfile): number {
+  return Date.now() < state.boostEndsAt ? 2 : 1;
 }
 
 function el<T extends HTMLElement>(id: string): T {
@@ -118,6 +125,8 @@ const isoHostEl = el<HTMLDivElement>('iso-host');
 const advanceCountEl = el<HTMLSpanElement>('advance-count');
 const advanceFillEl = el<HTMLDivElement>('advance-fill');
 const advanceBtn = el<HTMLButtonElement>('btn-advance');
+const boostBtn = el<HTMLButtonElement>('btn-boost');
+const boostBadge = el<HTMLDivElement>('boost-badge');
 const questsListEl = el<HTMLDivElement>('quests-list');
 const questsBadgeEl = el<HTMLSpanElement>('quests-badge');
 const prestigeNoteEl = el<HTMLParagraphElement>('prestige-note');
@@ -197,7 +206,7 @@ for (const type of BUILDING_TYPES) {
     <div class="b-avatar">${cfg.icon}</div>
     <div class="b-info">
       <div class="b-name">${cfg.name} <b>Niv. <span data-level>0</span></b></div>
-      <div class="b-stat"><span class="up" data-rate>0</span> or/s</div>
+      <div class="b-stat"><span class="up" data-rate>0</span></div>
     </div>
     <button data-buy>Améliorer</button>`;
   const buyBtn = card.querySelector<HTMLButtonElement>('[data-buy]')!;
@@ -306,7 +315,7 @@ function render(state: UserProfile): void {
   relicTween.set(state.relics, false);
   energyEl.textContent = `${state.energy}/${state.maxEnergy}`;
   floorEl.textContent = String(state.floor);
-  rateEl.textContent = fmt(Math.round(EconomyEngine.getPassiveRate(state)));
+  rateEl.textContent = fmt(Math.round(EconomyEngine.getPassiveRate(state) * boostFactorOf(state)));
   shieldsEl.textContent = `${state.shields}/${MAX_SHIELDS}`;
   const totalLevels = VillageEngine.getTotalLevels(state);
   buildingsStatEl.textContent = String(totalLevels);
@@ -366,9 +375,14 @@ function render(state: UserProfile): void {
   for (const type of BUILDING_TYPES) {
     const level = state.buildings[type];
     const card = buildingCards.get(type)!;
-    const perLevel = BUILDING_CONFIGS[type].baseProd * globalMult;
+    const mult = VillageEngine.getBuildingMultiplier(level);
+    const prod = VillageEngine.getBuildingProduction(type, level) * globalMult;
     card.levelEl.textContent = String(level);
-    card.rateEl.textContent = fmt(Math.round(perLevel * level));
+    const milestoneTag = mult > 1 ? ` · ×${mult}` : '';
+    const toNext = VillageEngine.levelsToNextMilestone(level);
+    card.rateEl.innerHTML =
+      `${fmt(Math.round(prod))} or/s${milestoneTag}` +
+      `<span class="b-next"> · palier ×${mult * 2} dans ${toNext}</span>`;
 
     const plan = buyMode === 'max'
       ? VillageEngine.getMaxAffordable(type, level, state.gold)
@@ -549,5 +563,35 @@ popupCloseBtn.addEventListener('click', () => popupEl.classList.remove('visible'
 
 // Unlock audio on the very first interaction (mobile autoplay policy).
 window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
+
+boostBtn.addEventListener('click', async () => {
+  sfx.unlock();
+  boostBtn.disabled = true;
+  appendLog('Lecture de la pub…', 'info');
+  const ok = await controller.watchAdForBoost();
+  if (ok) { sfx.jackpot(); buzz(20); }
+  boostBtn.disabled = false;
+});
+
+// Live boost countdown + badge (independent of state-change cadence).
+let boostWasActive = false;
+window.setInterval(() => {
+  const ms = controller.getBoostRemainingMs();
+  const active = ms > 0;
+  if (active) {
+    const s = Math.ceil(ms / 1000);
+    boostBadge.textContent = `🚀 ×2 ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    boostBadge.hidden = false;
+    boostBtn.textContent = `🚀 Boost actif · ${s}s`;
+  } else {
+    boostBadge.hidden = true;
+    boostBtn.textContent = '🚀 Boost de production ×2 (pub · 60s)';
+  }
+  if (active !== boostWasActive) {
+    iso.setBoost?.(active);
+    boostWasActive = active;
+    render(controller.getState()); // refresh the boosted rate display
+  }
+}, 1000);
 
 window.addEventListener('pagehide', () => controller.stop());

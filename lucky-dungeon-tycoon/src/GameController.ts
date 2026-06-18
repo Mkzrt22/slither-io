@@ -31,6 +31,9 @@ import {
 const AD_ENERGY_REWARD = 10;
 /** How often the live loop ticks (regen + passive income). */
 const TICK_INTERVAL_MS = 1_000;
+/** Production-Rush boost: multiplier and duration. */
+const BOOST_FACTOR = 2;
+const BOOST_SECONDS = 60;
 
 export class GameController {
   private state: UserProfile;
@@ -83,6 +86,52 @@ export class GameController {
   /** Gold produced offline on the last load (for the ×2 ad bonus). */
   public getLastOfflineGold(): number {
     return this.lastOfflineGold;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Use case: production Rush boost
+  // ---------------------------------------------------------------------------
+
+  /** Live production multiplier from an active Rush boost (1 when inactive). */
+  public getBoostFactor(): number {
+    return this.now() < this.state.boostEndsAt ? BOOST_FACTOR : 1;
+  }
+
+  /** Milliseconds left on the active boost (0 when inactive). */
+  public getBoostRemainingMs(): number {
+    return Math.max(0, this.state.boostEndsAt - this.now());
+  }
+
+  /** Starts (or refreshes) the production Rush boost for its full duration. */
+  public activateBoost(): void {
+    this.state.boostEndsAt = this.now() + BOOST_SECONDS * 1000;
+    this.persistAndAnnounce();
+    this.bus.emit('ui:notification', {
+      message: `🚀 Production ×${BOOST_FACTOR} pendant ${BOOST_SECONDS}s !`,
+      severity: 'success',
+    });
+  }
+
+  /**
+   * Watches a rewarded ad and, on success, activates the Rush boost. Resolves
+   * true when the boost was granted. Reuses the ad re-entrancy guard.
+   */
+  public async watchAdForBoost(): Promise<boolean> {
+    if (this.adInFlight) {
+      return false;
+    }
+    this.adInFlight = true;
+    try {
+      const completed = await MonetizationBridge.showRewardedAd();
+      if (!completed) {
+        this.bus.emit('ui:notification', { message: 'Pub indisponible — réessayez bientôt', severity: 'error' });
+        return false;
+      }
+      this.activateBoost();
+      return true;
+    } finally {
+      this.adInFlight = false;
+    }
   }
 
   /** Grants bonus gold (e.g. doubling offline earnings after a rewarded ad). */
@@ -487,7 +536,7 @@ export class GameController {
     }
     this.passiveAnchorMs = nowMs;
 
-    const rate = EconomyEngine.getPassiveRate(this.state);
+    const rate = EconomyEngine.getPassiveRate(this.state) * this.getBoostFactor();
     if (rate <= 0) {
       this.passiveCarry = 0;
       return;

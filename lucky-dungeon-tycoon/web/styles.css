@@ -502,6 +502,22 @@ main { flex: 1; display: flex; flex-direction: column; }
   touch-action: pan-y;
 }
 .iso-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.boost-badge {
+  position: absolute; top: 8px; right: 8px;
+  padding: 5px 11px; border-radius: 10px; font-size: 0.76rem; font-weight: 900; color: #2a1505;
+  background: linear-gradient(180deg, #ffd98a, #f5a23c 60%, #d8741c);
+  border: 1px solid #b3551f; box-shadow: 0 0 14px rgba(245,162,60,0.7);
+  animation: readyPulse 1s ease-in-out infinite;
+}
+.btn-boost {
+  width: 100%; padding: 13px; border: none; cursor: pointer; border-radius: 13px;
+  font-size: 0.92rem; font-weight: 800; color: #2a1505;
+  background: linear-gradient(180deg, #ffd98a, #f5a23c 58%, #d8741c);
+  box-shadow: 0 5px 0 #a3531a, inset 0 1px 0 rgba(255,255,255,0.5);
+  transition: transform 0.06s, box-shadow 0.06s, filter 0.15s;
+}
+.btn-boost:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 #a3531a; }
+.btn-boost:disabled { filter: grayscale(0.6) brightness(0.7); cursor: not-allowed; }
 .iso-hint {
   position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
   font-size: 0.72rem; font-weight: 700; color: rgba(255,255,255,0.8);
@@ -540,7 +556,8 @@ main { flex: 1; display: flex; flex-direction: column; }
 .b-name { font-weight: 800; font-size: 0.92rem; }
 .b-name b { color: var(--gold-2); }
 .b-stat { font-size: 0.74rem; color: var(--muted); margin-top: 2px; }
-.b-stat .up { color: var(--green); }
+.b-stat .up { color: var(--green); font-weight: 700; }
+.b-next { color: var(--gold-2); opacity: 0.85; }
 
 /* ============================== BOTTOM NAV ============================== */
 .nav {
