@@ -89,6 +89,7 @@ export class Iso3DScene {
         this.lastPX = 0;
         this.lastPinch = 0;
         this.pinching = false;
+        this.boostSpeed = 1;
         this.daySkyTop = new THREE.Color(0x3f78c0);
         this.daySkyBot = new THREE.Color(0xbfe0f0);
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -536,6 +537,8 @@ export class Iso3DScene {
         this.aspect = w / h;
         this.updateCameraFrustum();
     }
+    /** Speeds up the bustle while a production boost is active. */
+    setBoost(active) { this.boostSpeed = active ? 2.2 : 1; }
     start() { this.ensureRunning(); }
     stop() { if (this.raf) {
         cancelAnimationFrame(this.raf);
@@ -593,11 +596,11 @@ export class Iso3DScene {
             if (d < 0.15) {
                 w.tx = (Math.random() - 0.5) * bound * 2;
                 w.tz = (Math.random() - 0.5) * bound * 2;
-                w.pause = Math.random() * 1.6;
+                w.pause = (Math.random() * 1.6) / this.boostSpeed;
             }
             else {
-                w.x += (dx / d) * w.speed * dt;
-                w.z += (dz / d) * w.speed * dt;
+                w.x += (dx / d) * w.speed * this.boostSpeed * dt;
+                w.z += (dz / d) * w.speed * this.boostSpeed * dt;
                 w.mesh.position.x = w.x;
                 w.mesh.position.z = w.z;
                 w.mesh.rotation.y = Math.atan2(dx, dz);

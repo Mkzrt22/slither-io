@@ -39,9 +39,22 @@ export class VillageEngine {
         const safeLevel = VillageEngine.clampLevel(level);
         return Math.round(cfg.baseCost * Math.pow(cfg.costGrowth, safeLevel));
     }
-    /** Base gold/second produced by `type` at `level` (no global multipliers). */
+    /** Milestone multiplier for a building at `level`: 2^floor(level/25). */
+    static getBuildingMultiplier(level) {
+        return Math.pow(2, Math.floor(VillageEngine.clampLevel(level) / VillageEngine.MILESTONE_EVERY));
+    }
+    /** Levels remaining until this building's next milestone (×2) bonus. */
+    static levelsToNextMilestone(level) {
+        const l = VillageEngine.clampLevel(level);
+        return VillageEngine.MILESTONE_EVERY - (l % VillageEngine.MILESTONE_EVERY);
+    }
+    /**
+     * Base gold/second produced by `type` at `level`, including its milestone
+     * multiplier (no global multipliers).
+     */
     static getBuildingProduction(type, level) {
-        return BUILDING_CONFIGS[type].baseProd * VillageEngine.clampLevel(level);
+        const l = VillageEngine.clampLevel(level);
+        return BUILDING_CONFIGS[type].baseProd * l * VillageEngine.getBuildingMultiplier(l);
     }
     /** Total cost to buy `count` consecutive levels of `type` from `fromLevel`. */
     static getBulkCost(type, fromLevel, count) {
@@ -119,3 +132,5 @@ export class VillageEngine {
         return Math.floor(level);
     }
 }
+/** Levels between milestones; each milestone doubles a building's output. */
+VillageEngine.MILESTONE_EVERY = 25;

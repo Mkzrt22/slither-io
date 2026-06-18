@@ -66,6 +66,7 @@ export function createDefaultProfile(now = Date.now()) {
         buildings: createEmptyBuildings(),
         miners: createEmptyMiners(),
         relics: 0,
+        boostEndsAt: 0,
         stats: createEmptyStats(),
         claimedQuests: [],
         lastSaveTimestamp: now,
@@ -110,6 +111,7 @@ export function cloneProfile(state) {
             dragon: state.miners.dragon,
         },
         relics: state.relics,
+        boostEndsAt: state.boostEndsAt,
         stats: {
             goldEarnedRun: state.stats.goldEarnedRun,
             goldEarnedAll: state.stats.goldEarnedAll,
