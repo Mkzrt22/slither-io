@@ -8,6 +8,7 @@
  * at the bus.
  */
 
+import { DailyEngine, DailyStatus } from './DailyEngine.js';
 import { EconomyEngine, PRESTIGE_THRESHOLD } from './EconomyEngine.js';
 import { EventBus, gameEvents } from './EventBus.js';
 import { GameStateManager } from './GameStateManager.js';
@@ -81,11 +82,70 @@ export class GameController {
         });
       }
     }
+
+    // Offer the daily reward on launch when it's available.
+    const daily = this.getDailyStatus();
+    if (daily.claimable) {
+      this.bus.emit('ui:daily', {
+        streak: daily.streak, gemReward: daily.gemReward, goldReward: daily.goldReward,
+      });
+    }
   }
 
   /** Gold produced offline on the last load (for the ×2 ad bonus). */
   public getLastOfflineGold(): number {
     return this.lastOfflineGold;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Use case: daily reward
+  // ---------------------------------------------------------------------------
+
+  /** Current daily-reward claimability and payout. */
+  public getDailyStatus(): DailyStatus {
+    return DailyEngine.status(this.state, this.now(), EconomyEngine.getPassiveRate(this.state));
+  }
+
+  /**
+   * Claims today's reward (gems + gold, scaled by streak/economy). Returns the
+   * granted reward, or null when nothing is claimable yet.
+   */
+  public claimDaily(): { streak: number; gems: number; gold: number } | null {
+    const status = this.getDailyStatus();
+    if (!status.claimable) {
+      return null;
+    }
+    this.state.dailyStreak = status.streak;
+    this.state.lastDailyClaim = this.now();
+    this.state.gems += status.gemReward;
+    creditGold(this.state, status.goldReward);
+    this.persistAndAnnounce();
+    this.bus.emit('ui:notification', {
+      message: `🎁 Récompense du jour ${status.streak} : +${status.gemReward} 💎 · +${EconomyEngine.formatCurrency(status.goldReward)} or`,
+      severity: 'success',
+    });
+    return { streak: status.streak, gems: status.gemReward, gold: status.goldReward };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Use case: save backup
+  // ---------------------------------------------------------------------------
+
+  /** Exports the current profile as a portable backup code. */
+  public exportSave(): string {
+    return this.stateManager.exportSave(this.state);
+  }
+
+  /**
+   * Imports a backup code into storage. Returns true on success; the caller
+   * typically reloads so the imported save is adopted and sanitised.
+   */
+  public importSave(code: string): boolean {
+    const ok = this.stateManager.importSave(code);
+    if (!ok) {
+      this.bus.emit('ui:notification', { message: 'Code de sauvegarde invalide', severity: 'error' });
+    }
+    return ok;
   }
 
   // ---------------------------------------------------------------------------

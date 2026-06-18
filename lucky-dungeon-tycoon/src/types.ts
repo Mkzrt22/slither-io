@@ -77,6 +77,10 @@ export interface UserProfile {
   relics: number;
   /** Epoch ms when the active production Rush boost ends (0 = no boost). */
   boostEndsAt: number;
+  /** Epoch ms of the last claimed daily reward (0 = never). */
+  lastDailyClaim: number;
+  /** Current consecutive-day streak for the daily reward. */
+  dailyStreak: number;
   /** Lifetime counters for quests/prestige. */
   stats: PlayerStats;
   /** Ids of quests whose reward has been collected. */
@@ -193,6 +197,8 @@ export function createDefaultProfile(now: number = Date.now()): UserProfile {
     miners: createEmptyMiners(),
     relics: 0,
     boostEndsAt: 0,
+    lastDailyClaim: 0,
+    dailyStreak: 0,
     stats: createEmptyStats(),
     claimedQuests: [],
     lastSaveTimestamp: now,
@@ -240,6 +246,8 @@ export function cloneProfile(state: UserProfile): UserProfile {
     },
     relics: state.relics,
     boostEndsAt: state.boostEndsAt,
+    lastDailyClaim: state.lastDailyClaim,
+    dailyStreak: state.dailyStreak,
     stats: {
       goldEarnedRun: state.stats.goldEarnedRun,
       goldEarnedAll: state.stats.goldEarnedAll,

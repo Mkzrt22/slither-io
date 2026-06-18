@@ -30,6 +30,8 @@ export interface GameEventMap {
     raidGold: number;
     shieldBlocked: boolean;
   };
+  /** A daily reward is available; show the daily modal. */
+  'ui:daily': { streak: number; gemReward: number; goldReward: number };
   /** Generic toast/banner message. */
   'ui:notification': { message: string; severity: NotificationSeverity };
 }

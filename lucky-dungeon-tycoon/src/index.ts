@@ -32,6 +32,8 @@ export type {
 
 export { EconomyEngine, MINER_CONFIGS, PRESTIGE_THRESHOLD } from './EconomyEngine.js';
 export { VillageEngine, BUILDING_CONFIGS, VILLAGE_NAMES } from './VillageEngine.js';
+export { DailyEngine } from './DailyEngine.js';
+export type { DailyStatus } from './DailyEngine.js';
 export type { BuildingConfig } from './VillageEngine.js';
 export type { MinerConfig } from './EconomyEngine.js';
 export { GameStateManager } from './GameStateManager.js';

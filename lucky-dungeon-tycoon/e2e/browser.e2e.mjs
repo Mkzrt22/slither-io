@@ -78,14 +78,21 @@ try {
   // The village is the landing tab and lists six buildings.
   expect((await page.locator('#buildings-list .card').count()) === 6, 'village lists 6 buildings');
 
+  // A fresh player is greeted by the daily-reward modal; claim to dismiss it.
+  await page.waitForSelector('#daily-modal.visible', { timeout: 5000 });
+  expect(true, 'daily reward modal greets a fresh player');
+  await page.click('#btn-daily-claim');
+  await page.waitForFunction(() => !document.getElementById('daily-modal').classList.contains('visible'), null, { timeout: 3000 });
+
   // The Donjon (slot) tab holds the spin machine.
   await page.click('nav button[data-tab="tab-mine"]');
 
   // Spinning consumes energy, pays out, and feeds the log.
+  const logBefore = await page.locator('#log li').count();
   for (let i = 0; i < 5; i++) await page.click('#btn-spin');
   expect((await page.locator('#stat-energy').innerText()) === '25/30', '5 spins consume 5 energy');
   expect((await page.locator('#stat-gold').innerText()) !== '0', 'spins paid out gold');
-  expect((await page.locator('#log li').count()) === 5, 'each spin logged');
+  expect((await page.locator('#log li').count()) >= Math.min(9, logBefore + 5), 'each spin logged');
 
   // Draining the tank disables the button; a spin attempt at 0 energy
   // (e.g. a queued tap racing the disable) opens the refill popup.

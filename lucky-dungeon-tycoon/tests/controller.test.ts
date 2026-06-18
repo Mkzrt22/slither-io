@@ -48,12 +48,14 @@ function harness(seed?: Partial<UserProfile>): Harness {
     'spin:result': [],
     'ui:popup_energy': [],
     'ui:offline_earnings': [],
+    'ui:daily': [],
     'ui:notification': [],
   };
   bus.on('state:updated', (p) => events['state:updated'].push(p));
   bus.on('spin:result', (r) => events['spin:result'].push(r));
   bus.on('ui:popup_energy', (p) => events['ui:popup_energy'].push(p));
   bus.on('ui:offline_earnings', (p) => events['ui:offline_earnings'].push(p));
+  bus.on('ui:daily', (p) => events['ui:daily'].push(p));
   bus.on('ui:notification', (n) => events['ui:notification'].push(n));
 
   const controller = new GameController(gsm, bus);

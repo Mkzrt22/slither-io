@@ -25,6 +25,14 @@ import {
   creditGold,
 } from './types.js';
 
+/** UTF-8-safe base64 (btoa/atob exist in browsers and Node 18+). */
+function base64Encode(s: string): string {
+  return btoa(encodeURIComponent(s));
+}
+function base64Decode(s: string): string {
+  return decodeURIComponent(atob(s));
+}
+
 /** Structured summary of what happened while the player was away. */
 export interface OfflineSummary {
   /** Total offline window credited, in seconds. */
@@ -242,6 +250,42 @@ export class GameStateManager {
     }
   }
 
+  /**
+   * Serialises a profile into a portable, copy-pasteable backup code
+   * (base64). Used by the settings "export save" action.
+   */
+  public exportSave(state: UserProfile): string {
+    const json = JSON.stringify(state);
+    try {
+      return base64Encode(json);
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Validates and persists a backup code so the next `loadState` adopts it.
+   * Returns false (without touching storage) when the code is malformed.
+   * The loaded record is still run through full sanitisation on load.
+   */
+  public importSave(code: string): boolean {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(base64Decode(code.trim()));
+    } catch {
+      return false;
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return false;
+    }
+    try {
+      this.store.setItem(this.storageKey, JSON.stringify(parsed));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Deletes the persisted record (debug / "reset progress" flows). */
   public clearState(): void {
     try {
@@ -310,6 +354,8 @@ export class GameStateManager {
       miners: this.toMiners(raw.miners),
       relics: this.toBoundedInt(raw.relics, defaults.relics),
       boostEndsAt: this.toBoostEnd(raw.boostEndsAt, now),
+      lastDailyClaim: this.toClaimTime(raw.lastDailyClaim, now),
+      dailyStreak: this.toBoundedInt(raw.dailyStreak, 0),
       stats: this.toStats(raw.stats),
       claimedQuests: this.toStringArray(raw.claimedQuests),
       lastSaveTimestamp: this.toTimestamp(raw.lastSaveTimestamp, now),
@@ -323,6 +369,17 @@ export class GameStateManager {
   private toBoostEnd(value: unknown, now: number): number {
     if (typeof value === 'number' && Number.isFinite(value) && value > now) {
       return Math.min(Math.floor(value), now + 24 * 60 * 60 * 1000);
+    }
+    return 0;
+  }
+
+  /**
+   * Daily-claim timestamp: 0 (never) is preserved; a real value is clamped to
+   * `now` so a future-dated claim can't block the reward forever.
+   */
+  private toClaimTime(value: unknown, now: number): number {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return Math.min(Math.floor(value), now);
     }
     return 0;
   }
