@@ -86,6 +86,12 @@ const settingsBtn = el('btn-settings');
 const settingsCloseBtn = el('btn-settings-close');
 const soundBtn = el('btn-sound');
 const resetBtn = el('btn-reset');
+const exportBtn = el('btn-export');
+const importBtn = el('btn-import');
+const dailyModal = el('daily-modal');
+const dailyStreakEl = el('daily-streak');
+const dailyRewardEl = el('daily-reward');
+const dailyClaimBtn = el('btn-daily-claim');
 const buildingsListEl = el('buildings-list');
 const villageNameEl = el('village-name');
 const villageMultEl = el('village-mult');
@@ -402,6 +408,7 @@ gameEvents.on('spin:result', showSpinResult);
 gameEvents.on('ui:notification', (n) => appendLog(n.message, n.severity));
 gameEvents.on('ui:popup_energy', () => popupEl.classList.add('visible'));
 let pendingOfflineGold = 0;
+let pendingDaily = null;
 gameEvents.on('ui:offline_earnings', (s) => {
     pendingOfflineGold = s.goldEarned;
     offlineAmountEl.textContent = `+${fmt(s.goldEarned)} or`;
@@ -419,6 +426,17 @@ gameEvents.on('ui:offline_earnings', (s) => {
     offlineX2Btn.hidden = s.goldEarned <= 0;
     offlineModal.classList.add('visible');
 });
+/** Shows the daily modal once no other modal is in the way. */
+function maybeShowDaily() {
+    if (!pendingDaily)
+        return;
+    if (offlineModal.classList.contains('visible'))
+        return;
+    dailyStreakEl.textContent = `Jour ${pendingDaily.streak} · série de ${pendingDaily.streak}`;
+    dailyRewardEl.textContent = `+${pendingDaily.gemReward} 💎 · +${fmt(pendingDaily.goldReward)} or`;
+    dailyModal.classList.add('visible');
+}
+gameEvents.on('ui:daily', (d) => { pendingDaily = d; maybeShowDaily(); });
 // --- Boot --------------------------------------------------------------------
 const controller = new GameController();
 controller.start();
@@ -453,8 +471,24 @@ gameEvents.on('spin:result', (r) => {
             sfx.coin();
     }, 1450);
 });
+// Daily-reward modal.
+dailyClaimBtn.addEventListener('click', () => {
+    sfx.unlock();
+    const r = controller.claimDaily();
+    if (r) {
+        sfx.jackpot();
+        buzz(20);
+        particles.confetti(90);
+    }
+    pendingDaily = null;
+    dailyModal.classList.remove('visible');
+});
 // Offline-earnings modal actions.
-offlineOkBtn.addEventListener('click', () => { sfx.coin(); offlineModal.classList.remove('visible'); });
+offlineOkBtn.addEventListener('click', () => {
+    sfx.coin();
+    offlineModal.classList.remove('visible');
+    maybeShowDaily();
+});
 offlineX2Btn.addEventListener('click', async () => {
     offlineX2Btn.disabled = true;
     const ok = await controller.watchAdForEnergy();
@@ -464,6 +498,7 @@ offlineX2Btn.addEventListener('click', async () => {
     }
     offlineX2Btn.disabled = false;
     offlineModal.classList.remove('visible');
+    maybeShowDaily();
 });
 // Settings modal.
 function refreshSoundBtn() {
@@ -477,6 +512,18 @@ soundBtn.addEventListener('click', () => { sfx.setMuted(!sfx.isMuted()); refresh
 resetBtn.addEventListener('click', () => {
     if (window.confirm('Réinitialiser toute la progression ? Cette action est irréversible.')) {
         controller.resetProgress();
+        window.location.reload();
+    }
+});
+exportBtn.addEventListener('click', () => {
+    const code = controller.exportSave();
+    void navigator.clipboard?.writeText(code).catch(() => { });
+    window.prompt('Votre code de sauvegarde (copié) — gardez-le précieusement :', code);
+});
+importBtn.addEventListener('click', () => {
+    const code = window.prompt('Collez votre code de sauvegarde :');
+    if (code && controller.importSave(code)) {
+        window.alert('Sauvegarde importée ! Rechargement…');
         window.location.reload();
     }
 });

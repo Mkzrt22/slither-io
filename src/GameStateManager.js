@@ -8,6 +8,13 @@
  */
 import { EconomyEngine } from './EconomyEngine.js';
 import { BUILDING_TYPES, DEFAULT_GAME_CONFIG, MAX_SHIELDS, MINER_TIERS, cloneProfile, createDefaultProfile, createEmptyBuildings, createEmptyMiners, createEmptyStats, creditGold, } from './types.js';
+/** UTF-8-safe base64 (btoa/atob exist in browsers and Node 18+). */
+function base64Encode(s) {
+    return btoa(encodeURIComponent(s));
+}
+function base64Decode(s) {
+    return decodeURIComponent(atob(s));
+}
 /** In-memory store used when no DOM localStorage exists (tests, Node, SSR). */
 class MemoryStore {
     constructor() {
@@ -170,6 +177,43 @@ export class GameStateManager {
             // Intentionally ignored — see doc comment.
         }
     }
+    /**
+     * Serialises a profile into a portable, copy-pasteable backup code
+     * (base64). Used by the settings "export save" action.
+     */
+    exportSave(state) {
+        const json = JSON.stringify(state);
+        try {
+            return base64Encode(json);
+        }
+        catch {
+            return '';
+        }
+    }
+    /**
+     * Validates and persists a backup code so the next `loadState` adopts it.
+     * Returns false (without touching storage) when the code is malformed.
+     * The loaded record is still run through full sanitisation on load.
+     */
+    importSave(code) {
+        let parsed;
+        try {
+            parsed = JSON.parse(base64Decode(code.trim()));
+        }
+        catch {
+            return false;
+        }
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            return false;
+        }
+        try {
+            this.store.setItem(this.storageKey, JSON.stringify(parsed));
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
     /** Deletes the persisted record (debug / "reset progress" flows). */
     clearState() {
         try {
@@ -226,6 +270,8 @@ export class GameStateManager {
             miners: this.toMiners(raw.miners),
             relics: this.toBoundedInt(raw.relics, defaults.relics),
             boostEndsAt: this.toBoostEnd(raw.boostEndsAt, now),
+            lastDailyClaim: this.toClaimTime(raw.lastDailyClaim, now),
+            dailyStreak: this.toBoundedInt(raw.dailyStreak, 0),
             stats: this.toStats(raw.stats),
             claimedQuests: this.toStringArray(raw.claimedQuests),
             lastSaveTimestamp: this.toTimestamp(raw.lastSaveTimestamp, now),
@@ -238,6 +284,16 @@ export class GameStateManager {
     toBoostEnd(value, now) {
         if (typeof value === 'number' && Number.isFinite(value) && value > now) {
             return Math.min(Math.floor(value), now + 24 * 60 * 60 * 1000);
+        }
+        return 0;
+    }
+    /**
+     * Daily-claim timestamp: 0 (never) is preserved; a real value is clamped to
+     * `now` so a future-dated claim can't block the reward forever.
+     */
+    toClaimTime(value, now) {
+        if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+            return Math.min(Math.floor(value), now);
         }
         return 0;
     }

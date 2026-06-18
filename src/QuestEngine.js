@@ -5,8 +5,15 @@
  * Quests are pure predicates: the engine answers "is it complete?" and
  * "was it claimed?"; the controller owns the claim transaction.
  */
-import { MINER_TIERS } from './types.js';
+import { BUILDING_TYPES, MINER_TIERS } from './types.js';
 import { VillageEngine } from './VillageEngine.js';
+function maxBuildingLevel(state) {
+    let max = 0;
+    for (const type of BUILDING_TYPES) {
+        max = Math.max(max, state.buildings[type]);
+    }
+    return max;
+}
 function ratio(value, target) {
     if (!Number.isFinite(value) || value <= 0) {
         return 0;
@@ -57,6 +64,22 @@ export const QUESTS = [
         reward: 30,
         isComplete: (s) => s.village >= 3,
         progress: (s) => ratio(s.village, 3),
+    },
+    {
+        id: 'industrialist',
+        title: 'Industriel',
+        description: 'Porter un bâtiment au niveau 25 (1er palier)',
+        reward: 25,
+        isComplete: (s) => maxBuildingLevel(s) >= 25,
+        progress: (s) => ratio(maxBuildingLevel(s), 25),
+    },
+    {
+        id: 'overlord',
+        title: 'Suzerain',
+        description: 'Atteindre le 5ᵉ village',
+        reward: 60,
+        isComplete: (s) => s.village >= 5,
+        progress: (s) => ratio(s.village, 5),
     },
     {
         id: 'first_boss',

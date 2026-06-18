@@ -8,7 +8,7 @@
  * of breaking asset changes.
  */
 
-const CACHE_NAME = 'ldt-shell-v9';
+const CACHE_NAME = 'ldt-shell-v10';
 const PRECACHE = ['./', './manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {

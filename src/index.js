@@ -7,6 +7,7 @@
 export { BUILDING_TYPES, DEFAULT_GAME_CONFIG, MAX_SHIELDS, MINER_TIERS, cloneProfile, createDefaultProfile, createEmptyBuildings, createEmptyMiners, createEmptyStats, creditGold, } from './types.js';
 export { EconomyEngine, MINER_CONFIGS, PRESTIGE_THRESHOLD } from './EconomyEngine.js';
 export { VillageEngine, BUILDING_CONFIGS, VILLAGE_NAMES } from './VillageEngine.js';
+export { DailyEngine } from './DailyEngine.js';
 export { GameStateManager } from './GameStateManager.js';
 export { SpinEngine } from './SpinEngine.js';
 export { SlotEngine } from './SlotEngine.js';
