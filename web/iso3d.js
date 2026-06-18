@@ -1,18 +1,20 @@
 /**
- * iso3d.ts — Real-3D village renderer (Three.js / WebGL).
+ * iso3d.ts — Real-3D village renderer (Three.js / WebGL), maxed-out graphics.
  *
- * A true 3D isometric tycoon scene: a stone platform with grass and trees,
- * six visually distinct buildings that physically rise as they level up, a
- * day/night cycle (moving sun, warm windows and lamps that glow at dusk),
- * chimney smoke, low-poly workers casting shadows, gold-coin pops, drag to
- * rotate, pinch/wheel to zoom, and raycast tap-to-upgrade.
+ * A true 3D isometric tycoon scene with procedural textures (stone, planks,
+ * shingles, grass), a gradient sky dome with a moving sun/moon and stars, a
+ * full day/night cycle (warm windows + lamp posts that glow at dusk), additive
+ * glow sprites for a bloom-like feel, atmospheric particles (dust by day,
+ * fireflies by night), a rippling pond, a perimeter fence, a waving flag,
+ * high-resolution soft shadows, chimney smoke, wandering workers, gold-coin
+ * pops, drag-to-rotate, pinch/wheel zoom, and raycast tap-to-upgrade.
  *
- * Three.js is vendored locally (web/vendor/three.module.js) and resolved via
- * the document import map, so the game still works fully offline. Conforms to
- * the same VillageRenderer shape as the 2D fallback (`iso.ts`).
+ * Three.js and all textures are generated/vendored locally, so the game stays
+ * fully offline. Conforms to the same VillageRenderer shape as `iso.ts`.
  */
 import * as THREE from 'three';
 import { BUILDING_TYPES } from '../src/types.js';
+import { makeGlow, texGrass, texPlanks, texShingle, texStone, texStoneWall, } from './iso3dtex.js';
 const LAYOUT = {
     mine: { gx: 1.4, gy: 1.4 },
     farm: { gx: 4.6, gy: 1.4 },
@@ -22,25 +24,25 @@ const LAYOUT = {
     castle: { gx: 3.0, gy: 5.7 },
 };
 const PALETTES = {
-    mine: { body: 0x8b8f99, roof: 0xcaa24a, trim: 0x5d626b },
-    farm: { body: 0xd9b277, roof: 0x7fc25a, trim: 0x8a6e44 },
-    sawmill: { body: 0xb07d4f, roof: 0x8a5a36, trim: 0x6a4326 },
-    market: { body: 0xd49a63, roof: 0xd24f52, trim: 0x8c5d38 },
-    blacksmith: { body: 0x767b88, roof: 0xe0773c, trim: 0x4a4e58 },
-    castle: { body: 0xaab0bd, roof: 0x8a6fd6, trim: 0x666b78 },
+    mine: { body: 0x8b8f99, roof: 0xcaa24a, trim: 0x5d626b, stone: true },
+    farm: { body: 0xd9b277, roof: 0x7fc25a, trim: 0x8a6e44, stone: false },
+    sawmill: { body: 0xb07d4f, roof: 0x8a5a36, trim: 0x6a4326, stone: false },
+    market: { body: 0xd49a63, roof: 0xd24f52, trim: 0x8c5d38, stone: false },
+    blacksmith: { body: 0x767b88, roof: 0xe0773c, trim: 0x4a4e58, stone: true },
+    castle: { body: 0xaab0bd, roof: 0x8a6fd6, trim: 0x666b78, stone: true },
 };
-/** Per-village daytime sky/ground/grass tints, cycled. */
 const THEMES = [
-    { ground: 0x7c6a52, grass: 0x6f8a4a, sky: 0x9fd0ff },
-    { ground: 0x84766a, grass: 0x7a9a55, sky: 0xb8d8e8 },
-    { ground: 0x6f6256, grass: 0x5f7d46, sky: 0xa8c8e0 },
-    { ground: 0x8a7a64, grass: 0x86a05c, sky: 0xc0d8e8 },
+    { ground: 0x7c6a52, grass: 0x6f8a4a, skyTop: 0x3f78c0, skyBot: 0xbfe0f0 },
+    { ground: 0x84766a, grass: 0x7a9a55, skyTop: 0x4a70b0, skyBot: 0xcfe4ef },
+    { ground: 0x6f6256, grass: 0x5f7d46, skyTop: 0x3a6098, skyBot: 0xb8d2e4 },
+    { ground: 0x8a7a64, grass: 0x86a05c, skyTop: 0x5070a8, skyBot: 0xd0e2ee },
 ];
-const NIGHT_SKY = new THREE.Color(0x10131f);
+const NIGHT_TOP = new THREE.Color(0x080a16);
+const NIGHT_BOT = new THREE.Color(0x1a2138);
 const TILE = 2.0;
 const GRID = 7;
 const HALF = (GRID * TILE) / 2;
-const DAY_CYCLE = 100; // seconds for a full day/night loop
+const DAY_CYCLE = 110;
 function tileToWorld(gx, gy) {
     return { x: gx * TILE - HALF, z: gy * TILE - HALF };
 }
@@ -59,17 +61,21 @@ export class Iso3DScene {
         this.onTapBuilding = onTapBuilding;
         this.scene = new THREE.Scene();
         this.world = new THREE.Group();
+        this.sky = new THREE.Group();
+        this.fireflyBase = new Float32Array(0);
+        this.flag = null;
+        /** Warm glow sprites (windows, lamps) brightened at night. */
+        this.nightGlow = [];
+        this.nightMats = [];
         this.buildings = new Map();
         this.workers = [];
         this.coins = [];
         this.smoke = [];
-        /** Emissive materials (windows, lamps) brightened at night. */
-        this.nightMats = [];
         this.raycaster = new THREE.Raycaster();
         this.raf = 0;
         this.last = 0;
         this.t = 0;
-        this.dayT = 18; // start mid-morning
+        this.dayT = 22;
         this.smokeTimer = 0;
         this.yaw = 0;
         this.targetYaw = 0;
@@ -77,54 +83,61 @@ export class Iso3DScene {
         this.targetViewSize = 16;
         this.aspect = 1;
         this.themeVillage = 0;
-        this.daySky = new THREE.Color(0x9fd0ff);
-        // Pointer state (drag rotate + pinch zoom + tap)
         this.pointers = new Map();
         this.dragging = false;
         this.dragMoved = 0;
         this.lastPX = 0;
         this.lastPinch = 0;
         this.pinching = false;
+        this.daySkyTop = new THREE.Color(0x3f78c0);
+        this.daySkyBot = new THREE.Color(0xbfe0f0);
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.18;
-        this.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 200);
+        this.renderer.toneMappingExposure = 1.15;
+        this.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 400);
         this.camera.position.set(26, 30, 26);
         this.camera.lookAt(0, 2, 0);
+        this.scene.add(this.sky);
         this.scene.add(this.world);
-        this.hemi = new THREE.HemisphereLight(0xcfe0ff, 0x5a4d3a, 1.05);
+        this.hemi = new THREE.HemisphereLight(0xcfe0ff, 0x5a4d3a, 1.0);
         this.scene.add(this.hemi);
         this.sun = new THREE.DirectionalLight(0xfff1d6, 2.3);
         this.sun.position.set(14, 26, 8);
         this.sun.castShadow = true;
-        this.sun.shadow.mapSize.set(1024, 1024);
+        this.sun.shadow.mapSize.set(2048, 2048);
+        this.sun.shadow.radius = 3;
         const sc = this.sun.shadow.camera;
         sc.left = -16;
         sc.right = 16;
         sc.top = 16;
         sc.bottom = -16;
         sc.near = 1;
-        sc.far = 90;
-        this.sun.shadow.bias = -0.0004;
+        sc.far = 100;
+        this.sun.shadow.bias = -0.0003;
         this.scene.add(this.sun);
         this.scene.add(this.sun.target);
+        // Textured ground.
         const theme = THEMES[0];
-        this.platform = new THREE.Mesh(new THREE.BoxGeometry(GRID * TILE + 1.2, 1.0, GRID * TILE + 1.2), new THREE.MeshStandardMaterial({ color: theme.ground, roughness: 0.95 }));
+        this.platform = new THREE.Mesh(new THREE.BoxGeometry(GRID * TILE + 1.2, 1.0, GRID * TILE + 1.2), new THREE.MeshStandardMaterial({ map: texStone(), color: theme.ground, roughness: 1 }));
         this.platform.position.y = -0.5;
         this.platform.receiveShadow = true;
         this.world.add(this.platform);
-        const base = new THREE.Mesh(new THREE.BoxGeometry(GRID * TILE + 2.2, 2.2, GRID * TILE + 2.2), new THREE.MeshStandardMaterial({ color: 0x3a3340, roughness: 1 }));
+        const base = new THREE.Mesh(new THREE.BoxGeometry(GRID * TILE + 2.2, 2.2, GRID * TILE + 2.2), new THREE.MeshStandardMaterial({ map: texStoneWall(0x4a4450), roughness: 1 }));
         base.position.y = -2.1;
         base.receiveShadow = true;
         this.world.add(base);
-        this.grass = new THREE.Mesh(new THREE.BoxGeometry(GRID * TILE + 5.5, 0.6, GRID * TILE + 5.5), new THREE.MeshStandardMaterial({ color: theme.grass, roughness: 1 }));
+        this.grass = new THREE.Mesh(new THREE.BoxGeometry(GRID * TILE + 5.6, 0.6, GRID * TILE + 5.6), new THREE.MeshStandardMaterial({ map: texGrass(), color: theme.grass, roughness: 1 }));
         this.grass.position.y = -1.0;
         this.grass.receiveShadow = true;
         this.world.add(this.grass);
+        this.buildSky();
+        this.buildAtmosphere();
+        this.buildPond();
+        this.buildFence();
         this.buildPaths();
         this.buildBuildings();
         this.decorate();
@@ -137,7 +150,135 @@ export class Iso3DScene {
         window.addEventListener('pointercancel', (e) => this.onPointerUp(e));
         canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     }
-    /** Light stone paths from the central market toward each building. */
+    // --- Sky, stars, sun/moon ---------------------------------------------------
+    buildSky() {
+        this.skyMat = new THREE.ShaderMaterial({
+            side: THREE.BackSide, depthWrite: false, fog: false,
+            uniforms: {
+                topColor: { value: new THREE.Color(0x3f78c0) },
+                botColor: { value: new THREE.Color(0xbfe0f0) },
+            },
+            vertexShader: `
+        varying vec3 vDir;
+        void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+            fragmentShader: `
+        uniform vec3 topColor; uniform vec3 botColor; varying vec3 vDir;
+        void main(){ float t = clamp(vDir.y*0.5+0.5, 0.0, 1.0); t = pow(t, 0.8);
+          gl_FragColor = vec4(mix(botColor, topColor, t), 1.0); }`,
+        });
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(180, 24, 16), this.skyMat);
+        dome.renderOrder = -1;
+        this.sky.add(dome);
+        // Stars.
+        const N = 380;
+        const pos = new Float32Array(N * 3);
+        for (let i = 0; i < N; i++) {
+            const u = Math.random() * Math.PI * 2;
+            const v = Math.random() * 0.5 + 0.05; // upper hemisphere
+            const r = 150;
+            pos[i * 3] = Math.cos(u) * Math.cos(v * Math.PI) * r;
+            pos[i * 3 + 1] = Math.sin(v * Math.PI) * r;
+            pos[i * 3 + 2] = Math.sin(u) * Math.cos(v * Math.PI) * r;
+        }
+        const sg = new THREE.BufferGeometry();
+        sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        this.stars = new THREE.Points(sg, new THREE.PointsMaterial({
+            color: 0xffffff, size: 1.1, sizeAttenuation: true, transparent: true, opacity: 0, depthWrite: false,
+        }));
+        this.sky.add(this.stars);
+        // Sun (bright disc + big additive glow) and moon.
+        this.sunGlow = makeGlow(0xffe6a0, 34);
+        this.sky.add(this.sunGlow);
+        this.sunSprite = makeGlow(0xfff4d0, 10);
+        this.sky.add(this.sunSprite);
+        this.moonSprite = makeGlow(0xcfe0ff, 12);
+        this.moonSprite.material.opacity = 0;
+        this.sky.add(this.moonSprite);
+    }
+    buildAtmosphere() {
+        // Dust motes (day).
+        const D = 120;
+        const dp = new Float32Array(D * 3);
+        for (let i = 0; i < D; i++) {
+            dp[i * 3] = (Math.random() - 0.5) * 22;
+            dp[i * 3 + 1] = 1 + Math.random() * 10;
+            dp[i * 3 + 2] = (Math.random() - 0.5) * 22;
+        }
+        const dg = new THREE.BufferGeometry();
+        dg.setAttribute('position', new THREE.BufferAttribute(dp, 3));
+        this.dust = new THREE.Points(dg, new THREE.PointsMaterial({
+            color: 0xfff0c0, size: 0.12, transparent: true, opacity: 0.0,
+            blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        this.scene.add(this.dust);
+        // Fireflies (night).
+        const F = 46;
+        const fp = new Float32Array(F * 3);
+        this.fireflyBase = new Float32Array(F * 3);
+        for (let i = 0; i < F; i++) {
+            const x = (Math.random() - 0.5) * 16, y = 0.6 + Math.random() * 2.4, z = (Math.random() - 0.5) * 16;
+            fp[i * 3] = x;
+            fp[i * 3 + 1] = y;
+            fp[i * 3 + 2] = z;
+            this.fireflyBase[i * 3] = x;
+            this.fireflyBase[i * 3 + 1] = y;
+            this.fireflyBase[i * 3 + 2] = z;
+        }
+        const fg = new THREE.BufferGeometry();
+        fg.setAttribute('position', new THREE.BufferAttribute(fp, 3));
+        this.fireflies = new THREE.Points(fg, new THREE.PointsMaterial({
+            color: 0xffe070, size: 0.22, transparent: true, opacity: 0.0,
+            blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        this.scene.add(this.fireflies);
+    }
+    buildPond() {
+        this.pondMat = new THREE.MeshStandardMaterial({
+            color: 0x2f6f9a, roughness: 0.12, metalness: 0.35, transparent: true, opacity: 0.92,
+            emissive: 0x123a52, emissiveIntensity: 0.4,
+        });
+        const pond = new THREE.Mesh(new THREE.CircleGeometry(1.7, 32), this.pondMat);
+        pond.rotation.x = -Math.PI / 2;
+        pond.position.set(HALF + 1.6, -0.66, -HALF - 1.6);
+        this.world.add(pond);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.12, 8, 32), new THREE.MeshStandardMaterial({ color: 0x6a5a40, roughness: 1 }));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.copy(pond.position);
+        ring.position.y = -0.7;
+        this.world.add(ring);
+    }
+    buildFence() {
+        const postMat = new THREE.MeshStandardMaterial({ map: texPlanks(0x7a5a36), roughness: 1 });
+        const railMat = new THREE.MeshStandardMaterial({ color: 0x6a4f2e, roughness: 1 });
+        const edge = HALF + 0.4;
+        const step = TILE;
+        const postGeo = new THREE.BoxGeometry(0.12, 0.7, 0.12);
+        const addPost = (x, z) => {
+            const p = new THREE.Mesh(postGeo, postMat);
+            p.position.set(x, 0.15, z);
+            p.castShadow = true;
+            this.world.add(p);
+        };
+        for (let i = -GRID / 2; i <= GRID / 2; i++) {
+            addPost(i * step, edge);
+            addPost(i * step, -edge);
+            addPost(edge, i * step);
+            addPost(-edge, i * step);
+        }
+        // Rails along the four sides.
+        const len = GRID * TILE + 0.8;
+        for (const yy of [0.05, 0.32]) {
+            for (const [w, d, x, z, ry] of [
+                [len, 0.06, 0, edge, 0], [len, 0.06, 0, -edge, 0],
+                [0.06, len, edge, 0, 0], [0.06, len, -edge, 0, 0],
+            ]) {
+                const rail = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), railMat);
+                rail.position.set(x, yy, z);
+                rail.rotation.y = ry;
+                this.world.add(rail);
+            }
+        }
+    }
     buildPaths() {
         const mat = new THREE.MeshStandardMaterial({ color: 0x9c8b6e, roughness: 1 });
         const c = tileToWorld(LAYOUT.market.gx, LAYOUT.market.gy);
@@ -147,35 +288,42 @@ export class Iso3DScene {
             const b = tileToWorld(LAYOUT[type].gx, LAYOUT[type].gy);
             const dx = b.x - c.x, dz = b.z - c.z;
             const len = Math.hypot(dx, dz);
-            const path = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, len), mat);
+            const path = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, len), mat);
             path.position.set((b.x + c.x) / 2, 0.04, (b.z + c.z) / 2);
             path.rotation.y = Math.atan2(dx, dz);
             path.receiveShadow = true;
             this.world.add(path);
         }
     }
+    // --- Buildings --------------------------------------------------------------
     buildBuildings() {
         for (const type of BUILDING_TYPES) {
             const pal = PALETTES[type];
             const { x, z } = tileToWorld(LAYOUT[type].gx, LAYOUT[type].gy);
             const group = new THREE.Group();
             group.position.set(x, 0, z);
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), new THREE.MeshStandardMaterial({ color: pal.body, roughness: 0.8 }));
+            const wallTex = pal.stone ? texStoneWall(pal.body) : texPlanks(pal.body);
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9 }));
             body.castShadow = true;
             body.receiveShadow = true;
             body.position.y = 0.5;
             group.add(body);
-            const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.08), new THREE.MeshStandardMaterial({ color: pal.trim, roughness: 0.9 }));
+            const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.09), new THREE.MeshStandardMaterial({ color: pal.trim, roughness: 0.9 }));
             door.position.set(0, 0.35, 0.78);
             group.add(door);
-            const roof = new THREE.Mesh(new THREE.ConeGeometry(1.25, 1.0, 4), new THREE.MeshStandardMaterial({ color: pal.roof, roughness: 0.7, flatShading: true }));
+            const roof = new THREE.Mesh(new THREE.ConeGeometry(1.28, 1.0, 4), new THREE.MeshStandardMaterial({ map: texShingle(pal.roof), roughness: 0.8, flatShading: true }));
             roof.castShadow = true;
             roof.rotation.y = Math.PI / 4;
             roof.position.y = 1.5;
             group.add(roof);
-            // Two warm windows that light up at night.
             this.addWindow(group, -0.4, 0.78, 0.5);
             this.addWindow(group, 0.4, 0.78, 0.5);
+            // Warm glow over the windows (fake bloom at night).
+            const glow = makeGlow(0xffce6a, 1.4);
+            glow.position.set(0, 0.8, 0.9);
+            glow.material.opacity = 0;
+            group.add(glow);
+            this.nightGlow.push(glow);
             this.addDetails(type, group, pal);
             const pickMesh = new THREE.Mesh(new THREE.BoxGeometry(2.2, 5, 2.2), new THREE.MeshBasicMaterial({ visible: false }));
             pickMesh.position.y = 2.2;
@@ -188,14 +336,13 @@ export class Iso3DScene {
     }
     addWindow(group, x, y, z) {
         const mat = new THREE.MeshStandardMaterial({
-            color: 0x3a3320, emissive: 0xffce6a, emissiveIntensity: 0, roughness: 0.5,
+            color: 0x2a2418, emissive: 0xffce6a, emissiveIntensity: 0, roughness: 0.5,
         });
         const win = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.3, 0.06), mat);
         win.position.set(x, y, z);
         group.add(win);
         this.nightMats.push(mat);
     }
-    /** Type-specific props that make each building recognisable. */
     addDetails(type, group, pal) {
         const std = (color, rough = 0.85) => new THREE.MeshStandardMaterial({ color, roughness: rough });
         const add = (m, x, y, z) => {
@@ -205,20 +352,15 @@ export class Iso3DScene {
         };
         switch (type) {
             case 'mine': {
-                const cart = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.7), std(0x4a4e58));
-                add(cart, 1.0, 0.2, 0.9);
-                const ore = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16), std(0xf6c244, 0.4));
-                add(ore, 1.0, 0.42, 0.9);
+                add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.7), std(0x4a4e58)), 1.0, 0.2, 0.9);
+                add(new THREE.Mesh(new THREE.DodecahedronGeometry(0.16), std(0xf6c244, 0.4)), 1.0, 0.42, 0.9);
                 break;
             }
             case 'farm': {
-                const silo = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 1.1, 12), std(0xc9c2b0));
-                add(silo, 1.0, 0.55, -0.6);
-                const cap = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.3, 12), std(0x9a5a3a));
-                add(cap, 1.0, 1.25, -0.6);
-                const field = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.9), std(0x6f9a44, 1));
+                add(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 1.1, 12), std(0xc9c2b0)), 1.0, 0.55, -0.6);
+                add(new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.3, 12), std(0x9a5a3a)), 1.0, 1.25, -0.6);
+                const field = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.9), new THREE.MeshStandardMaterial({ map: texGrass(), color: 0x9ac24a, roughness: 1 }));
                 field.receiveShadow = true;
-                field.castShadow = false;
                 field.position.set(0, 0.05, 1.4);
                 group.add(field);
                 break;
@@ -237,59 +379,56 @@ export class Iso3DScene {
                 awning.rotation.x = -0.5;
                 awning.castShadow = true;
                 group.add(awning);
-                for (let i = -1; i <= 1; i += 2) {
-                    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), std(0xb0813f));
-                    add(crate, i * 0.5, 0.18, 1.05);
-                }
+                for (let i = -1; i <= 1; i += 2)
+                    add(new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), std(0xb0813f)), i * 0.5, 0.18, 1.05);
                 break;
             }
             case 'blacksmith': {
-                const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.9, 8), std(0x3a3a40));
-                add(chimney, 0.5, 1.4, -0.4);
-                const anvil = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.22), std(0x2c2c34, 0.5));
-                add(anvil, 1.0, 0.2, 0.8);
+                add(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.9, 8), std(0x3a3a40)), 0.5, 1.4, -0.4);
+                add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.22), std(0x2c2c34, 0.5)), 1.0, 0.2, 0.8);
+                const forge = makeGlow(0xff7a2a, 0.8);
+                forge.position.set(1.0, 0.25, 0.8);
+                group.add(forge);
+                this.nightGlow.push(forge);
                 break;
             }
             case 'castle': {
                 for (const sx of [-0.85, 0.85]) {
-                    const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.4, 1.7, 10), std(pal.body));
-                    add(tower, sx, 0.85, -0.2);
-                    const top = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.6, 10), std(pal.roof));
-                    add(top, sx, 1.95, -0.2);
+                    add(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.4, 1.7, 10), new THREE.MeshStandardMaterial({ map: texStoneWall(pal.body), roughness: 0.9 })), sx, 0.85, -0.2);
+                    add(new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.6, 10), new THREE.MeshStandardMaterial({ map: texShingle(pal.roof), roughness: 0.8 })), sx, 1.95, -0.2);
                 }
-                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6), std(0x6b5a3a));
-                add(pole, 0, 2.3, 0);
-                const flag = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.26, 0.03), std(0xf6c244, 0.6));
-                add(flag, 0.22, 2.5, 0);
+                add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6), std(0x6b5a3a)), 0, 2.3, 0);
+                const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.3, 6, 1), new THREE.MeshStandardMaterial({ color: 0xf6c244, roughness: 0.6, side: THREE.DoubleSide }));
+                flag.position.set(0.27, 2.5, 0);
+                group.add(flag);
+                this.flag = flag;
                 break;
             }
         }
     }
-    /** Decorative trees + glowing lamp posts around the platform. */
     decorate() {
         const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 1 });
         const leafMat = new THREE.MeshStandardMaterial({ color: 0x4e8a3c, roughness: 0.9, flatShading: true });
-        const treeSpots = [
-            [-HALF - 1.6, -HALF - 1.6], [HALF + 1.6, -HALF - 1.6],
-            [-HALF - 1.6, HALF + 1.6], [HALF + 1.6, HALF + 1.6],
-        ];
-        for (const [x, z] of treeSpots) {
+        for (const [x, z] of [[-HALF - 1.7, -HALF - 1.7], [HALF + 1.7, -HALF - 1.7], [-HALF - 1.7, HALF + 1.7]]) {
             const tree = new THREE.Group();
             const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.9, 6), trunkMat);
             trunk.position.y = 0.15;
             trunk.castShadow = true;
-            const leaves = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.4, 7), leafMat);
-            leaves.position.y = 1.2;
-            leaves.castShadow = true;
+            const l1 = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.1, 8), leafMat);
+            l1.position.y = 1.1;
+            l1.castShadow = true;
+            const l2 = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.9, 8), leafMat);
+            l2.position.y = 1.7;
+            l2.castShadow = true;
             tree.add(trunk);
-            tree.add(leaves);
+            tree.add(l1);
+            tree.add(l2);
             tree.position.set(x, -0.7, z);
             tree.scale.setScalar(0.85 + Math.random() * 0.4);
             this.world.add(tree);
         }
         const postMat = new THREE.MeshStandardMaterial({ color: 0x35302a, roughness: 1 });
-        const lampSpots = [[0, -HALF - 1.2], [0, HALF + 1.2], [-HALF - 1.2, 0], [HALF + 1.2, 0]];
-        for (const [x, z] of lampSpots) {
+        for (const [x, z] of [[0, -HALF - 1.2], [0, HALF + 1.2], [-HALF - 1.2, 0], [HALF + 1.2, 0]]) {
             const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.4, 6), postMat);
             post.position.set(x, -0.2, z);
             post.castShadow = true;
@@ -299,6 +438,11 @@ export class Iso3DScene {
             bulb.position.set(x, 0.6, z);
             this.world.add(bulb);
             this.nightMats.push(bulbMat);
+            const glow = makeGlow(0xffd070, 1.6);
+            glow.position.set(x, 0.6, z);
+            glow.material.opacity = 0;
+            this.world.add(glow);
+            this.nightGlow.push(glow);
         }
     }
     makeWorker() {
@@ -312,8 +456,7 @@ export class Iso3DScene {
         head.position.y = 0.78;
         group.add(body);
         group.add(head);
-        const x = (Math.random() - 0.5) * GRID * TILE * 0.7;
-        const z = (Math.random() - 0.5) * GRID * TILE * 0.7;
+        const x = (Math.random() - 0.5) * GRID * TILE * 0.7, z = (Math.random() - 0.5) * GRID * TILE * 0.7;
         group.position.set(x, 0, z);
         this.world.add(group);
         return { mesh: group, x, z, tx: x, tz: z, speed: 1.0 + Math.random(), pause: Math.random() * 2, phase: Math.random() * 6 };
@@ -323,8 +466,9 @@ export class Iso3DScene {
         this.themeVillage = village;
         this.platform.material.color.setHex(theme.ground);
         this.grass.material.color.setHex(theme.grass);
-        this.daySky = new THREE.Color(theme.sky);
-        this.scene.fog = new THREE.Fog(theme.sky, 70, 120);
+        this.daySkyTop = new THREE.Color(theme.skyTop);
+        this.daySkyBot = new THREE.Color(theme.skyBot);
+        this.scene.fog = new THREE.Fog(theme.skyBot, 80, 150);
     }
     setState(state) {
         let total = 0;
@@ -347,8 +491,7 @@ export class Iso3DScene {
         this.ensureRunning();
     }
     bodyHeight(type, level) {
-        const base = type === 'castle' ? 1.6 : 1.0;
-        return base + Math.min(level, 28) * 0.2;
+        return (type === 'castle' ? 1.6 : 1.0) + Math.min(level, 28) * 0.2;
     }
     coinPop(type) {
         const b = this.buildings.get(type);
@@ -356,11 +499,15 @@ export class Iso3DScene {
             return;
         const top = b.shownHeight + 1.6;
         for (let i = 0; i < 8; i++) {
-            const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.05, 12), new THREE.MeshStandardMaterial({ color: 0xffd95a, metalness: 0.6, roughness: 0.3, emissive: 0x4a3a00 }));
-            mesh.rotation.x = Math.PI / 2;
-            mesh.position.set(b.group.position.x + (Math.random() - 0.5), top, b.group.position.z + (Math.random() - 0.5));
-            this.world.add(mesh);
-            this.coins.push({ mesh, vy: 3 + Math.random() * 2.5, life: 0 });
+            const grp = new THREE.Group();
+            const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.05, 12), new THREE.MeshStandardMaterial({ color: 0xffd95a, metalness: 0.6, roughness: 0.3, emissive: 0x4a3a00 }));
+            coin.rotation.x = Math.PI / 2;
+            grp.add(coin);
+            const glow = makeGlow(0xffd95a, 0.7);
+            grp.add(glow);
+            grp.position.set(b.group.position.x + (Math.random() - 0.5), top, b.group.position.z + (Math.random() - 0.5));
+            this.world.add(grp);
+            this.coins.push({ group: grp, vy: 3 + Math.random() * 2.5, life: 0 });
         }
         this.ensureRunning();
     }
@@ -368,7 +515,7 @@ export class Iso3DScene {
         const b = this.buildings.get('blacksmith');
         if (!b || !b.group.visible)
             return;
-        const mat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.55, roughness: 1 });
+        const mat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.5, roughness: 1 });
         const puff = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), mat);
         puff.position.set(b.group.position.x + 0.5, b.shownHeight + 1.4, b.group.position.z - 0.4);
         this.world.add(puff);
@@ -416,7 +563,6 @@ export class Iso3DScene {
         this.raf = requestAnimationFrame((t) => this.loop(t));
     }
     update(dt) {
-        // Rotation (drag + gentle idle drift) and smooth zoom.
         if (!this.dragging && !this.pinching)
             this.targetYaw += dt * 0.05;
         this.yaw += (this.targetYaw - this.yaw) * Math.min(1, dt * 8);
@@ -425,8 +571,7 @@ export class Iso3DScene {
             this.viewSize += (this.targetViewSize - this.viewSize) * Math.min(1, dt * 8);
             this.updateCameraFrustum();
         }
-        this.updateDayNight();
-        // Buildings rise toward their level height.
+        this.updateDayNight(dt);
         for (const type of BUILDING_TYPES) {
             const b = this.buildings.get(type);
             if (!b.group.visible)
@@ -437,7 +582,6 @@ export class Iso3DScene {
             b.body.position.y = b.shownHeight / 2;
             b.roof.position.y = b.shownHeight + 0.5;
         }
-        // Workers wander.
         const bound = GRID * TILE * 0.42;
         for (const w of this.workers) {
             if (w.pause > 0) {
@@ -460,19 +604,17 @@ export class Iso3DScene {
                 w.mesh.position.y = Math.abs(Math.sin((this.t + w.phase) * 9)) * 0.07;
             }
         }
-        // Coins arc up and fade.
         for (const c of this.coins) {
             c.life += dt;
             c.vy -= 9 * dt;
-            c.mesh.position.y += c.vy * dt;
-            c.mesh.rotation.z += dt * 8;
-            c.mesh.scale.setScalar(Math.max(0, 1 - c.life));
+            c.group.position.y += c.vy * dt;
+            c.group.rotation.y += dt * 8;
+            c.group.scale.setScalar(Math.max(0, 1 - c.life));
         }
         this.coins = this.coins.filter((c) => { if (c.life >= 1) {
-            this.world.remove(c.mesh);
+            this.world.remove(c.group);
             return false;
         } return true; });
-        // Chimney smoke.
         this.smokeTimer -= dt;
         if (this.smokeTimer <= 0) {
             this.smokeTimer = 0.55;
@@ -482,32 +624,63 @@ export class Iso3DScene {
             s.life += dt;
             s.mesh.position.y += s.vy * dt;
             s.mesh.scale.setScalar(1 + s.life * 1.4);
-            s.mesh.material.opacity = Math.max(0, 0.55 * (1 - s.life / 2));
+            s.mesh.material.opacity = Math.max(0, 0.5 * (1 - s.life / 2));
         }
         this.smoke = this.smoke.filter((s) => { if (s.life >= 2) {
             this.world.remove(s.mesh);
             return false;
         } return true; });
+        // Pond shimmer + waving flag.
+        if (this.pondMat)
+            this.pondMat.emissiveIntensity = 0.3 + Math.sin(this.t * 2) * 0.15;
+        if (this.flag)
+            this.flag.rotation.z = Math.sin(this.t * 4) * 0.12;
+        // Fireflies drift.
+        if (this.fireflies.material.opacity > 0.01) {
+            const arr = this.fireflies.geometry.getAttribute('position').array;
+            for (let i = 0; i < arr.length; i += 3) {
+                arr[i] = this.fireflyBase[i] + Math.sin(this.t * 1.3 + i) * 0.6;
+                arr[i + 1] = this.fireflyBase[i + 1] + Math.sin(this.t * 2.1 + i * 1.7) * 0.3;
+                arr[i + 2] = this.fireflyBase[i + 2] + Math.cos(this.t * 1.1 + i) * 0.6;
+            }
+            this.fireflies.geometry.getAttribute('position').needsUpdate = true;
+        }
     }
-    updateDayNight() {
-        this.dayT += 1 / 60; // ~1 unit/frame; cycle length in seconds approx
+    updateDayNight(dt) {
+        this.dayT += dt;
         const phase = (this.dayT / DAY_CYCLE) % 1;
         const elev = Math.sin(phase * Math.PI * 2);
         const day = Math.max(0, Math.min(1, (elev + 0.25) / 0.6));
         const night = 1 - day;
         const ang = phase * Math.PI * 2;
-        this.sun.position.set(Math.cos(ang) * 22, 6 + Math.max(0, Math.sin(ang)) * 26, Math.sin(ang) * 14 + 6);
-        this.sun.intensity = 0.15 + day * 2.2;
-        this.hemi.intensity = 0.32 + day * 0.78;
-        const sky = this.daySky.clone().lerp(NIGHT_SKY, night);
-        this.scene.background = sky;
+        this.sun.position.set(Math.cos(ang) * 22, 6 + Math.max(-4, Math.sin(ang) * 26), Math.sin(ang) * 14 + 6);
+        this.sun.intensity = 0.12 + day * 2.25;
+        this.hemi.intensity = 0.3 + day * 0.8;
+        // Sky gradient.
+        this.skyMat.uniforms.topColor.value.copy(this.daySkyTop).lerp(NIGHT_TOP, night);
+        this.skyMat.uniforms.botColor.value.copy(this.daySkyBot).lerp(NIGHT_BOT, night);
         if (this.scene.fog)
-            this.scene.fog.color.copy(sky);
-        const glow = night * 1.7;
+            this.scene.fog.color.copy(this.daySkyBot).lerp(NIGHT_BOT, night);
+        // Sun/moon discs in the sky.
+        const R = 150;
+        this.sunSprite.position.set(Math.cos(ang) * R, Math.sin(ang) * R, -40);
+        this.sunGlow.position.copy(this.sunSprite.position);
+        const sunVis = Math.max(0, Math.sin(ang));
+        this.sunSprite.material.opacity = sunVis;
+        this.sunGlow.material.opacity = sunVis * 0.9;
+        this.moonSprite.position.set(Math.cos(ang + Math.PI) * R, Math.sin(ang + Math.PI) * R, -40);
+        this.moonSprite.material.opacity = Math.max(0, Math.sin(ang + Math.PI)) * night;
+        // Stars + atmosphere.
+        this.stars.material.opacity = night;
+        this.dust.material.opacity = day * 0.5;
+        this.fireflies.material.opacity = night * 0.9;
+        // Window/lamp glow + emissive.
         for (const m of this.nightMats)
-            m.emissiveIntensity = glow;
+            m.emissiveIntensity = night * 1.8;
+        for (const s of this.nightGlow)
+            s.material.opacity = night * 0.85;
     }
-    // --- Pointer & wheel: drag rotate, pinch zoom, tap upgrade -----------------
+    // --- Pointer & wheel --------------------------------------------------------
     onPointerDown(e) {
         this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (this.pointers.size === 1) {
@@ -526,9 +699,8 @@ export class Iso3DScene {
         this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (this.pinching && this.pointers.size >= 2) {
             const d = this.pinchDistance();
-            if (this.lastPinch > 0 && d > 0) {
+            if (this.lastPinch > 0 && d > 0)
                 this.targetViewSize = Math.max(9, Math.min(26, this.targetViewSize * (this.lastPinch / d)));
-            }
             this.lastPinch = d;
         }
         else if (this.dragging) {
@@ -539,8 +711,7 @@ export class Iso3DScene {
         }
     }
     onPointerUp(e) {
-        const had = this.pointers.delete(e.pointerId);
-        if (!had)
+        if (!this.pointers.delete(e.pointerId))
             return;
         if (this.pointers.size < 2) {
             this.pinching = false;
