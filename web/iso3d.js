@@ -9,12 +9,35 @@
  * high-resolution soft shadows, chimney smoke, wandering workers, gold-coin
  * pops, drag-to-rotate, pinch/wheel zoom, and raycast tap-to-upgrade.
  *
- * Three.js and all textures are generated/vendored locally, so the game stays
- * fully offline. Conforms to the same VillageRenderer shape as `iso.ts`.
+ * Buildings and decor use CC0 low-poly models (Kenney "City Builder" kit),
+ * loaded lazily via a vendored GLTFLoader with the procedural meshes as an
+ * offline-safe fallback. Three.js, the loader and all textures are vendored
+ * locally, so the game stays fully offline. Conforms to the same
+ * VillageRenderer shape as `iso.ts`.
  */
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { BUILDING_TYPES } from '../src/types.js';
 import { makeGlow, texGrass, texPlanks, texShingle, texStone, texStoneWall, } from './iso3dtex.js';
+/**
+ * CC0 low-poly building models (Kenney "City Builder" kit, CC0). Each game
+ * building maps to one model; the castle reuses the garage at a larger scale
+ * for a grander silhouette. Loaded lazily — the procedural mesh stands in
+ * until (and if) the GLB arrives, so the scene works offline and never blocks.
+ */
+const MODEL_DIR = 'models/';
+const BUILDING_MODELS = {
+    mine: 'building-garage.glb',
+    farm: 'building-small-a.glb',
+    sawmill: 'building-small-b.glb',
+    market: 'building-small-c.glb',
+    blacksmith: 'building-small-d.glb',
+    castle: 'building-garage.glb',
+};
+/** Footprint each model is normalised to (world units), before level growth. */
+const MODEL_FOOTPRINT = {
+    mine: 1.9, farm: 1.8, sawmill: 1.8, market: 1.8, blacksmith: 1.8, castle: 2.5,
+};
 const LAYOUT = {
     mine: { gx: 1.4, gy: 1.4 },
     farm: { gx: 4.6, gy: 1.4 },
@@ -72,6 +95,7 @@ export class Iso3DScene {
         this.coins = [];
         this.smoke = [];
         this.raycaster = new THREE.Raycaster();
+        this.gltf = new GLTFLoader();
         this.raf = 0;
         this.last = 0;
         this.t = 0;
@@ -303,37 +327,86 @@ export class Iso3DScene {
             const { x, z } = tileToWorld(LAYOUT[type].gx, LAYOUT[type].gy);
             const group = new THREE.Group();
             group.position.set(x, 0, z);
+            // Procedural fallback lives in its own sub-group so a loaded GLB model
+            // can replace it wholesale with a single visibility toggle.
+            const proc = new THREE.Group();
+            group.add(proc);
             const wallTex = pal.stone ? texStoneWall(pal.body) : texPlanks(pal.body);
             const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9 }));
             body.castShadow = true;
             body.receiveShadow = true;
             body.position.y = 0.5;
-            group.add(body);
+            proc.add(body);
             const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.09), new THREE.MeshStandardMaterial({ color: pal.trim, roughness: 0.9 }));
             door.position.set(0, 0.35, 0.78);
-            group.add(door);
+            proc.add(door);
             const roof = new THREE.Mesh(new THREE.ConeGeometry(1.28, 1.0, 4), new THREE.MeshStandardMaterial({ map: texShingle(pal.roof), roughness: 0.8, flatShading: true }));
             roof.castShadow = true;
             roof.rotation.y = Math.PI / 4;
             roof.position.y = 1.5;
-            group.add(roof);
-            this.addWindow(group, -0.4, 0.78, 0.5);
-            this.addWindow(group, 0.4, 0.78, 0.5);
-            // Warm glow over the windows (fake bloom at night).
+            proc.add(roof);
+            this.addWindow(proc, -0.4, 0.78, 0.5);
+            this.addWindow(proc, 0.4, 0.78, 0.5);
+            this.addDetails(type, proc, pal);
+            // Warm glow over the door (fake bloom at night) — kept for both proc and
+            // model, so windows still light up at dusk.
             const glow = makeGlow(0xffce6a, 1.4);
             glow.position.set(0, 0.8, 0.9);
             glow.material.opacity = 0;
             group.add(glow);
             this.nightGlow.push(glow);
-            this.addDetails(type, group, pal);
             const pickMesh = new THREE.Mesh(new THREE.BoxGeometry(2.2, 5, 2.2), new THREE.MeshBasicMaterial({ visible: false }));
             pickMesh.position.y = 2.2;
             pickMesh.userData.type = type;
             group.add(pickMesh);
             group.visible = false;
             this.world.add(group);
-            this.buildings.set(type, { group, body, roof, pickMesh, level: 0, shownHeight: 1 });
+            const entry = {
+                group, proc, body, roof, pickMesh,
+                model: null, modelScale: 1, modelHeight: 1.6,
+                level: 0, shownHeight: 1,
+            };
+            this.buildings.set(type, entry);
+            this.loadBuildingModel(type, entry);
         }
+    }
+    /**
+     * Loads a building's CC0 GLB model and, on success, swaps out the procedural
+     * fallback. Normalises the model to a fixed footprint sitting on the ground,
+     * enables shadows, and (for the castle) tints it gold. Any failure leaves the
+     * procedural mesh in place — the scene keeps working offline.
+     */
+    loadBuildingModel(type, entry) {
+        this.gltf.load(MODEL_DIR + BUILDING_MODELS[type], (gltf) => {
+            const root = gltf.scene;
+            // Normalise: centre on X/Z, drop base to y=0, scale to target footprint.
+            const box = new THREE.Box3().setFromObject(root);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            const footprint = Math.max(size.x, size.z) || 1;
+            const scale = MODEL_FOOTPRINT[type] / footprint;
+            root.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+            root.scale.setScalar(scale);
+            root.traverse((o) => {
+                const mesh = o;
+                if (mesh.isMesh) {
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    if (type === 'castle') {
+                        const mat = mesh.material.clone();
+                        mat.color.multiply(new THREE.Color(0xd9c178));
+                        mesh.material = mat;
+                    }
+                }
+            });
+            entry.model = root;
+            entry.modelScale = scale;
+            entry.modelHeight = size.y * scale;
+            entry.group.add(root);
+            entry.proc.visible = false;
+        }, undefined, () => { });
     }
     addWindow(group, x, y, z) {
         const mat = new THREE.MeshStandardMaterial({
@@ -407,27 +480,57 @@ export class Iso3DScene {
             }
         }
     }
-    decorate() {
+    /** Builds a single procedural pine (the tree-model fallback). */
+    proceduralTree(x, z) {
         const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 1 });
         const leafMat = new THREE.MeshStandardMaterial({ color: 0x4e8a3c, roughness: 0.9, flatShading: true });
-        for (const [x, z] of [[-HALF - 1.7, -HALF - 1.7], [HALF + 1.7, -HALF - 1.7], [-HALF - 1.7, HALF + 1.7]]) {
-            const tree = new THREE.Group();
-            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.9, 6), trunkMat);
-            trunk.position.y = 0.15;
-            trunk.castShadow = true;
-            const l1 = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.1, 8), leafMat);
-            l1.position.y = 1.1;
-            l1.castShadow = true;
-            const l2 = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.9, 8), leafMat);
-            l2.position.y = 1.7;
-            l2.castShadow = true;
-            tree.add(trunk);
-            tree.add(l1);
-            tree.add(l2);
-            tree.position.set(x, -0.7, z);
-            tree.scale.setScalar(0.85 + Math.random() * 0.4);
-            this.world.add(tree);
+        const tree = new THREE.Group();
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.9, 6), trunkMat);
+        trunk.position.y = 0.15;
+        trunk.castShadow = true;
+        const l1 = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.1, 8), leafMat);
+        l1.position.y = 1.1;
+        l1.castShadow = true;
+        const l2 = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.9, 8), leafMat);
+        l2.position.y = 1.7;
+        l2.castShadow = true;
+        tree.add(trunk);
+        tree.add(l1);
+        tree.add(l2);
+        tree.position.set(x, -0.7, z);
+        tree.scale.setScalar(0.85 + Math.random() * 0.4);
+        this.world.add(tree);
+    }
+    /** Loads a decorative CC0 model, normalises it, and drops it at (x,z). */
+    loadDecor(file, x, z, footprint, y = -0.7, onFail) {
+        this.gltf.load(MODEL_DIR + file, (gltf) => {
+            const root = gltf.scene;
+            const box = new THREE.Box3().setFromObject(root);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            const scale = footprint / (Math.max(size.x, size.z) || 1);
+            root.scale.setScalar(scale);
+            root.position.set(x - center.x * scale, y - box.min.y * scale, z - center.z * scale);
+            root.rotation.y = Math.random() * Math.PI * 2;
+            root.traverse((o) => { const m = o; if (m.isMesh) {
+                m.castShadow = true;
+                m.receiveShadow = true;
+            } });
+            this.world.add(root);
+        }, undefined, () => onFail?.());
+    }
+    decorate() {
+        // Tree clusters at the outer corners (CC0 model, procedural pine fallback).
+        const treeSpots = [
+            [-HALF - 1.7, -HALF - 1.7], [HALF + 1.7, -HALF - 1.7], [-HALF - 1.7, HALF + 1.7],
+        ];
+        for (const [x, z] of treeSpots) {
+            this.loadDecor('grass-trees-tall.glb', x, z, 2.4, -0.7, () => this.proceduralTree(x, z));
         }
+        // A fountain centrepiece at the remaining free corner.
+        this.loadDecor('pavement-fountain.glb', HALF + 1.7, HALF + 1.7, 2.6, -0.7);
         const postMat = new THREE.MeshStandardMaterial({ color: 0x35302a, roughness: 1 });
         for (const [x, z] of [[0, -HALF - 1.2], [0, HALF + 1.2], [-HALF - 1.2, 0], [HALF + 1.2, 0]]) {
             const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.4, 6), postMat);
@@ -579,11 +682,21 @@ export class Iso3DScene {
             const b = this.buildings.get(type);
             if (!b.group.visible)
                 continue;
-            const target = this.bodyHeight(type, b.level);
-            b.shownHeight += (target - b.shownHeight) * Math.min(1, dt * 6);
-            b.body.scale.y = b.shownHeight;
-            b.body.position.y = b.shownHeight / 2;
-            b.roof.position.y = b.shownHeight + 0.5;
+            if (b.model) {
+                // Real model: a gentle uniform growth with level reads as "thriving"
+                // without distorting the silhouette.
+                const grow = b.modelScale * (1 + Math.min(b.level, 24) * 0.014);
+                const cur = b.model.scale.x + (grow - b.model.scale.x) * Math.min(1, dt * 6);
+                b.model.scale.setScalar(cur);
+                b.shownHeight = (b.modelHeight / b.modelScale) * cur;
+            }
+            else {
+                const target = this.bodyHeight(type, b.level);
+                b.shownHeight += (target - b.shownHeight) * Math.min(1, dt * 6);
+                b.body.scale.y = b.shownHeight;
+                b.body.position.y = b.shownHeight / 2;
+                b.roof.position.y = b.shownHeight + 0.5;
+            }
         }
         const bound = GRID * TILE * 0.42;
         for (const w of this.workers) {
