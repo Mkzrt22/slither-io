@@ -166,6 +166,7 @@ for (const type of BUILDING_TYPES) {
     <div class="b-info">
       <div class="b-name">${cfg.name} <b>Niv. <span data-level>0</span></b></div>
       <div class="b-stat"><span class="up" data-rate>0</span></div>
+      <div class="b-synergy" data-synergy></div>
     </div>
     <button data-buy>Améliorer</button>`;
     const buyBtn = card.querySelector('[data-buy]');
@@ -174,6 +175,7 @@ for (const type of BUILDING_TYPES) {
     buildingCards.set(type, {
         levelEl: card.querySelector('[data-level]'),
         rateEl: card.querySelector('[data-rate]'),
+        synergyEl: card.querySelector('[data-synergy]'),
         buyBtn,
     });
 }
@@ -324,6 +326,7 @@ function render(state) {
         card.rateEl.innerHTML =
             `${fmt(Math.round(prod))} or/s${milestoneTag}` +
                 `<span class="b-next"> · palier ×${mult * 2} dans ${toNext}</span>`;
+        card.synergyEl.textContent = VillageEngine.getSynergyText(type, level);
         const plan = buyMode === 'max'
             ? VillageEngine.getMaxAffordable(type, level, state.gold)
             : { count: buyMode, cost: VillageEngine.getBulkCost(type, level, buyMode) };
