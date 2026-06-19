@@ -63,11 +63,12 @@ const PALETTES: Record<BuildingType, Palette> = {
   castle:     { body: 0xaab0bd, roof: 0x8a6fd6, trim: 0x666b78, stone: true },
 };
 
+// Bright, saturated "toy" palettes for an App-Store idle-tycoon vibe.
 const THEMES = [
-  { ground: 0x7c6a52, grass: 0x6f8a4a, skyTop: 0x3f78c0, skyBot: 0xbfe0f0 },
-  { ground: 0x84766a, grass: 0x7a9a55, skyTop: 0x4a70b0, skyBot: 0xcfe4ef },
-  { ground: 0x6f6256, grass: 0x5f7d46, skyTop: 0x3a6098, skyBot: 0xb8d2e4 },
-  { ground: 0x8a7a64, grass: 0x86a05c, skyTop: 0x5070a8, skyBot: 0xd0e2ee },
+  { ground: 0x9a8056, grass: 0x84c64f, skyTop: 0x49a6ee, skyBot: 0xd2efff },
+  { ground: 0xa28a60, grass: 0x92d25c, skyTop: 0x57aef0, skyBot: 0xdcf3ff },
+  { ground: 0x8f7752, grass: 0x7cbc48, skyTop: 0x489ce6, skyBot: 0xccebfd },
+  { ground: 0xa68d63, grass: 0x9bd862, skyTop: 0x62b6f4, skyBot: 0xdef5ff },
 ];
 const NIGHT_TOP = new THREE.Color(0x080a16);
 const NIGHT_BOT = new THREE.Color(0x1a2138);
@@ -160,7 +161,7 @@ export class Iso3DScene {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     (this.renderer as unknown as { outputColorSpace: string }).outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.32;
 
     this.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 400);
     this.camera.position.set(26, 30, 26);
@@ -764,13 +765,16 @@ export class Iso3DScene {
     this.dayT += dt;
     const phase = (this.dayT / DAY_CYCLE) % 1;
     const elev = Math.sin(phase * Math.PI * 2);
-    const day = Math.max(0, Math.min(1, (elev + 0.25) / 0.6));
+    const dayRaw = Math.max(0, Math.min(1, (elev + 0.25) / 0.6));
+    // Idle-tycoon mood: stay bright and sunny — the trough is a gentle golden
+    // dusk, never a real (dark) night, so the village always looks inviting.
+    const day = 0.76 + 0.24 * dayRaw;
     const night = 1 - day;
 
     const ang = phase * Math.PI * 2;
     this.sun.position.set(Math.cos(ang) * 22, 6 + Math.max(-4, Math.sin(ang) * 26), Math.sin(ang) * 14 + 6);
-    this.sun.intensity = 0.12 + day * 2.25;
-    this.hemi.intensity = 0.3 + day * 0.8;
+    this.sun.intensity = 0.5 + day * 2.3;
+    this.hemi.intensity = 0.6 + day * 0.85;
 
     // Sky gradient.
     this.skyMat.uniforms.topColor.value.copy(this.daySkyTop).lerp(NIGHT_TOP, night);

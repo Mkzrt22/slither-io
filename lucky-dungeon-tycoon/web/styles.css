@@ -583,19 +583,61 @@ main { flex: 1; display: flex; flex-direction: column; }
 .btn-advance:disabled { filter: grayscale(0.7) brightness(0.6); cursor: not-allowed; }
 .btn-advance.ready { animation: readyPulse 1.1s ease-in-out infinite; }
 
+/* ===== Idle-tycoon building cards ===== */
+.building-card {
+  gap: 12px; padding: 12px 12px 13px;
+  background:
+    radial-gradient(120% 130% at 0% 0%, rgba(246,194,68,0.10), transparent 55%),
+    linear-gradient(180deg, #2f2550, #241b3c);
+  border: 1px solid #4a3a72;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 16px rgba(0,0,0,0.38);
+}
 .b-avatar {
-  flex: 0 0 auto; width: 52px; height: 52px; border-radius: 14px;
-  display: flex; align-items: center; justify-content: center; font-size: 1.8rem;
-  background: radial-gradient(circle at 35% 30%, rgba(255,224,138,0.3), rgba(0,0,0,0.28));
-  border: 1px solid var(--edge-soft); box-shadow: inset 0 -3px 6px rgba(0,0,0,0.4);
+  position: relative; flex: 0 0 auto; width: 60px; height: 60px; border-radius: 17px;
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(circle at 35% 26%, rgba(255,236,180,0.55), rgba(255,196,80,0.16) 55%, rgba(0,0,0,0.32)),
+    linear-gradient(180deg, #f6c244, #c8881f);
+  border: 1px solid #ffe08a; box-shadow: inset 0 -4px 8px rgba(120,70,0,0.45), 0 4px 10px rgba(0,0,0,0.35);
+}
+.b-emoji { font-size: 2rem; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.35)); }
+.b-lvl {
+  position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%);
+  font-size: 0.62rem; font-weight: 900; letter-spacing: 0.02em; color: #fff; white-space: nowrap;
+  padding: 2px 8px; border-radius: 9px;
+  background: linear-gradient(180deg, #6a4fd6, #4a2f9e); border: 1px solid rgba(255,255,255,0.25);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.4);
 }
 .b-info { flex: 1; min-width: 0; }
-.b-name { font-weight: 800; font-size: 0.92rem; }
-.b-name b { color: var(--gold-2); }
-.b-stat { font-size: 0.74rem; color: var(--muted); margin-top: 2px; }
-.b-stat .up { color: var(--green); font-weight: 700; }
-.b-next { color: var(--gold-2); opacity: 0.85; }
-.b-synergy { font-size: 0.68rem; color: var(--accent, #7cc4ff); margin-top: 2px; opacity: 0.92; }
+.b-name { font-weight: 900; font-size: 0.98rem; letter-spacing: 0.01em; }
+.b-income { font-size: 0.96rem; font-weight: 900; color: var(--gold-2); margin: 1px 0 6px;
+  text-shadow: 0 1px 4px rgba(246,194,68,0.35); }
+.b-income .up { color: var(--gold-2); }
+.b-bar {
+  height: 9px; border-radius: 6px; background: rgba(0,0,0,0.42);
+  border: 1px solid rgba(0,0,0,0.5); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+}
+.b-bar-fill {
+  height: 100%; width: 0%; border-radius: 6px;
+  background: linear-gradient(90deg, #6fe08a, #b6f04a 60%, #ffe08a);
+  box-shadow: 0 0 8px rgba(111,224,138,0.55); transition: width 0.45s cubic-bezier(.2,.9,.3,1);
+}
+.b-next { font-size: 0.66rem; color: var(--gold-2); opacity: 0.8; margin-top: 4px; }
+.b-synergy { font-size: 0.68rem; color: #7cc4ff; margin-top: 2px; opacity: 0.92; }
+
+/* Big chunky upgrade button */
+.building-card button {
+  flex: 0 0 auto; min-width: 96px; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 10px 10px; line-height: 1.1;
+}
+.b-buy-lbl { font-size: 0.74rem; font-weight: 800; }
+.b-buy-cost { font-size: 0.86rem; font-weight: 900; display: flex; align-items: center; gap: 3px; }
+.b-buy-coin { font-size: 0.78rem; }
+.building-card button.affordable { animation: buyPulse 1.6s ease-in-out infinite; }
+@keyframes buyPulse {
+  0%,100% { box-shadow: 0 4px 0 #8a6312, inset 0 1px 0 rgba(255,255,255,0.6); }
+  50% { box-shadow: 0 4px 0 #8a6312, inset 0 1px 0 rgba(255,255,255,0.6), 0 0 16px rgba(246,194,68,0.7); }
+}
 
 /* ============================== BOTTOM NAV ============================== */
 .nav {

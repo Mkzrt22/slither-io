@@ -204,7 +204,11 @@ for (const btn of tabButtons) {
 
 // --- Building cards + village panorama ---------------------------------------
 
-interface BuildingCard { levelEl: HTMLElement; rateEl: HTMLElement; synergyEl: HTMLElement; buyBtn: HTMLButtonElement; }
+interface BuildingCard {
+  levelEl: HTMLElement; rateEl: HTMLElement; synergyEl: HTMLElement;
+  barEl: HTMLElement; nextEl: HTMLElement; buyLabelEl: HTMLElement; costEl: HTMLElement;
+  buyBtn: HTMLButtonElement;
+}
 const buildingCards = new Map<BuildingType, BuildingCard>();
 
 for (const type of BUILDING_TYPES) {
@@ -212,13 +216,21 @@ for (const type of BUILDING_TYPES) {
   const card = document.createElement('div');
   card.className = 'card building-card';
   card.innerHTML = `
-    <div class="b-avatar">${cfg.icon}</div>
+    <div class="b-avatar">
+      <span class="b-emoji">${cfg.icon}</span>
+      <span class="b-lvl">Niv.<span data-level>0</span></span>
+    </div>
     <div class="b-info">
-      <div class="b-name">${cfg.name} <b>Niv. <span data-level>0</span></b></div>
-      <div class="b-stat"><span class="up" data-rate>0</span></div>
+      <div class="b-name">${cfg.name}</div>
+      <div class="b-income">🪙 <span class="up" data-rate>0</span> /s</div>
+      <div class="b-bar"><div class="b-bar-fill" data-bar></div></div>
+      <div class="b-next" data-next></div>
       <div class="b-synergy" data-synergy></div>
     </div>
-    <button data-buy>Améliorer</button>`;
+    <button data-buy>
+      <span class="b-buy-lbl" data-buylabel>Améliorer</span>
+      <span class="b-buy-cost"><span class="b-buy-coin">🪙</span><span data-cost>0</span></span>
+    </button>`;
   const buyBtn = card.querySelector<HTMLButtonElement>('[data-buy]')!;
   buyBtn.addEventListener('click', () => buyBuilding(type));
   buildingsListEl.appendChild(card);
@@ -226,6 +238,10 @@ for (const type of BUILDING_TYPES) {
     levelEl: card.querySelector<HTMLElement>('[data-level]')!,
     rateEl: card.querySelector<HTMLElement>('[data-rate]')!,
     synergyEl: card.querySelector<HTMLElement>('[data-synergy]')!,
+    barEl: card.querySelector<HTMLElement>('[data-bar]')!,
+    nextEl: card.querySelector<HTMLElement>('[data-next]')!,
+    buyLabelEl: card.querySelector<HTMLElement>('[data-buylabel]')!,
+    costEl: card.querySelector<HTMLElement>('[data-cost]')!,
     buyBtn,
   });
 }
@@ -418,19 +434,23 @@ function render(state: UserProfile): void {
     const mult = VillageEngine.getBuildingMultiplier(level);
     const prod = VillageEngine.getBuildingProduction(type, level) * globalMult;
     card.levelEl.textContent = String(level);
-    const milestoneTag = mult > 1 ? ` · ×${mult}` : '';
+    card.rateEl.textContent = fmt(Math.round(prod));
     const toNext = VillageEngine.levelsToNextMilestone(level);
-    card.rateEl.innerHTML =
-      `${fmt(Math.round(prod))} or/s${milestoneTag}` +
-      `<span class="b-next"> · palier ×${mult * 2} dans ${toNext}</span>`;
+    // Milestone progress bar: fills toward the next ×2 boost, then resets.
+    const pct = ((level % VillageEngine.MILESTONE_EVERY) / VillageEngine.MILESTONE_EVERY) * 100;
+    card.barEl.style.width = `${level === 0 ? 0 : Math.max(5, pct)}%`;
+    card.nextEl.textContent = mult > 1
+      ? `×${mult} · prochain palier ×${mult * 2} dans ${toNext}`
+      : `prochain palier ×2 dans ${toNext}`;
     card.synergyEl.textContent = VillageEngine.getSynergyText(type, level);
 
     const plan = buyMode === 'max'
       ? VillageEngine.getMaxAffordable(type, level, state.gold)
       : { count: buyMode, cost: VillageEngine.getBulkCost(type, level, buyMode) };
-    const label = buyMode === 1 ? 'Améliorer' : `Améliorer ×${plan.count || buyMode}`;
-    card.buyBtn.innerHTML = `${label}<br/>${fmt(plan.cost)}`;
+    card.buyLabelEl.textContent = buyMode === 1 ? 'Améliorer' : `Améliorer ×${plan.count || buyMode}`;
+    card.costEl.textContent = fmt(plan.cost);
     card.buyBtn.disabled = plan.count < 1 || state.gold < plan.cost;
+    card.buyBtn.classList.toggle('affordable', plan.count >= 1 && state.gold >= plan.cost);
   }
   iso.setState(state);
 
