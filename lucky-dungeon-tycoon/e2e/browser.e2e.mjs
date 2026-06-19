@@ -69,6 +69,15 @@ try {
   page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
   page.on('pageerror', (err) => consoleErrors.push(`pageerror: ${err.message}`));
 
+  // Track CC0 model + GLTFLoader fetches to prove the 3D asset pipeline works.
+  const glbStatuses = [];
+  let gltfLoaderStatus = 0;
+  page.on('response', (r) => {
+    const u = r.url();
+    if (u.endsWith('.glb')) glbStatuses.push(r.status());
+    if (u.endsWith('GLTFLoader.js')) gltfLoaderStatus = r.status();
+  });
+
   await page.goto(`${base}/`, { waitUntil: 'networkidle' });
 
   // Boot: the controller's first state:updated renders a fresh profile.
@@ -171,6 +180,13 @@ try {
   await page.click('nav button[data-tab="tab-prestige"]');
   expect((await page.locator('#relic-shop-list .relic-card').count()) === 4, 'relic shop lists 4 upgrades');
   expect((await page.locator('#relic-shop-list .r-buy:disabled').count()) === 4, 'relic buys locked without relics');
+
+  // 3D asset pipeline: the vendored GLTFLoader and the CC0 building models must
+  // all have loaded over the import map without error.
+  await page.waitForFunction(() => true, null, { timeout: 500 }).catch(() => {});
+  expect(gltfLoaderStatus === 200, `GLTFLoader vendored & served (status ${gltfLoaderStatus})`);
+  const okGlb = glbStatuses.filter((s) => s === 200).length;
+  expect(okGlb >= 6, `at least 6 CC0 models loaded (got ${okGlb}: [${glbStatuses.join(',')}])`);
 
   expect(consoleErrors.length === 0, `no console errors (got: ${consoleErrors.join(' | ')})`);
   console.log('BROWSER E2E PASSED');
