@@ -159,12 +159,16 @@ export class EconomyEngine {
     return 1 + RELIC_BONUS * EconomyEngine.sanitizeLevel(relics);
   }
 
-  /** Combined global gold multiplier for a profile (floor × relic × village). */
+  /**
+   * Combined global gold multiplier for a profile:
+   * floor × relic × village × building synergy (sawmill + castle).
+   */
   public static getGlobalMultiplier(state: UserProfile): number {
     return (
       EconomyEngine.getFloorMultiplier(state.floor) *
       EconomyEngine.getRelicMultiplier(state.relics) *
-      VillageEngine.getVillageMultiplier(state.village)
+      VillageEngine.getVillageMultiplier(state.village) *
+      VillageEngine.getProductionSynergy(state)
     );
   }
 

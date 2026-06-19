@@ -201,7 +201,7 @@ for (const btn of tabButtons) {
 
 // --- Building cards + village panorama ---------------------------------------
 
-interface BuildingCard { levelEl: HTMLElement; rateEl: HTMLElement; buyBtn: HTMLButtonElement; }
+interface BuildingCard { levelEl: HTMLElement; rateEl: HTMLElement; synergyEl: HTMLElement; buyBtn: HTMLButtonElement; }
 const buildingCards = new Map<BuildingType, BuildingCard>();
 
 for (const type of BUILDING_TYPES) {
@@ -213,6 +213,7 @@ for (const type of BUILDING_TYPES) {
     <div class="b-info">
       <div class="b-name">${cfg.name} <b>Niv. <span data-level>0</span></b></div>
       <div class="b-stat"><span class="up" data-rate>0</span></div>
+      <div class="b-synergy" data-synergy></div>
     </div>
     <button data-buy>Améliorer</button>`;
   const buyBtn = card.querySelector<HTMLButtonElement>('[data-buy]')!;
@@ -221,6 +222,7 @@ for (const type of BUILDING_TYPES) {
   buildingCards.set(type, {
     levelEl: card.querySelector<HTMLElement>('[data-level]')!,
     rateEl: card.querySelector<HTMLElement>('[data-rate]')!,
+    synergyEl: card.querySelector<HTMLElement>('[data-synergy]')!,
     buyBtn,
   });
 }
@@ -389,6 +391,7 @@ function render(state: UserProfile): void {
     card.rateEl.innerHTML =
       `${fmt(Math.round(prod))} or/s${milestoneTag}` +
       `<span class="b-next"> · palier ×${mult * 2} dans ${toNext}</span>`;
+    card.synergyEl.textContent = VillageEngine.getSynergyText(type, level);
 
     const plan = buyMode === 'max'
       ? VillageEngine.getMaxAffordable(type, level, state.gold)

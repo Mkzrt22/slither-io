@@ -11,6 +11,7 @@
  */
 
 import { EconomyEngine } from './EconomyEngine.js';
+import { VillageEngine } from './VillageEngine.js';
 import {
   MAX_SHIELDS,
   SlotOutcome,
@@ -196,12 +197,19 @@ export class SlotEngine {
     // Consolation floor: every spin pays at least a fifth of the base gain,
     // so progress never fully stalls (and payouts are never zero).
     goldGained = Math.max(goldGained, baseGain * 0.2);
-    goldGained = Math.round(goldGained * goldMult);
+    // Mine synergy boosts every slot payout.
+    goldGained = Math.round(goldGained * goldMult * VillageEngine.getSpinGoldMultiplier(state));
 
-    // Boss damage from swords, only while a fight is active.
+    // Market synergy adds bonus gems on a GEM jackpot.
+    if (triple === 'GEM') {
+      gemsGained += VillageEngine.getMarketGemBonus(state);
+    }
+
+    // Boss damage from swords, only while a fight is active; Blacksmith synergy
+    // sharpens it.
     const swordCount = counts.get('SWORD') ?? 0;
     const bossDamage = state.bossHp !== null
-      ? Math.round(damageUnit * (SWORD_DAMAGE[swordCount] ?? 0))
+      ? Math.round(damageUnit * (SWORD_DAMAGE[swordCount] ?? 0) * VillageEngine.getBossDamageMultiplier(state))
       : 0;
 
     // --- Apply ---------------------------------------------------------------

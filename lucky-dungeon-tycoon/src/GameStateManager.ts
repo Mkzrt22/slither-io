@@ -8,6 +8,7 @@
  */
 
 import { EconomyEngine } from './EconomyEngine.js';
+import { VillageEngine } from './VillageEngine.js';
 import {
   BUILDING_TYPES,
   BuildingType,
@@ -90,10 +91,6 @@ const MAX_OFFLINE_SECONDS = 7 * 24 * 60 * 60;
  * save from minting unbounded spins.
  */
 const ENERGY_ABSOLUTE_CAP = 999;
-/** Miners only dig at half speed while the player is away... */
-const OFFLINE_PASSIVE_EFFICIENCY = 0.5;
-/** ...and only for the first 8 hours of any absence. */
-const MAX_OFFLINE_PASSIVE_SECONDS = 8 * 60 * 60;
 
 export class GameStateManager {
   private readonly store: KeyValueStore;
@@ -204,11 +201,11 @@ export class GameStateManager {
       logs.push(`Recovered ${granted} energy while away`);
     }
 
-    // --- 2. Offline passive income -------------------------------------------
-    const passiveSeconds = Math.min(safeSeconds, MAX_OFFLINE_PASSIVE_SECONDS);
+    // --- 2. Offline passive income (Farm synergy raises efficiency & cap) ----
+    const passiveSeconds = Math.min(safeSeconds, VillageEngine.getOfflineCapSeconds(next));
     const rate = EconomyEngine.getPassiveRate(next);
     if (rate > 0 && passiveSeconds > 0) {
-      const earned = Math.floor(rate * passiveSeconds * OFFLINE_PASSIVE_EFFICIENCY);
+      const earned = Math.floor(rate * passiveSeconds * VillageEngine.getOfflineEfficiency(next));
       if (earned > 0) {
         creditGold(next, earned);
         summary.goldEarned = earned;

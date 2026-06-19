@@ -166,4 +166,52 @@ export class VillageEngine {
     }
     return Math.floor(level);
   }
+
+  // ---------------------------------------------------------------------------
+  // Building synergies — each building grants a distinct global perk.
+  // ---------------------------------------------------------------------------
+
+  /** Mine: +2% slot-machine gold per level. */
+  public static getSpinGoldMultiplier(state: UserProfile): number {
+    return 1 + 0.02 * VillageEngine.clampLevel(state.buildings.mine);
+  }
+
+  /** Blacksmith: +3% boss damage per level. */
+  public static getBossDamageMultiplier(state: UserProfile): number {
+    return 1 + 0.03 * VillageEngine.clampLevel(state.buildings.blacksmith);
+  }
+
+  /** Sawmill (+1.5%/lvl) and Castle (+2%/lvl): global production synergy. */
+  public static getProductionSynergy(state: UserProfile): number {
+    return 1 + 0.015 * VillageEngine.clampLevel(state.buildings.sawmill)
+             + 0.02 * VillageEngine.clampLevel(state.buildings.castle);
+  }
+
+  /** Market: bonus gems granted on each GEM jackpot (1 per 8 levels). */
+  public static getMarketGemBonus(state: UserProfile): number {
+    return Math.floor(VillageEngine.clampLevel(state.buildings.market) / 8);
+  }
+
+  /** Farm: offline earning efficiency, 50% → 100% (+1%/lvl). */
+  public static getOfflineEfficiency(state: UserProfile): number {
+    return Math.min(1, 0.5 + 0.01 * VillageEngine.clampLevel(state.buildings.farm));
+  }
+
+  /** Farm: offline earning window in seconds, 8h base (+1h per 5 levels). */
+  public static getOfflineCapSeconds(state: UserProfile): number {
+    return (8 + Math.floor(VillageEngine.clampLevel(state.buildings.farm) / 5)) * 3600;
+  }
+
+  /** Short human description of a building's synergy at `level`, for the UI. */
+  public static getSynergyText(type: BuildingType, level: number): string {
+    const l = VillageEngine.clampLevel(level);
+    switch (type) {
+      case 'mine': return `⚔️ +${2 * l}% or machine à sous`;
+      case 'sawmill': return `🏭 +${(1.5 * l).toFixed(1)}% production`;
+      case 'castle': return `👑 +${2 * l}% production`;
+      case 'blacksmith': return `💥 +${3 * l}% dégâts de boss`;
+      case 'market': return `💎 +${Math.floor(l / 8)} gemme(s) par jackpot`;
+      case 'farm': return `🌙 hors-ligne ${Math.round(Math.min(1, 0.5 + 0.01 * l) * 100)}% · ${8 + Math.floor(l / 5)} h`;
+    }
+  }
 }

@@ -558,6 +558,7 @@ main { flex: 1; display: flex; flex-direction: column; }
 .b-stat { font-size: 0.74rem; color: var(--muted); margin-top: 2px; }
 .b-stat .up { color: var(--green); font-weight: 700; }
 .b-next { color: var(--gold-2); opacity: 0.85; }
+.b-synergy { font-size: 0.68rem; color: var(--accent, #7cc4ff); margin-top: 2px; opacity: 0.92; }
 
 /* ============================== BOTTOM NAV ============================== */
 .nav {
