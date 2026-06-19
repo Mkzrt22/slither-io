@@ -71,6 +71,7 @@ export function createDefaultProfile(now = Date.now()) {
         dailyStreak: 0,
         stats: createEmptyStats(),
         claimedQuests: [],
+        relicUpgrades: {},
         lastSaveTimestamp: now,
     };
 }
@@ -124,6 +125,7 @@ export function cloneProfile(state) {
             prestiges: state.stats.prestiges,
         },
         claimedQuests: [...state.claimedQuests],
+        relicUpgrades: { ...state.relicUpgrades },
         lastSaveTimestamp: state.lastSaveTimestamp,
     };
 }

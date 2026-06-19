@@ -13,6 +13,7 @@ import { gameEvents } from './EventBus.js';
 import { GameStateManager } from './GameStateManager.js';
 import { MonetizationBridge } from './MonetizationBridge.js';
 import { QuestEngine } from './QuestEngine.js';
+import { RelicShopEngine } from './RelicShopEngine.js';
 import { SlotEngine } from './SlotEngine.js';
 import { VillageEngine } from './VillageEngine.js';
 import { DEFAULT_GAME_CONFIG, cloneProfile, createEmptyBuildings, createEmptyMiners, creditGold, } from './types.js';
@@ -394,6 +395,45 @@ export class GameController {
         this.persistAndAnnounce();
         this.bus.emit('ui:notification', {
             message: `✨ Ascension ! +${relics} relique(s) — production ×${EconomyEngine.getRelicMultiplier(this.state.relics).toFixed(1)} permanente`,
+            severity: 'success',
+        });
+        return true;
+    }
+    // ---------------------------------------------------------------------------
+    // Use case: prestige relic shop (permanent meta-upgrades)
+    // ---------------------------------------------------------------------------
+    /** Relic cost of the next level of `id`, or null when maxed/unknown. */
+    getRelicUpgradeCost(id) {
+        return RelicShopEngine.getCost(this.state, id);
+    }
+    /**
+     * Spends relics on one permanent prestige upgrade. False (with a toast) when
+     * the upgrade is maxed, unknown, or the player lacks the relics.
+     */
+    buyRelicUpgrade(id) {
+        const def = RelicShopEngine.getUpgrade(id);
+        if (!def) {
+            return false;
+        }
+        if (RelicShopEngine.isMaxed(this.state, id)) {
+            this.bus.emit('ui:notification', {
+                message: `${def.name} est déjà au niveau maximum`,
+                severity: 'info',
+            });
+            return false;
+        }
+        if (!RelicShopEngine.purchase(this.state, id)) {
+            const cost = RelicShopEngine.getCost(this.state, id) ?? 0;
+            this.bus.emit('ui:notification', {
+                message: `Reliques insuffisantes (${cost} 🔮 requises)`,
+                severity: 'warning',
+            });
+            return false;
+        }
+        const level = RelicShopEngine.getLevel(this.state, id);
+        this.persistAndAnnounce();
+        this.bus.emit('ui:notification', {
+            message: `🔮 ${def.name} niv. ${level} — ${RelicShopEngine.effectText(def, level)}`,
             severity: 'success',
         });
         return true;

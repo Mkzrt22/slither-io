@@ -7,6 +7,7 @@
  * non-throwing result, because UI render paths must never crash on bad data.
  */
 import { BUILDING_TYPES, DEFAULT_GAME_CONFIG, MINER_TIERS } from './types.js';
+import { RelicShopEngine } from './RelicShopEngine.js';
 import { VillageEngine } from './VillageEngine.js';
 export const MINER_CONFIGS = Object.freeze({
     goblin: { name: 'Mineur gobelin', baseCost: 50, costGrowth: 1.15, baseRate: 1 },
@@ -111,13 +112,14 @@ export class EconomyEngine {
     }
     /**
      * Combined global gold multiplier for a profile:
-     * floor × relic × village × building synergy (sawmill + castle).
+     * floor × relic × village × building synergy × relic-shop fortune.
      */
     static getGlobalMultiplier(state) {
         return (EconomyEngine.getFloorMultiplier(state.floor) *
             EconomyEngine.getRelicMultiplier(state.relics) *
             VillageEngine.getVillageMultiplier(state.village) *
-            VillageEngine.getProductionSynergy(state));
+            VillageEngine.getProductionSynergy(state) *
+            RelicShopEngine.getGoldMultiplier(state));
     }
     /** Cost of the next unit of `tier` given how many are already owned. */
     static getMinerCost(tier, owned) {

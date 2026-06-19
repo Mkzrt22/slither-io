@@ -10,6 +10,7 @@
  * the live game loop uses this engine.
  */
 import { EconomyEngine } from './EconomyEngine.js';
+import { RelicShopEngine } from './RelicShopEngine.js';
 import { VillageEngine } from './VillageEngine.js';
 import { MAX_SHIELDS, cloneProfile, creditGold, } from './types.js';
 /** Energy price of one spin. */
@@ -173,8 +174,10 @@ export class SlotEngine {
         // Consolation floor: every spin pays at least a fifth of the base gain,
         // so progress never fully stalls (and payouts are never zero).
         goldGained = Math.max(goldGained, baseGain * 0.2);
-        // Mine synergy boosts every slot payout.
-        goldGained = Math.round(goldGained * goldMult * VillageEngine.getSpinGoldMultiplier(state));
+        // Mine synergy and the relic shop's Veine d’or boost every slot payout.
+        goldGained = Math.round(goldGained * goldMult *
+            VillageEngine.getSpinGoldMultiplier(state) *
+            RelicShopEngine.getSlotMultiplier(state));
         // Market synergy adds bonus gems on a GEM jackpot.
         if (triple === 'GEM') {
             gemsGained += VillageEngine.getMarketGemBonus(state);
@@ -183,7 +186,9 @@ export class SlotEngine {
         // sharpens it.
         const swordCount = counts.get('SWORD') ?? 0;
         const bossDamage = state.bossHp !== null
-            ? Math.round(damageUnit * (SWORD_DAMAGE[swordCount] ?? 0) * VillageEngine.getBossDamageMultiplier(state))
+            ? Math.round(damageUnit * (SWORD_DAMAGE[swordCount] ?? 0) *
+                VillageEngine.getBossDamageMultiplier(state) *
+                RelicShopEngine.getBossMultiplier(state))
             : 0;
         // --- Apply ---------------------------------------------------------------
         creditGold(state, goldGained);
