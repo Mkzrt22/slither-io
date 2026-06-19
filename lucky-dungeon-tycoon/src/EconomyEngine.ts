@@ -8,6 +8,7 @@
  */
 
 import { BUILDING_TYPES, DEFAULT_GAME_CONFIG, MINER_TIERS, MinerTier, UserProfile } from './types.js';
+import { RelicShopEngine } from './RelicShopEngine.js';
 import { VillageEngine } from './VillageEngine.js';
 
 /** Static balance sheet for one hireable miner tier. */
@@ -161,14 +162,15 @@ export class EconomyEngine {
 
   /**
    * Combined global gold multiplier for a profile:
-   * floor × relic × village × building synergy (sawmill + castle).
+   * floor × relic × village × building synergy × relic-shop fortune.
    */
   public static getGlobalMultiplier(state: UserProfile): number {
     return (
       EconomyEngine.getFloorMultiplier(state.floor) *
       EconomyEngine.getRelicMultiplier(state.relics) *
       VillageEngine.getVillageMultiplier(state.village) *
-      VillageEngine.getProductionSynergy(state)
+      VillageEngine.getProductionSynergy(state) *
+      RelicShopEngine.getGoldMultiplier(state)
     );
   }
 

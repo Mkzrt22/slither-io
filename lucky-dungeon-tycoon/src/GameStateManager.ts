@@ -8,6 +8,7 @@
  */
 
 import { EconomyEngine } from './EconomyEngine.js';
+import { RELIC_UPGRADES, RelicShopEngine } from './RelicShopEngine.js';
 import { VillageEngine } from './VillageEngine.js';
 import {
   BUILDING_TYPES,
@@ -205,7 +206,11 @@ export class GameStateManager {
     const passiveSeconds = Math.min(safeSeconds, VillageEngine.getOfflineCapSeconds(next));
     const rate = EconomyEngine.getPassiveRate(next);
     if (rate > 0 && passiveSeconds > 0) {
-      const earned = Math.floor(rate * passiveSeconds * VillageEngine.getOfflineEfficiency(next));
+      const earned = Math.floor(
+        rate * passiveSeconds *
+          VillageEngine.getOfflineEfficiency(next) *
+          RelicShopEngine.getOfflineMultiplier(next),
+      );
       if (earned > 0) {
         creditGold(next, earned);
         summary.goldEarned = earned;
@@ -355,8 +360,28 @@ export class GameStateManager {
       dailyStreak: this.toBoundedInt(raw.dailyStreak, 0),
       stats: this.toStats(raw.stats),
       claimedQuests: this.toStringArray(raw.claimedQuests),
+      relicUpgrades: this.toRelicUpgrades(raw.relicUpgrades),
       lastSaveTimestamp: this.toTimestamp(raw.lastSaveTimestamp, now),
     };
+  }
+
+  /**
+   * Relic-shop levels: only known upgrade ids survive, each clamped to a
+   * non-negative integer no greater than its catalogue maximum, so a
+   * hand-edited save cannot mint unbounded prestige bonuses.
+   */
+  private toRelicUpgrades(value: unknown): Record<string, number> {
+    const upgrades: Record<string, number> = {};
+    if (typeof value === 'object' && value !== null) {
+      const raw = value as Record<string, unknown>;
+      for (const def of RELIC_UPGRADES) {
+        const level = Math.min(this.toBoundedInt(raw[def.id], 0), def.maxLevel);
+        if (level > 0) {
+          upgrades[def.id] = level;
+        }
+      }
+    }
+    return upgrades;
   }
 
   /**

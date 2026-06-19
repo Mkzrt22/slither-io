@@ -85,6 +85,11 @@ export interface UserProfile {
   stats: PlayerStats;
   /** Ids of quests whose reward has been collected. */
   claimedQuests: string[];
+  /**
+   * Permanent prestige upgrades bought with relics, keyed by upgrade id.
+   * Survives Ascension (true meta-progression). Absent keys read as level 0.
+   */
+  relicUpgrades: Record<string, number>;
   /** Unix epoch milliseconds of the last persisted save. */
   lastSaveTimestamp: number;
 }
@@ -201,6 +206,7 @@ export function createDefaultProfile(now: number = Date.now()): UserProfile {
     dailyStreak: 0,
     stats: createEmptyStats(),
     claimedQuests: [],
+    relicUpgrades: {},
     lastSaveTimestamp: now,
   };
 }
@@ -256,6 +262,7 @@ export function cloneProfile(state: UserProfile): UserProfile {
       prestiges: state.stats.prestiges,
     },
     claimedQuests: [...state.claimedQuests],
+    relicUpgrades: { ...state.relicUpgrades },
     lastSaveTimestamp: state.lastSaveTimestamp,
   };
 }

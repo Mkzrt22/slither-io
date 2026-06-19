@@ -166,6 +166,12 @@ try {
   await page.click('nav button[data-tab="tab-quests"]');
   expect((await page.locator('#quests-list .card').count()) >= 5, 'quest book renders');
 
+  // The Ascension tab shows the relic shop with its four upgrades; with no
+  // relics yet, every buy button is disabled.
+  await page.click('nav button[data-tab="tab-prestige"]');
+  expect((await page.locator('#relic-shop-list .relic-card').count()) === 4, 'relic shop lists 4 upgrades');
+  expect((await page.locator('#relic-shop-list .r-buy:disabled').count()) === 4, 'relic buys locked without relics');
+
   expect(consoleErrors.length === 0, `no console errors (got: ${consoleErrors.join(' | ')})`);
   console.log('BROWSER E2E PASSED');
 } finally {

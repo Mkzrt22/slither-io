@@ -11,6 +11,7 @@ import { EconomyEngine, PRESTIGE_THRESHOLD } from '../src/EconomyEngine.js';
 import { BUILDING_CONFIGS, VillageEngine } from '../src/VillageEngine.js';
 import { GameController } from '../src/GameController.js';
 import { QUESTS } from '../src/QuestEngine.js';
+import { RELIC_UPGRADES, RelicShopEngine } from '../src/RelicShopEngine.js';
 import { gameEvents } from '../src/EventBus.js';
 import {
   BUILDING_TYPES,
@@ -140,6 +141,8 @@ const prestigeMultEl = el<HTMLDivElement>('prestige-mult');
 const prestigeProgressEl = el<HTMLDivElement>('prestige-progress');
 const ascendBtn = el<HTMLButtonElement>('btn-ascend');
 const statsSummaryEl = el<HTMLDivElement>('stats-summary');
+const relicBalanceEl = el<HTMLSpanElement>('relic-balance');
+const relicShopListEl = el<HTMLDivElement>('relic-shop-list');
 
 // --- Effects -----------------------------------------------------------------
 
@@ -314,6 +317,35 @@ for (const quest of QUESTS) {
   });
 }
 
+// Relic shop cards (prestige meta-upgrades).
+interface RelicCard { levelEl: HTMLElement; effectEl: HTMLElement; buyBtn: HTMLButtonElement; }
+const relicCards = new Map<string, RelicCard>();
+
+for (const def of RELIC_UPGRADES) {
+  const card = document.createElement('div');
+  card.className = 'card relic-card';
+  card.innerHTML = `
+    <div class="r-ic">${def.icon}</div>
+    <div class="r-info">
+      <div class="r-title">${def.name} <b>Niv. <span data-level>0</span>/${def.maxLevel}</b></div>
+      <div class="r-effect" data-effect>${def.description}</div>
+    </div>
+    <button class="r-buy" data-buy>—</button>`;
+  const buyBtn = card.querySelector<HTMLButtonElement>('[data-buy]')!;
+  buyBtn.addEventListener('click', () => {
+    if (controller.buyRelicUpgrade(def.id)) {
+      sfx.click();
+      buzz(8);
+    }
+  });
+  relicShopListEl.appendChild(card);
+  relicCards.set(def.id, {
+    levelEl: card.querySelector<HTMLElement>('[data-level]')!,
+    effectEl: card.querySelector<HTMLElement>('[data-effect]')!,
+    buyBtn,
+  });
+}
+
 // --- Rendering ---------------------------------------------------------------
 
 function render(state: UserProfile): void {
@@ -432,6 +464,23 @@ function render(state: UserProfile): void {
     `💰 ${fmt(state.stats.goldEarnedAll)} or amassé<br/>` +
     `🎰 ${state.stats.totalSpins} spins · ⚔️ ${state.stats.bossesKilled} boss<br/>` +
     `🔮 ${state.stats.prestiges} ascension(s)`;
+
+  // Relic shop
+  relicBalanceEl.textContent = `${fmtInt(state.relics)} 🔮`;
+  for (const def of RELIC_UPGRADES) {
+    const card = relicCards.get(def.id)!;
+    const level = RelicShopEngine.getLevel(state, def.id);
+    const cost = RelicShopEngine.getCost(state, def.id);
+    card.levelEl.textContent = String(level);
+    card.effectEl.textContent = RelicShopEngine.effectText(def, level);
+    if (cost === null) {
+      card.buyBtn.textContent = 'MAX';
+      card.buyBtn.disabled = true;
+    } else {
+      card.buyBtn.textContent = `${cost} 🔮`;
+      card.buyBtn.disabled = state.relics < cost;
+    }
+  }
 
   firstRender = false;
 }
