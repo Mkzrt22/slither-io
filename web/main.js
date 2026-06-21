@@ -42,12 +42,12 @@ const SYMBOL_EMOJI = {
     BAG: '💰',
     GEM: '💎',
     SHIELD: '🛡️',
-    SWORD: '⚔️',
-    SKULL: '💀',
+    SWORD: '🔨',
+    SKULL: '💣',
 };
-/** Boss face by floor band, so deeper floors feel different. */
+/** Vault face by floor band, so deeper floors feel different. */
 function bossEmoji(floor) {
-    const faces = ['👹', '👺', '🧟', '🐲', '👿', '💀', '🦇', '🐉'];
+    const faces = ['🔐', '🏦', '💼', '🔒', '🏧', '💳', '🪙', '💎'];
     return faces[(floor - 1) % faces.length];
 }
 // --- Element handles ---------------------------------------------------------
@@ -269,8 +269,8 @@ advanceBtn.addEventListener('click', () => {
 });
 const questCards = new Map();
 const QUEST_ICONS = {
-    first_vein: '🪙', spin_100: '🎰', foreman: '👷', first_boss: '⚔️',
-    floor_5: '🧗', magnate: '👑', ascended: '🔮', builder: '🏗️', pioneer: '🚩',
+    first_vein: '🪙', spin_100: '🎰', foreman: '👷', first_boss: '🔐',
+    floor_5: '🏙️', magnate: '💰', ascended: '🔮', builder: '🏗️', pioneer: '🚩',
 };
 for (const quest of QUESTS) {
     const card = document.createElement('div');
@@ -347,7 +347,7 @@ function render(state) {
     if (state.bossHp !== null) {
         const maxHp = EconomyEngine.getBossMaxHp(state.floor);
         bossSpriteEl.textContent = bossEmoji(state.floor);
-        bossTitleEl.textContent = `Gardien · Étage ${state.floor}`;
+        bossTitleEl.textContent = `Coffre-fort · Étage ${state.floor}`;
         bossHpFillEl.style.width = `${Math.max(0, (state.bossHp / maxHp) * 100)}%`;
         bossHpTextEl.textContent = `${fmt(state.bossHp)} / ${fmt(maxHp)}`;
         if (lastBossHp !== null && state.bossHp < lastBossHp) {
@@ -361,12 +361,12 @@ function render(state) {
     }
     else {
         lastBossHp = null;
-        bossBtn.innerHTML = `⚔️<span>Défier (étage ${state.floor})</span>`;
+        bossBtn.innerHTML = `🔨<span>Forcer le coffre (étage ${state.floor})</span>`;
     }
     // Village header
     villageNameEl.textContent = `${VillageEngine.getVillageName(state.village)} · Niv. ${state.village}`;
     villageMultEl.textContent = `×${VillageEngine.getVillageMultiplier(state.village).toFixed(1)} production`;
-    const villageEmojis = ['🏕️', '🏘️', '🏙️', '🏰', '🏯', '🌆'];
+    const villageEmojis = ['🏘️', '🏙️', '🌆', '🌃', '🏢', '🏛️'];
     villageEmojiEl.textContent = villageEmojis[(state.village - 1) % villageEmojis.length];
     // Village advancement
     const required = VillageEngine.getRequiredLevels(state.village);
@@ -429,7 +429,7 @@ function render(state) {
         : `Amassez ${fmt(threshold)} or dans ce cycle (actuel : ${fmt(state.stats.goldEarnedRun)}).`;
     statsSummaryEl.innerHTML =
         `💰 ${fmt(state.stats.goldEarnedAll)} or amassé<br/>` +
-            `🎰 ${state.stats.totalSpins} spins · ⚔️ ${state.stats.bossesKilled} boss<br/>` +
+            `🎰 ${state.stats.totalSpins} spins · 🔐 ${state.stats.bossesKilled} coffres<br/>` +
             `🔮 ${state.stats.prestiges} ascension(s)`;
     // Relic shop
     relicBalanceEl.textContent = `${fmtInt(state.relics)} 🔮`;

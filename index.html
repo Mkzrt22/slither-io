@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Lucky Dungeon Tycoon</title>
+  <title>Lucky City Tycoon</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <meta name="theme-color" content="#0d0a16" />
   <link rel="icon" type="image/png" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Dungeon Tycoon" />
+  <meta name="apple-mobile-web-app-title" content="City Tycoon" />
   <link rel="stylesheet" href="./web/styles.css" />
   <script type="importmap">
     { "imports": {
@@ -57,8 +57,8 @@
 
           <!-- Boss stage (hidden unless fighting) -->
           <div class="boss-stage" id="boss-panel" hidden>
-            <div class="boss-name" id="boss-title">Gardien</div>
-            <div class="boss-sprite" id="boss-sprite">👹</div>
+            <div class="boss-name" id="boss-title">Coffre-fort</div>
+            <div class="boss-sprite" id="boss-sprite">🔐</div>
             <div class="boss-hpbar">
               <div class="boss-hp-fill" id="boss-hp-fill"></div>
               <span class="boss-hp-text" id="boss-hp-text"></span>
@@ -91,7 +91,7 @@
         </button>
 
         <div class="action-row">
-          <button id="btn-boss" class="btn-action btn-boss">⚔️<span>Défier le gardien</span></button>
+          <button id="btn-boss" class="btn-action btn-boss">🔨<span>Forcer le coffre</span></button>
           <button id="btn-flee" class="btn-action btn-flee" hidden>🏃<span>Fuir</span></button>
           <button id="btn-upgrade" class="btn-action btn-upgrade">⬆️<span>Améliorer</span></button>
         </div>
@@ -108,9 +108,9 @@
         <!-- Floating header over the map -->
         <div class="map-head">
           <div class="village-id">
-            <span class="village-emoji" id="village-emoji">🏰</span>
+            <span class="village-emoji" id="village-emoji">🏙️</span>
             <div>
-              <div class="village-name" id="village-name">Hameau</div>
+              <div class="village-name" id="village-name">Quartier</div>
               <div class="village-mult" id="village-mult">×1.0 production</div>
             </div>
           </div>
@@ -124,9 +124,9 @@
 
           <!-- Next-village objective, floating at the bottom of the map -->
           <div class="advance-strip">
-            <div class="advance-label"><span>🚩 Village suivant</span><span id="advance-count">0 / 24</span></div>
+            <div class="advance-label"><span>🚩 Ville suivante</span><span id="advance-count">0 / 24</span></div>
             <div class="advance-track"><div class="advance-fill" id="advance-fill"></div></div>
-            <button id="btn-advance" class="btn-advance">Fonder le village suivant</button>
+            <button id="btn-advance" class="btn-advance">Fonder la ville suivante</button>
           </div>
         </div>
 
@@ -175,7 +175,7 @@
           <div class="prestige-mult" id="prestige-mult">×1.0</div>
           <div class="prestige-track"><div class="prestige-fill" id="prestige-progress"></div></div>
           <button id="btn-ascend" class="btn-ascend">Ascendre</button>
-          <p class="prestige-desc">Réinitialise or, mineurs, étages et améliorations.<br/>Conserve gemmes, boucliers et reliques. Chaque relique : <b>+10 % d’or</b>, et dépensez-les dans l’atelier ci-dessous.</p>
+          <p class="prestige-desc">Réinitialise or, commerces, étages et améliorations.<br/>Conserve gemmes, boucliers et reliques. Chaque relique : <b>+10 % d’or</b>, et dépensez-les dans l’atelier ci-dessous.</p>
         </div>
         <div class="relic-shop">
           <h3>🔮 Atelier des reliques <span class="relic-balance" id="relic-balance">0 🔮</span></h3>
@@ -195,8 +195,8 @@
 
     <!-- ============================= BOTTOM NAV ============================= -->
     <nav class="nav" aria-label="Navigation">
-      <button data-tab="tab-village" class="active"><span class="nav-ic">🏘️</span><span class="nav-lbl">Village</span></button>
-      <button data-tab="tab-mine"><span class="nav-ic">🎰</span><span class="nav-lbl">Donjon</span></button>
+      <button data-tab="tab-village" class="active"><span class="nav-ic">🏙️</span><span class="nav-lbl">Ville</span></button>
+      <button data-tab="tab-mine"><span class="nav-ic">🎰</span><span class="nav-lbl">Casino</span></button>
       <button data-tab="tab-quests"><span class="nav-badge" id="quests-badge"></span><span class="nav-ic">📜</span><span class="nav-lbl">Quêtes</span></button>
       <button data-tab="tab-prestige"><span class="nav-ic">🔮</span><span class="nav-lbl">Ascension</span></button>
     </nav>
@@ -235,7 +235,7 @@
       <button id="btn-export" class="btn-modal">📤 Exporter la sauvegarde</button>
       <button id="btn-import" class="btn-modal">📥 Importer une sauvegarde</button>
       <button id="btn-reset" class="btn-modal btn-danger">🗑️ Réinitialiser la progression</button>
-      <p class="settings-version">Lucky Dungeon Tycoon · v16</p>
+      <p class="settings-version">Lucky City Tycoon · v17</p>
       <p class="settings-credit">Modèles 3D : Kenney · CC0</p>
       <button id="btn-settings-close" class="btn-modal-ghost">Fermer</button>
     </div>

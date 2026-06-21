@@ -1,7 +1,7 @@
 {
-  "name": "Lucky Dungeon Tycoon",
-  "short_name": "Dungeon Tycoon",
-  "description": "Spin the dungeon slot machine, stack gold, and fend off raids.",
+  "name": "Lucky City Tycoon",
+  "short_name": "City Tycoon",
+  "description": "Spin the casino slot machine, build your city, and stack cash.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

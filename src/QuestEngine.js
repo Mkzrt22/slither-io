@@ -27,7 +27,7 @@ function totalMiners(state) {
 export const QUESTS = [
     {
         id: 'first_vein',
-        title: 'Premier filon',
+        title: 'Premiers revenus',
         description: 'Amasser 1 000 or au total',
         reward: 5,
         isComplete: (s) => s.stats.goldEarnedAll >= 1000,
@@ -44,7 +44,7 @@ export const QUESTS = [
     {
         id: 'foreman',
         title: 'Chef de chantier',
-        description: 'Employer 10 mineurs',
+        description: 'Employer 10 ouvriers',
         reward: 10,
         isComplete: (s) => totalMiners(s) >= 10,
         progress: (s) => ratio(totalMiners(s), 10),
@@ -59,8 +59,8 @@ export const QUESTS = [
     },
     {
         id: 'pioneer',
-        title: 'Pionnier',
-        description: 'Fonder un 3ᵉ village',
+        title: 'Promoteur',
+        description: 'Fonder un 3ᵉ quartier',
         reward: 30,
         isComplete: (s) => s.village >= 3,
         progress: (s) => ratio(s.village, 3),
@@ -75,23 +75,23 @@ export const QUESTS = [
     },
     {
         id: 'overlord',
-        title: 'Suzerain',
-        description: 'Atteindre le 5ᵉ village',
+        title: 'Magnat',
+        description: 'Atteindre la 5ᵉ ville',
         reward: 60,
         isComplete: (s) => s.village >= 5,
         progress: (s) => ratio(s.village, 5),
     },
     {
         id: 'first_boss',
-        title: 'Tueur de gardien',
-        description: 'Vaincre un boss d’étage',
+        title: 'Perceur de coffres',
+        description: 'Forcer un coffre-fort',
         reward: 15,
         isComplete: (s) => s.stats.bossesKilled >= 1,
         progress: (s) => ratio(s.stats.bossesKilled, 1),
     },
     {
         id: 'floor_5',
-        title: 'Spéléologue',
+        title: 'Gratte-ciel',
         description: 'Atteindre l’étage 5',
         reward: 20,
         isComplete: (s) => s.floor >= 5,
@@ -99,7 +99,7 @@ export const QUESTS = [
     },
     {
         id: 'magnate',
-        title: 'Magnat du donjon',
+        title: 'Magnat de la ville',
         description: 'Amasser 1 000 000 or au total',
         reward: 25,
         isComplete: (s) => s.stats.goldEarnedAll >= 1000000,
