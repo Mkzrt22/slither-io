@@ -103,9 +103,10 @@
         <ul id="log" class="log" aria-label="Journal"></ul>
       </section>
 
-      <!-- ========================= TAB: VILLAGE ========================= -->
-      <section id="tab-village" class="tab active">
-        <div class="village-header">
+      <!-- ===================== TAB: VILLAGE (carte plein écran) ===================== -->
+      <section id="tab-village" class="tab tab-map active">
+        <!-- Floating header over the map -->
+        <div class="map-head">
           <div class="village-id">
             <span class="village-emoji" id="village-emoji">🏰</span>
             <div>
@@ -113,34 +114,45 @@
               <div class="village-mult" id="village-mult">×1.0 production</div>
             </div>
           </div>
-        </div>
-
-        <div class="iso-wrap">
-          <div id="iso-host" class="iso-scene"></div>
-          <div class="iso-hint">👆 Touchez un bâtiment · glissez pour pivoter</div>
           <div class="boost-badge" id="boost-badge" hidden>🚀 ×2 0:00</div>
         </div>
 
-        <button id="btn-boost" class="btn-boost">🚀 Boost de production ×2 (pub · 60s)</button>
+        <!-- The full-screen 3D map — tap a building to upgrade it -->
+        <div class="iso-wrap">
+          <div id="iso-host" class="iso-scene"></div>
+          <div class="iso-hint">👆 Touchez un bâtiment pour l’améliorer · glissez pour pivoter</div>
 
-        <div class="advance-box">
-          <div class="advance-label">
-            <span>Progression vers le village suivant</span>
-            <span id="advance-count">0 / 24</span>
-          </div>
-          <div class="advance-track"><div class="advance-fill" id="advance-fill"></div></div>
-          <button id="btn-advance" class="btn-advance">🚩 Village suivant</button>
-        </div>
-
-        <div class="panel-head buildings-head">
-          <h2>🏗️ Bâtiments</h2>
-          <div class="buy-modes" id="buy-modes">
-            <button data-mode="1" class="active">×1</button>
-            <button data-mode="10">×10</button>
-            <button data-mode="max">Max</button>
+          <!-- Next-village objective, floating at the bottom of the map -->
+          <div class="advance-strip">
+            <div class="advance-label"><span>🚩 Village suivant</span><span id="advance-count">0 / 24</span></div>
+            <div class="advance-track"><div class="advance-fill" id="advance-fill"></div></div>
+            <button id="btn-advance" class="btn-advance">Fonder le village suivant</button>
           </div>
         </div>
-        <div id="buildings-list" class="cards"></div>
+
+        <!-- Map action bar -->
+        <div class="map-actions">
+          <button id="btn-boost" class="btn-boost">🚀 Boost ×2</button>
+          <button id="btn-open-build" class="btn-build">🏗️ Améliorer les bâtiments</button>
+        </div>
+
+        <!-- Slide-up upgrade sheet -->
+        <div id="buildings-sheet" class="sheet" aria-hidden="true">
+          <div class="sheet-backdrop" id="sheet-backdrop"></div>
+          <div class="sheet-card">
+            <div class="sheet-grip"></div>
+            <div class="sheet-head">
+              <h2>🏗️ Bâtiments</h2>
+              <div class="buy-modes" id="buy-modes">
+                <button data-mode="1" class="active">×1</button>
+                <button data-mode="10">×10</button>
+                <button data-mode="max">Max</button>
+              </div>
+              <button id="btn-build-close" class="sheet-close" aria-label="Fermer">✕</button>
+            </div>
+            <div id="buildings-list" class="cards"></div>
+          </div>
+        </div>
       </section>
 
       <!-- ========================= TAB: QUÊTES ========================= -->
@@ -223,7 +235,7 @@
       <button id="btn-export" class="btn-modal">📤 Exporter la sauvegarde</button>
       <button id="btn-import" class="btn-modal">📥 Importer une sauvegarde</button>
       <button id="btn-reset" class="btn-modal btn-danger">🗑️ Réinitialiser la progression</button>
-      <p class="settings-version">Lucky Dungeon Tycoon · v14</p>
+      <p class="settings-version">Lucky Dungeon Tycoon · v15</p>
       <p class="settings-credit">Modèles 3D : Kenney · CC0</p>
       <button id="btn-settings-close" class="btn-modal-ghost">Fermer</button>
     </div>

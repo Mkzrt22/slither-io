@@ -103,6 +103,10 @@ const advanceFillEl = el('advance-fill');
 const advanceBtn = el('btn-advance');
 const boostBtn = el('btn-boost');
 const boostBadge = el('boost-badge');
+const buildSheet = el('buildings-sheet');
+const openBuildBtn = el('btn-open-build');
+const closeBuildBtn = el('btn-build-close');
+const sheetBackdrop = el('sheet-backdrop');
 const questsListEl = el('quests-list');
 const questsBadgeEl = el('quests-badge');
 const prestigeNoteEl = el('prestige-note');
@@ -155,7 +159,11 @@ for (const btn of tabButtons) {
             particles.resize();
         }
         if (btn.dataset.tab === 'tab-village') {
-            iso.resize();
+            // The map is flex-sized, so resize after layout settles.
+            requestAnimationFrame(() => iso.resize());
+        }
+        else {
+            closeBuildSheet();
         }
     });
 }
@@ -210,6 +218,20 @@ function buyBuilding(type) {
 // Isometric village scene — real 3D when WebGL is available, else a 2D
 // canvas fallback. Tapping a building upgrades it.
 const onTapBuilding = (type) => buyBuilding(type);
+// Upgrade bottom sheet (opened from the full-screen map).
+function openBuildSheet() {
+    buildSheet.classList.add('open');
+    buildSheet.setAttribute('aria-hidden', 'false');
+    sfx.click();
+    buzz(8);
+}
+function closeBuildSheet() {
+    buildSheet.classList.remove('open');
+    buildSheet.setAttribute('aria-hidden', 'true');
+}
+openBuildBtn.addEventListener('click', openBuildSheet);
+closeBuildBtn.addEventListener('click', closeBuildSheet);
+sheetBackdrop.addEventListener('click', closeBuildSheet);
 // Buy-mode toggle (×1 / ×10 / Max).
 const buyModeButtons = Array.from(document.querySelectorAll('#buy-modes button'));
 for (const btn of buyModeButtons) {
