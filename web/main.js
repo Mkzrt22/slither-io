@@ -527,6 +527,33 @@ gameEvents.on('ui:daily', (d) => { pendingDaily = d; maybeShowDaily(); });
 const controller = new GameController();
 controller.start();
 requestAnimationFrame(() => { particles.resize(); iso.resize(); });
+// Idle juice: float a "+income" number off a producing building every beat
+// while the village map is on screen (weighted by each building's output).
+const FLOAT_INTERVAL_MS = 1100;
+setInterval(() => {
+    if (!iso.floatIncome)
+        return;
+    if (!document.getElementById('tab-village')?.classList.contains('active'))
+        return;
+    const state = controller.getState();
+    const mult = EconomyEngine.getGlobalMultiplier(state) * boostFactorOf(state);
+    const built = BUILDING_TYPES.filter((t) => state.buildings[t] > 0);
+    const weights = built.map((t) => VillageEngine.getBuildingProduction(t, state.buildings[t]) * mult);
+    const total = weights.reduce((a, b) => a + b, 0);
+    if (total <= 0)
+        return;
+    let r = Math.random() * total;
+    let pick = built[0];
+    for (let i = 0; i < built.length; i++) {
+        r -= weights[i];
+        if (r <= 0) {
+            pick = built[i];
+            break;
+        }
+    }
+    const amount = Math.max(1, Math.round(VillageEngine.getBuildingProduction(pick, state.buildings[pick]) * mult * (FLOAT_INTERVAL_MS / 1000)));
+    iso.floatIncome(pick, `+${fmt(amount)}`);
+}, FLOAT_INTERVAL_MS);
 // --- Wire view -> model ------------------------------------------------------
 spinBtn.addEventListener('click', () => { sfx.unlock(); sfx.click(); controller.spin(); });
 bossBtn.addEventListener('click', () => { sfx.click(); controller.startBossFight(); });

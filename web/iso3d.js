@@ -95,6 +95,7 @@ export class Iso3DScene {
         this.workers = [];
         this.coins = [];
         this.smoke = [];
+        this.floaters = [];
         this.raycaster = new THREE.Raycaster();
         this.gltf = new GLTFLoader();
         this.raf = 0;
@@ -104,8 +105,8 @@ export class Iso3DScene {
         this.smokeTimer = 0;
         this.yaw = 0;
         this.targetYaw = 0;
-        this.viewSize = 16;
-        this.targetViewSize = 16;
+        this.viewSize = 14;
+        this.targetViewSize = 14;
         this.aspect = 1;
         this.themeVillage = 0;
         this.pointers = new Map();
@@ -616,6 +617,52 @@ export class Iso3DScene {
         }
         this.ensureRunning();
     }
+    /** Floats a "+income" number that rises and fades over a building. */
+    floatIncome(type, text) {
+        const b = this.buildings.get(type);
+        if (!b || !b.group.visible)
+            return;
+        const spr = this.makeTextSprite(text);
+        spr.position.set(b.group.position.x + (Math.random() - 0.5) * 0.6, b.shownHeight + 1.5, b.group.position.z + (Math.random() - 0.5) * 0.6);
+        this.world.add(spr);
+        this.floaters.push({ sprite: spr, life: 0, vy: 1.4 });
+        // Cap concurrent floaters so a fast economy can't pile up draw calls.
+        while (this.floaters.length > 18) {
+            const f = this.floaters.shift();
+            if (f)
+                this.disposeFloater(f.sprite);
+        }
+        this.ensureRunning();
+    }
+    /** Builds a crisp gold-on-dark text sprite (cached per-call canvas). */
+    makeTextSprite(text) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 96;
+        const ctx = canvas.getContext('2d');
+        ctx.font = '700 60px system-ui, "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 9;
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+        ctx.strokeText(text, 128, 50);
+        ctx.fillStyle = '#ffe08a';
+        ctx.fillText(text, 128, 50);
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.minFilter = THREE.LinearFilter;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false });
+        const spr = new THREE.Sprite(mat);
+        spr.scale.set(2.4, 0.9, 1);
+        return spr;
+    }
+    disposeFloater(spr) {
+        this.world.remove(spr);
+        const m = spr.material;
+        m.map?.dispose();
+        m.dispose();
+    }
     spawnSmoke() {
         const b = this.buildings.get('blacksmith');
         if (!b || !b.group.visible)
@@ -732,6 +779,19 @@ export class Iso3DScene {
             this.world.remove(c.group);
             return false;
         } return true; });
+        for (const f of this.floaters) {
+            f.life += dt;
+            f.sprite.position.y += f.vy * dt;
+            const a = f.life < 0.18 ? f.life / 0.18 : Math.max(0, 1 - (f.life - 0.18) / 1.22);
+            f.sprite.material.opacity = a;
+        }
+        this.floaters = this.floaters.filter((f) => {
+            if (f.life >= 1.4) {
+                this.disposeFloater(f.sprite);
+                return false;
+            }
+            return true;
+        });
         this.smokeTimer -= dt;
         if (this.smokeTimer <= 0) {
             this.smokeTimer = 0.55;
