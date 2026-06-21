@@ -123,53 +123,61 @@ main { flex: 1; display: flex; flex-direction: column; }
 }
 .scene-wall {
   position: absolute; inset: 0; z-index: 1;
-  background-color: #241a36;
+  background-color: #0e0a26;
   background-image:
-    radial-gradient(120% 80% at 18% 0%, rgba(245,162,60,0.16), transparent 45%),
-    radial-gradient(120% 80% at 82% 0%, rgba(245,162,60,0.16), transparent 45%),
-    linear-gradient(180deg, rgba(0,0,0,0.5), rgba(0,0,0,0) 26%),
-    repeating-linear-gradient(0deg, rgba(0,0,0,0.32) 0 2px, transparent 2px 44px),
-    repeating-linear-gradient(90deg, rgba(0,0,0,0.26) 0 2px, transparent 2px 60px);
+    radial-gradient(130% 80% at 16% 0%, rgba(255,60,170,0.26), transparent 46%),
+    radial-gradient(130% 80% at 84% 0%, rgba(60,200,255,0.26), transparent 46%),
+    radial-gradient(100% 60% at 50% 8%, rgba(150,90,255,0.18), transparent 60%),
+    linear-gradient(180deg, rgba(0,0,0,0.45), rgba(0,0,0,0) 32%),
+    linear-gradient(180deg, #1b1448 0%, #0c0a22 100%);
 }
+/* Neon side strips instead of stone pillars */
 .scene-pillars { position: absolute; inset: 0; z-index: 2; pointer-events: none;
-  background:
-    linear-gradient(90deg, rgba(0,0,0,0.55), transparent 14%, transparent 86%, rgba(0,0,0,0.55)),
-    linear-gradient(90deg, rgba(255,255,255,0.05) 0 3px, transparent 3px) 14% 0/ 60px 100% no-repeat,
-    linear-gradient(270deg, rgba(255,255,255,0.05) 0 3px, transparent 3px) 86% 0/ 60px 100% no-repeat;
+  background: linear-gradient(90deg, rgba(0,0,0,0.5), transparent 15%, transparent 85%, rgba(0,0,0,0.5));
 }
+.scene-pillars::before, .scene-pillars::after {
+  content: ""; position: absolute; top: 9%; bottom: 24%; width: 3px; border-radius: 3px;
+}
+.scene-pillars::before { left: 11%; background: #ff3ca0; box-shadow: 0 0 14px 2px rgba(255,60,160,0.85); }
+.scene-pillars::after  { right: 11%; background: #3cc8ff; box-shadow: 0 0 14px 2px rgba(60,200,255,0.85); }
+/* Reflective neon casino floor */
 .scene-floor {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 30%; z-index: 2;
+  position: absolute; left: 0; right: 0; bottom: 0; height: 32%; z-index: 2;
   background:
-    linear-gradient(180deg, rgba(0,0,0,0.1), rgba(0,0,0,0.55)),
-    repeating-linear-gradient(90deg, rgba(0,0,0,0.3) 0 2px, transparent 2px 50px),
-    linear-gradient(180deg, #2e2240, #181026);
-  box-shadow: inset 0 3px 0 rgba(246,194,68,0.12);
+    linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.62)),
+    repeating-linear-gradient(90deg, rgba(60,200,255,0.10) 0 1px, transparent 1px 46px),
+    linear-gradient(180deg, #261a56, #0c0a22);
+  box-shadow: inset 0 3px 0 rgba(255,60,170,0.30);
 }
 .scene::after { /* vignette */
   content: ""; position: absolute; inset: 0; z-index: 6; pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 38%, transparent 52%, rgba(0,0,0,0.6) 100%);
+  background: radial-gradient(120% 90% at 50% 40%, transparent 54%, rgba(0,0,0,0.62) 100%);
 }
 
-/* Torches */
-.torch { position: absolute; top: 16px; width: 26px; height: 40px; z-index: 4; }
-.torch-l { left: 22px; }
-.torch-r { right: 22px; }
-.torch::before { /* sconce */
-  content: ""; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
-  width: 8px; height: 22px; border-radius: 3px;
-  background: linear-gradient(180deg, #6b5a3a, #2c2417);
+/* Neon casino lamps (re-skin of the .torch/.flame elements) */
+.torch { position: absolute; top: 14px; width: 26px; height: 40px; z-index: 4; }
+.torch-l { left: 20px; }
+.torch-r { right: 20px; }
+.torch::before { /* chrome mount */
+  content: ""; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
+  width: 10px; height: 14px; border-radius: 3px;
+  background: linear-gradient(180deg, #c9cfe0, #5a6075);
 }
 .flame {
-  position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
-  width: 20px; height: 30px; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-  background: radial-gradient(circle at 50% 70%, #fff3b0 0%, #ffb43c 38%, #ff6a1a 70%, rgba(255,80,10,0) 100%);
-  filter: blur(0.4px);
-  box-shadow: 0 0 26px 10px rgba(255,150,40,0.55), 0 0 60px 28px rgba(255,120,30,0.25);
-  animation: flicker 0.18s infinite alternate;
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 18px; height: 18px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, #ffffff 0%, #ff7ad0 38%, #ff2a9e 72%, rgba(255,42,158,0) 100%);
+  box-shadow: 0 0 22px 8px rgba(255,60,180,0.6), 0 0 52px 18px rgba(255,60,180,0.22);
+  animation: neonPulse 1.5s ease-in-out infinite;
 }
-@keyframes flicker {
-  from { transform: translateX(-50%) scale(1, 1); opacity: 0.95; }
-  to   { transform: translateX(-52%) scale(1.08, 0.92); opacity: 1; }
+.torch-r .flame {
+  background: radial-gradient(circle at 50% 40%, #ffffff 0%, #7ad8ff 38%, #2ab8ff 72%, rgba(42,184,255,0) 100%);
+  box-shadow: 0 0 22px 8px rgba(60,190,255,0.6), 0 0 52px 18px rgba(60,190,255,0.22);
+  animation-delay: 0.5s;
+}
+@keyframes neonPulse {
+  from { opacity: 0.78; transform: translateX(-50%) scale(0.94); }
+  to   { opacity: 1; transform: translateX(-50%) scale(1.06); }
 }
 
 /* Banners */
@@ -239,7 +247,9 @@ main { flex: 1; display: flex; flex-direction: column; }
     0 14px 30px rgba(0,0,0,0.55),
     inset 0 2px 0 rgba(255,255,255,0.18),
     inset 0 -6px 12px rgba(0,0,0,0.5),
-    0 0 0 1px rgba(0,0,0,0.4);
+    0 0 0 1px rgba(0,0,0,0.4),
+    0 0 22px 3px rgba(255,60,170,0.35),
+    0 0 40px 10px rgba(60,200,255,0.18);
 }
 .machine::before, .machine::after { /* corner rivets */
   content: ""; position: absolute; top: 6px; width: 7px; height: 7px; border-radius: 50%;
