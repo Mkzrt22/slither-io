@@ -51,7 +51,7 @@ Then, from the repo on the server:
 ```bash
 # 1. Build the web bundle (the PWA Caddy will serve)
 npm install
-npm run build:web                     # produces ../dist-web
+LCT_API_BASE='' npm run build:web     # '' = same-origin API; produces ../dist-web
 
 # 2. Configure and launch the stack
 cd server
