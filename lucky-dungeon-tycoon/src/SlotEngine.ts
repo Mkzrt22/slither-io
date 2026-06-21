@@ -75,8 +75,8 @@ const SYMBOL_ICONS: Record<SlotSymbol, string> = {
   BAG: '💰',
   GEM: '💎',
   SHIELD: '🛡️',
-  SWORD: '⚔️',
-  SKULL: '💀',
+  SWORD: '🔨',
+  SKULL: '💣',
 };
 
 export class SlotEngine {
@@ -157,10 +157,10 @@ export class SlotEngine {
             state.shields -= 1;
             shieldsGained = -1;
           }
-          label = 'JACKPOT 💀×3 — trésor maudit !';
+          label = 'JACKPOT 💣×3 — jackpot piégé !';
           break;
         case 'SWORD':
-          label = 'JACKPOT ⚔️×3 — assaut dévastateur !';
+          label = 'JACKPOT 🔨×3 — gros casse !';
           break;
         default:
           label = `JACKPOT ${SYMBOL_ICONS[triple]}×3 !`;
@@ -178,7 +178,7 @@ export class SlotEngine {
         }
       } else if (pair === 'SKULL') {
         goldStolen = Math.floor(state.gold * SKULL_PAIR_TAX);
-        label = 'Paire 💀 — malédiction !';
+        label = 'Paire 💣 — arnaque !';
       } else {
         label = `Paire ${SYMBOL_ICONS[pair]}`;
       }

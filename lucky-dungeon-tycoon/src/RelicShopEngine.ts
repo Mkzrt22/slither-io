@@ -57,9 +57,9 @@ export const RELIC_UPGRADES: readonly RelicUpgradeDef[] = [
   },
   {
     id: 'frappe',
-    name: 'Lame éternelle',
-    icon: '⚔️',
-    description: 'Dégâts infligés aux boss',
+    name: 'Perceuse pro',
+    icon: '🔨',
+    description: 'Perçage des coffres-forts',
     effect: 'boss',
     perLevel: 0.1,
     baseCost: 2,

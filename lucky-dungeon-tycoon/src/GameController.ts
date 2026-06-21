@@ -332,7 +332,7 @@ export class GameController {
     if (!this.canAdvanceVillage()) {
       const needed = VillageEngine.getRequiredLevels(this.state.village);
       this.bus.emit('ui:notification', {
-        message: `Village suivant : améliorez vos bâtiments (${VillageEngine.getTotalLevels(this.state)}/${needed} niveaux)`,
+        message: `Ville suivante : améliorez vos bâtiments (${VillageEngine.getTotalLevels(this.state)}/${needed} niveaux)`,
         severity: 'warning',
       });
       return false;
@@ -388,7 +388,7 @@ export class GameController {
     this.state.bossHp = EconomyEngine.getBossMaxHp(this.state.floor);
     this.persistAndAnnounce();
     this.bus.emit('ui:notification', {
-      message: `Le gardien de l’étage ${this.state.floor} surgit ! Frappez avec ⚔️`,
+      message: `Le coffre-fort de l’étage ${this.state.floor} apparaît ! Forcez-le avec 🔨`,
       severity: 'info',
     });
     return true;
@@ -410,7 +410,7 @@ export class GameController {
     this.state.floor += 1;
     this.state.gems += reward;
     this.bus.emit('ui:notification', {
-      message: `Boss vaincu ! Étage ${this.state.floor} débloqué, coffre : +${reward} gemmes`,
+      message: `Coffre forcé ! Étage ${this.state.floor} débloqué, butin : +${reward} gemmes`,
       severity: 'success',
     });
   }

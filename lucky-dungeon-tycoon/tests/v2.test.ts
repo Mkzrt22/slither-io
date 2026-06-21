@@ -259,7 +259,7 @@ test('full boss loop: engage, strike, kill, advance floor, loot gems', () => {
   assert.equal(s.floor, 2);
   assert.equal(s.stats.bossesKilled, 1);
   assert.equal(s.gems, gemsBefore + EconomyEngine.getBossReward(1));
-  assert.ok(notes.some((n) => n.message.includes('Boss vaincu')));
+  assert.ok(notes.some((n) => n.message.includes('Coffre forcé')));
 });
 
 test('fleeBossFight clears the fight without rewards', () => {
