@@ -47,6 +47,7 @@ body {
   padding: calc(8px + env(safe-area-inset-top)) 12px 92px;
   gap: 10px;
 }
+main { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
 
 /* ============================== TOP HUD ============================== */
 .hud {
@@ -532,8 +533,9 @@ main { flex: 1; display: flex; flex-direction: column; }
 .village-mult { font-size: 0.78rem; font-weight: 700; color: var(--green); }
 
 .iso-wrap { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--edge); box-shadow: var(--shadow); }
+.tab-map .iso-wrap { flex: 1 1 auto; min-height: 240px; }
 .iso-scene {
-  position: relative; display: block; width: 100%; height: 300px;
+  position: absolute; inset: 0; display: block; width: 100%; height: 100%;
   background:
     radial-gradient(120% 90% at 50% 0%, #6a4a6a 0%, #2a2036 46%, #1a1426 100%);
   touch-action: pan-y;
@@ -582,6 +584,64 @@ main { flex: 1; display: flex; flex-direction: column; }
 .btn-advance:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 #2a7d49; }
 .btn-advance:disabled { filter: grayscale(0.7) brightness(0.6); cursor: not-allowed; }
 .btn-advance.ready { animation: readyPulse 1.1s ease-in-out infinite; }
+
+/* ===== Full-screen village map layout ===== */
+.tab-map.active { flex: 1 1 auto; min-height: 0; gap: 8px; }
+.map-head { display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; }
+.map-head .village-emoji { font-size: 2rem; }
+.map-head .village-name { font-size: 1.15rem; }
+.map-head .boost-badge { position: static; animation: readyPulse 1s ease-in-out infinite; }
+
+/* Next-village objective floating at the bottom of the map */
+.advance-strip {
+  position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 3;
+  padding: 8px 12px; border-radius: 14px; display: flex; flex-direction: column; gap: 6px;
+  background: rgba(12,9,22,0.6); border: 1px solid rgba(255,255,255,0.12);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.advance-strip .advance-label { font-size: 0.72rem; }
+.advance-strip .btn-advance { display: none; padding: 10px; font-size: 0.9rem; }
+.advance-strip .btn-advance.ready { display: block; }
+
+/* Map action bar (boost + open-upgrades) */
+.map-actions { display: flex; gap: 9px; flex: 0 0 auto; }
+.map-actions .btn-boost { width: auto; flex: 1; font-size: 0.86rem; padding: 13px 8px; }
+.btn-build {
+  flex: 1.5; padding: 14px; border: none; cursor: pointer; border-radius: 14px;
+  font-size: 0.98rem; font-weight: 900; letter-spacing: 0.02em; color: #2a1d05;
+  background: linear-gradient(180deg, #ffe08a, #f6c244 55%, #d89a22);
+  box-shadow: 0 5px 0 #8a6312, inset 0 1px 0 rgba(255,255,255,0.6);
+  transition: transform 0.06s, box-shadow 0.06s, filter 0.15s;
+}
+.btn-build:active { transform: translateY(3px); box-shadow: 0 2px 0 #8a6312; }
+
+/* ===== Upgrade bottom sheet ===== */
+.sheet { position: fixed; inset: 0; z-index: 60; display: none; }
+.sheet.open { display: block; }
+.sheet-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.55); animation: sheetFade 0.2s ease; }
+@keyframes sheetFade { from { opacity: 0; } to { opacity: 1; } }
+.sheet-card {
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: min(100%, 470px); max-height: 82dvh; overflow-y: auto;
+  background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  border: 1px solid var(--edge); border-bottom: none;
+  border-top-left-radius: 24px; border-top-right-radius: 24px;
+  padding: 6px 12px calc(18px + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 44px rgba(0,0,0,0.6);
+  animation: sheetUp 0.3s cubic-bezier(.2,.9,.3,1);
+}
+@keyframes sheetUp { from { transform: translate(-50%, 100%); } to { transform: translate(-50%, 0); } }
+.sheet-grip { width: 46px; height: 5px; border-radius: 3px; background: var(--edge-soft); margin: 6px auto 8px; }
+.sheet-head {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px;
+  justify-content: space-between; padding-bottom: 10px; margin-bottom: 4px;
+  background: linear-gradient(180deg, var(--bg-1) 72%, transparent);
+}
+.sheet-head h2 { font-size: 1.05rem; }
+.sheet-close {
+  width: 34px; height: 34px; flex: 0 0 auto; border-radius: 10px; border: 1px solid var(--edge);
+  background: var(--panel); color: var(--text); font-size: 1rem; cursor: pointer;
+}
 
 /* ===== Idle-tycoon building cards ===== */
 .building-card {

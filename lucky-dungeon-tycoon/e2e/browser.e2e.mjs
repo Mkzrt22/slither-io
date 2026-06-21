@@ -139,9 +139,13 @@ try {
   await page.waitForSelector('#boss-panel:not([hidden])', { timeout: 3000 });
   expect(true, 'boss fight engages and shows the HP bar');
 
-  // Village: upgrading a building (the mine starts at 30 gold) raises its level.
+  // Village is a full-screen map; upgrades live in a slide-up sheet opened by a
+  // button. Open it before touching the building cards.
   await page.click('nav button[data-tab="tab-village"]');
   expect((await page.locator('#buildings-list .card').count()) === 6, 'building list renders 6 cards');
+  await page.click('#btn-open-build');
+  await page.waitForSelector('#buildings-sheet.open', { timeout: 3000 });
+  expect(true, 'upgrade sheet opens from the map');
   const mineLvlBefore = await page.locator('#buildings-list .card:first-child [data-level]').innerText();
   await page.click('#buildings-list .card:first-child [data-buy]');
   const mineLvlAfter = await page.locator('#buildings-list .card:first-child [data-level]').innerText();
@@ -159,6 +163,11 @@ try {
     expect(true, '×10 disabled (not enough gold) — toggle still works');
   }
   await page.click('#buy-modes button[data-mode="1"]');
+
+  // Close the upgrade sheet (it overlays the rest of the UI while open).
+  await page.click('#btn-build-close');
+  await page.waitForFunction(() => !document.getElementById('buildings-sheet').classList.contains('open'), null, { timeout: 3000 });
+  expect(true, 'upgrade sheet closes');
 
   // Settings modal opens and the sound toggle flips.
   await page.click('#btn-settings');
