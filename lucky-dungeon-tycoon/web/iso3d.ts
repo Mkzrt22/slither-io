@@ -9,11 +9,13 @@
  * high-resolution soft shadows, chimney smoke, wandering workers, gold-coin
  * pops, drag-to-rotate, pinch/wheel zoom, and raycast tap-to-upgrade.
  *
- * Buildings and decor use CC0 low-poly models (Kenney "City Builder" kit),
- * loaded lazily via a vendored GLTFLoader with the procedural meshes as an
- * offline-safe fallback. Three.js, the loader and all textures are vendored
- * locally, so the game stays fully offline. Conforms to the same
- * VillageRenderer shape as `iso.ts`.
+ * Each business has its own dedicated low-poly model (café, shop, diner,
+ * store, office tower, bank) from Poly Pizza — a mix of CC0 and CC-BY 3.0
+ * assets, see ASSETS-CREDITS.md — with the Kenney "City Builder" kit still
+ * supplying the decor. Models load lazily via a vendored GLTFLoader, with the
+ * procedural meshes as an offline-safe fallback. Three.js, the loader and all
+ * textures are vendored/bundled locally, so the game stays fully offline.
+ * Conforms to the same VillageRenderer shape as `iso.ts`.
  */
 
 import * as THREE from 'three';
@@ -25,19 +27,21 @@ import {
 } from './iso3dtex.js';
 
 /**
- * CC0 low-poly building models (Kenney "City Builder" kit, CC0). Each game
- * building maps to one model; the castle reuses the garage at a larger scale
- * for a grander silhouette. Loaded lazily — the procedural mesh stands in
- * until (and if) the GLB arrives, so the scene works offline and never blocks.
+ * Dedicated low-poly model per business, so each building reads as what it is
+ * — a café, a shop, a diner, a store, an office tower and a bank. Sourced from
+ * Poly Pizza (CC0 + CC-BY 3.0, credited in ASSETS-CREDITS.md). Loaded lazily —
+ * the procedural mesh stands in until (and if) the GLB arrives, so the scene
+ * works offline and never blocks. Internal type ids are historical (mine, farm…)
+ * but map to the city businesses defined in VillageEngine's BUILDING_CONFIGS.
  */
 const MODEL_DIR = 'models/';
 const BUILDING_MODELS: Record<BuildingType, string> = {
-  mine: 'building-garage.glb',
-  farm: 'building-small-a.glb',
-  sawmill: 'building-small-b.glb',
-  market: 'building-small-c.glb',
-  blacksmith: 'building-small-d.glb',
-  castle: 'building-garage.glb',
+  mine: 'city/cafe.glb', // Café
+  farm: 'city/shop.glb', // Boutique
+  sawmill: 'city/restaurant.glb', // Restaurant
+  market: 'city/market.glb', // Supermarché
+  blacksmith: 'city/office.glb', // Bureau
+  castle: 'city/bank.glb', // Banque
 };
 /** Footprint each model is normalised to (world units), before level growth. */
 const MODEL_FOOTPRINT: Record<BuildingType, number> = {
@@ -454,11 +458,6 @@ export class Iso3DScene {
           const mesh = o as THREE.Mesh;
           if (mesh.isMesh) {
             mesh.castShadow = true; mesh.receiveShadow = true;
-            if (type === 'castle') {
-              const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
-              mat.color.multiply(new THREE.Color(0xd9c178));
-              mesh.material = mat;
-            }
           }
         });
 
