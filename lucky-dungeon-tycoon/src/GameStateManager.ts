@@ -297,6 +297,16 @@ export class GameStateManager {
     }
   }
 
+  /**
+   * Clamps an untrusted, already-parsed profile object into a guaranteed-valid
+   * UserProfile, applying the exact same anti-tamper rules used on load. Exposed
+   * so a server can validate a cloud save before storing it, sharing one source
+   * of truth with the client. Pure: it neither reads nor writes storage.
+   */
+  public sanitize(raw: Record<string, unknown>, now: number = Date.now()): UserProfile {
+    return this.sanitizeProfile(raw, now);
+  }
+
   /** Reads and JSON-parses the raw record; null on absence or corruption. */
   private readRaw(): Record<string, unknown> | null {
     let serialized: string | null;

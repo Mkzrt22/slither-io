@@ -1,0 +1,21 @@
+{
+  "name": "lucky-city-tycoon-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend API (anonymous device accounts + cloud save) for Lucky City Tycoon. Reuses the game engine in ../src for server-side save validation.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server/src/index.js",
+    "dev": "tsc -p tsconfig.json && node dist/server/src/index.js",
+    "test": "tsc -p tsconfig.json && node --test \"dist/server/test/**/*.test.js\""
+  },
+  "dependencies": {
+    "fastify": "^4.28.1",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.7.2"
+  }
+}

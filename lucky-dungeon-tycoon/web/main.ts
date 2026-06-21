@@ -25,6 +25,7 @@ import { NumberTween, ParticleSystem, SlotReels } from './effects.js';
 import { IsoScene } from './iso.js';
 import { Iso3DScene, webglAvailable } from './iso3d.js';
 import { Sfx } from './sfx.js';
+import { CloudSync } from './sync.js';
 
 type BuyMode = 1 | 10 | 'max';
 
@@ -754,3 +755,55 @@ window.setInterval(() => {
 }, 1000);
 
 window.addEventListener('pagehide', () => controller.stop());
+
+// --- Cloud save sync ---------------------------------------------------------
+// Offline-first: the game already booted from localStorage above. This layer
+// only backs that save up and reconciles it with the cloud in the background.
+// Every step fails soft, so a missing/unreachable server changes nothing.
+
+const cloud = new CloudSync();
+let lastPushedScore = -1;
+
+/** Progress metric shared with the server's conflict rule (lifetime gold). */
+function localScore(): number {
+  return Math.floor(controller.getState().stats.goldEarnedAll || 0);
+}
+
+/** Adopts a newer cloud save, then reloads so the engine re-reads it. */
+function adoptCloudSave(code: string): void {
+  if (controller.importSave(code)) {
+    appendLog('Progression cloud restaurée ☁️', 'success');
+    window.setTimeout(() => location.reload(), 500);
+  }
+}
+
+async function pushCloud(keepalive = false): Promise<void> {
+  if (!cloud.enabled()) return;
+  const score = localScore();
+  if (score === lastPushedScore && !keepalive) return; // nothing new to send
+  const result = await cloud.push(controller.exportSave(), keepalive);
+  if (result.status === 'ok') {
+    lastPushedScore = score;
+  } else if (result.status === 'stale' && result.snapshot.code && result.snapshot.score > score) {
+    adoptCloudSave(result.snapshot.code);
+  }
+}
+
+async function initCloudSync(): Promise<void> {
+  if (!cloud.enabled()) return;
+  if (!(await cloud.ensureAccount())) return;
+  const snapshot = await cloud.pull();
+  if (snapshot && snapshot.code && snapshot.score > localScore()) {
+    adoptCloudSave(snapshot.code); // cloud has more progress — take it
+    return; // a reload follows; skip starting the push loop here
+  }
+  await pushCloud(); // our local save is newest — back it up
+  window.setInterval(() => { void pushCloud(); }, 30_000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') void pushCloud(true);
+});
+window.addEventListener('pagehide', () => { void pushCloud(true); });
+
+void initCloudSync();
