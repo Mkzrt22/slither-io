@@ -1,13 +1,14 @@
-# Lucky City Tycoon — Backend (Phase 1)
+# Chef Factory Tycoon — Backend (Phase 1)
 
 A small TypeScript backend that adds **anonymous device accounts** and **cloud
 saves** to the game, without breaking its offline-first design. The client keeps
 playing entirely from `localStorage`; this server is a backup/sync layer that
 takes over progress between devices and reinstalls.
 
-It reuses the game's own engine (`../src`) to validate and clamp every uploaded
-save, so the same anti-cheat rules run on the client and the server — the
-foundation for the later phases (leaderboards, server-side economy).
+It reuses the game's own simulation engine (`../src/factory`) to validate and
+clamp every uploaded save, so the same anti-cheat rules run on the client and
+the server. The conflict-resolution score is the sanitised lifetime cash
+(`stats.cashAll`).
 
 ## API
 
