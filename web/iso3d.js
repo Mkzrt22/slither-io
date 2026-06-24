@@ -600,6 +600,13 @@ export class Iso3DScene {
         // Benches facing the fountain and the pond.
         this.makeBench(HALF - 0.2, HALF + 1.7, -Math.PI / 2);
         this.makeBench(HALF + 1.7, -HALF + 0.2, Math.PI);
+        // Outdoor dining terraces at open corners — the unmistakable "restaurant"
+        // read. Picked spots are clear of buildings, pond and fountain.
+        for (const [tx, tz] of [
+            [-HALF + 0.4, HALF + 1.5], [HALF + 1.4, -HALF + 1.6], [-HALF - 1.5, 0.6],
+        ]) {
+            this.makeTerrace(tx, tz);
+        }
     }
     makeBush(x, z) {
         const mat = new THREE.MeshStandardMaterial({ color: 0x4e8a3c, roughness: 0.9, flatShading: true });
@@ -708,6 +715,66 @@ export class Iso3DScene {
         bench.position.set(x, -0.7, z);
         bench.rotation.y = ry;
         this.world.add(bench);
+    }
+    /**
+     * An outdoor dining terrace: a parasol over a bistro table ringed by stools,
+     * with a couple of seated diners. Sells the "restaurant" read at a glance.
+     */
+    makeTerrace(x, z) {
+        const terrace = new THREE.Group();
+        const poleMat = new THREE.MeshStandardMaterial({ color: 0xb8b2a6, roughness: 0.7 });
+        const topMat = new THREE.MeshStandardMaterial({ color: 0xf3ede0, roughness: 0.6 });
+        // Table.
+        const top = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 16), topMat);
+        top.position.y = 0.5;
+        top.castShadow = true;
+        terrace.add(top);
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 8), poleMat);
+        stem.position.y = 0.25;
+        terrace.add(stem);
+        // Parasol.
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.0, 6), poleMat);
+        mast.position.y = 0.95;
+        terrace.add(mast);
+        const canopyMat = new THREE.MeshStandardMaterial({
+            color: (this.themeVillage % 2) ? 0xe8533a : 0xf0a830, roughness: 0.7, side: THREE.DoubleSide,
+        });
+        const canopy = new THREE.Mesh(new THREE.ConeGeometry(0.7, 0.34, 12), canopyMat);
+        canopy.position.y = 1.42;
+        canopy.castShadow = true;
+        terrace.add(canopy);
+        // Stools + a couple of seated diners.
+        const stoolMat = new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 0.9 });
+        const seats = 3;
+        for (let i = 0; i < seats; i++) {
+            const a = (i / seats) * Math.PI * 2;
+            const sx = Math.cos(a) * 0.5, sz = Math.sin(a) * 0.5;
+            const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.32, 10), stoolMat);
+            stool.position.set(sx, 0.16, sz);
+            stool.castShadow = true;
+            terrace.add(stool);
+            if (i < 2) {
+                const diner = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.22, 4, 8), new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL((i * 0.37 + 0.1) % 1, 0.5, 0.55), roughness: 0.8 }));
+                diner.position.set(sx, 0.5, sz);
+                diner.castShadow = true;
+                terrace.add(diner);
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), new THREE.MeshStandardMaterial({ color: 0xf1d3a8, roughness: 0.7 }));
+                head.position.set(sx, 0.74, sz);
+                terrace.add(head);
+            }
+        }
+        // A glowing plate on the table.
+        const plateMat = new THREE.MeshStandardMaterial({
+            color: 0xffd98a, emissive: 0xff9a3a, emissiveIntensity: 0.2, roughness: 0.5,
+        });
+        const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.04, 12), plateMat);
+        plate.position.y = 0.55;
+        terrace.add(plate);
+        this.nightMats.push(plateMat);
+        terrace.position.set(x, -0.7, z);
+        terrace.rotation.y = Math.random() * Math.PI * 2;
+        terrace.scale.setScalar(0.92);
+        this.world.add(terrace);
     }
     makeWorker() {
         const group = new THREE.Group();
