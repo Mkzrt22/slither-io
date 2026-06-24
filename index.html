@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Lucky City Tycoon</title>
+  <title>Lucky Chef Tycoon</title>
   <link rel="manifest" href="./manifest.webmanifest" />
-  <meta name="theme-color" content="#0d0a16" />
+  <meta name="theme-color" content="#15100a" />
   <link rel="icon" type="image/png" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="City Tycoon" />
+  <meta name="apple-mobile-web-app-title" content="Chef Tycoon" />
   <link rel="stylesheet" href="./web/styles.css" />
   <script type="importmap">
     { "imports": {
@@ -36,14 +36,14 @@
         <span class="chip-val" id="stat-energy">0/0</span>
       </div>
       <div class="chip chip-relic">
-        <span class="chip-ic">🔮</span>
+        <span class="chip-ic">⭐</span>
         <span class="chip-val" id="stat-relics">0</span>
       </div>
       <button class="hud-gear" id="btn-settings" aria-label="Réglages">⚙️</button>
     </header>
 
     <main>
-      <!-- ========================= TAB: DONJON ========================= -->
+      <!-- ===================== TAB: BONUS (lucky wheel) ===================== -->
       <section id="tab-mine" class="tab">
         <div class="scene" id="scene">
           <div class="scene-wall"></div>
@@ -52,13 +52,13 @@
           <div class="torch torch-l"><span class="flame"></span></div>
           <div class="torch torch-r"><span class="flame"></span></div>
 
-          <div class="floor-banner">ÉTAGE <span id="stat-level">1</span></div>
+          <div class="floor-banner">SERVICE <span id="stat-level">1</span></div>
           <div class="rate-badge">💵 <span id="stat-rate">0</span> /s</div>
 
-          <!-- Boss stage (hidden unless fighting) -->
+          <!-- Big-order stage (hidden unless serving) -->
           <div class="boss-stage" id="boss-panel" hidden>
-            <div class="boss-name" id="boss-title">Coffre-fort</div>
-            <div class="boss-sprite" id="boss-sprite">🔐</div>
+            <div class="boss-name" id="boss-title">Grosse commande</div>
+            <div class="boss-sprite" id="boss-sprite">🍱</div>
             <div class="boss-hpbar">
               <div class="boss-hp-fill" id="boss-hp-fill"></div>
               <span class="boss-hp-text" id="boss-hp-text"></span>
@@ -80,7 +80,7 @@
           </div>
 
           <div class="hoard" id="hoard"></div>
-          <div class="reel-label" id="reel-label">Tirez le levier&nbsp;!</div>
+          <div class="reel-label" id="reel-label">Tournez la roue&nbsp;!</div>
           <canvas id="fx"></canvas>
         </div>
 
@@ -91,8 +91,8 @@
         </button>
 
         <div class="action-row">
-          <button id="btn-boss" class="btn-action btn-boss">🔨<span>Forcer le coffre</span></button>
-          <button id="btn-flee" class="btn-action btn-flee" hidden>🏃<span>Fuir</span></button>
+          <button id="btn-boss" class="btn-action btn-boss">🔥<span>Lancer la commande</span></button>
+          <button id="btn-flee" class="btn-action btn-flee" hidden>🏃<span>Annuler</span></button>
           <button id="btn-upgrade" class="btn-action btn-upgrade">⬆️<span>Améliorer</span></button>
         </div>
         <div class="action-row">
@@ -108,9 +108,9 @@
         <!-- Floating header over the map -->
         <div class="map-head">
           <div class="village-id">
-            <span class="village-emoji" id="village-emoji">🏙️</span>
+            <span class="village-emoji" id="village-emoji">🚚</span>
             <div>
-              <div class="village-name" id="village-name">Quartier</div>
+              <div class="village-name" id="village-name">Food Truck</div>
               <div class="village-mult" id="village-mult">×1.0 production</div>
             </div>
           </div>
@@ -120,20 +120,20 @@
         <!-- The full-screen 3D map — tap a building to upgrade it -->
         <div class="iso-wrap">
           <div id="iso-host" class="iso-scene"></div>
-          <div class="iso-hint">👆 Touchez un bâtiment pour l’améliorer · glissez pour pivoter</div>
+          <div class="iso-hint">👆 Touchez un restaurant pour l’améliorer · glissez pour pivoter</div>
 
-          <!-- Next-village objective, floating at the bottom of the map -->
+          <!-- Next-restaurant objective, floating at the bottom of the map -->
           <div class="advance-strip">
-            <div class="advance-label"><span>🚩 Ville suivante</span><span id="advance-count">0 / 24</span></div>
+            <div class="advance-label"><span>🚩 Restaurant suivant</span><span id="advance-count">0 / 24</span></div>
             <div class="advance-track"><div class="advance-fill" id="advance-fill"></div></div>
-            <button id="btn-advance" class="btn-advance">Fonder la ville suivante</button>
+            <button id="btn-advance" class="btn-advance">Ouvrir le restaurant suivant</button>
           </div>
         </div>
 
         <!-- Map action bar -->
         <div class="map-actions">
           <button id="btn-boost" class="btn-boost">🚀 Boost ×2</button>
-          <button id="btn-open-build" class="btn-build">🏗️ Améliorer les bâtiments</button>
+          <button id="btn-open-build" class="btn-build">🍽️ Gérer les restaurants</button>
         </div>
 
         <!-- Slide-up upgrade sheet -->
@@ -142,7 +142,7 @@
           <div class="sheet-card">
             <div class="sheet-grip"></div>
             <div class="sheet-head">
-              <h2>🏗️ Bâtiments</h2>
+              <h2>🍽️ Restaurants</h2>
               <div class="buy-modes" id="buy-modes">
                 <button data-mode="1" class="active">×1</button>
                 <button data-mode="10">×10</button>
@@ -164,30 +164,30 @@
         <div id="quests-list" class="cards"></div>
       </section>
 
-      <!-- ========================= TAB: ASCENSION ========================= -->
+      <!-- ========================= TAB: ÉTOILES ========================= -->
       <section id="tab-prestige" class="tab">
         <div class="panel-head">
-          <h2>🔮 Ascension</h2>
+          <h2>⭐ Étoiles</h2>
           <p id="prestige-note"></p>
         </div>
         <div class="prestige-card">
-          <div class="prestige-orb">🔮</div>
+          <div class="prestige-orb">⭐</div>
           <div class="prestige-mult" id="prestige-mult">×1.0</div>
           <div class="prestige-track"><div class="prestige-fill" id="prestige-progress"></div></div>
-          <button id="btn-ascend" class="btn-ascend">Ascendre</button>
-          <p class="prestige-desc">Réinitialise or, commerces, étages et améliorations.<br/>Conserve gemmes, boucliers et reliques. Chaque relique : <b>+10 % d’or</b>, et dépensez-les dans l’atelier ci-dessous.</p>
+          <button id="btn-ascend" class="btn-ascend">Décrocher une étoile</button>
+          <p class="prestige-desc">Réinitialise argent, restaurants, services et améliorations.<br/>Conserve gemmes, glacières et étoiles. Chaque étoile : <b>+10 % de revenus</b>, à dépenser dans l’atelier ci-dessous.</p>
         </div>
         <div class="relic-shop">
-          <h3>🔮 Atelier des reliques <span class="relic-balance" id="relic-balance">0 🔮</span></h3>
-          <p class="relic-shop-desc">Améliorations permanentes — conservées à chaque Ascension.</p>
+          <h3>⭐ Atelier des étoiles <span class="relic-balance" id="relic-balance">0 ⭐</span></h3>
+          <p class="relic-shop-desc">Améliorations permanentes — conservées à chaque étoile décrochée.</p>
           <div id="relic-shop-list"></div>
         </div>
         <div class="stats-card">
           <h3>📊 Statistiques</h3>
           <div id="stats-summary"></div>
           <div class="mini-stats">
-            <div><span class="mini-ic">🛡️</span><span id="stat-shields">0/3</span></div>
-            <div><span class="mini-ic">🏗️</span><span id="stat-buildings">0</span></div>
+            <div><span class="mini-ic">🧊</span><span id="stat-shields">0/3</span></div>
+            <div><span class="mini-ic">🍽️</span><span id="stat-buildings">0</span></div>
           </div>
         </div>
       </section>
@@ -195,10 +195,10 @@
 
     <!-- ============================= BOTTOM NAV ============================= -->
     <nav class="nav" aria-label="Navigation">
-      <button data-tab="tab-village" class="active"><span class="nav-ic">🏙️</span><span class="nav-lbl">Ville</span></button>
-      <button data-tab="tab-mine"><span class="nav-ic">🎰</span><span class="nav-lbl">Casino</span></button>
+      <button data-tab="tab-village" class="active"><span class="nav-ic">🍽️</span><span class="nav-lbl">Resto</span></button>
+      <button data-tab="tab-mine"><span class="nav-ic">🎰</span><span class="nav-lbl">Bonus</span></button>
       <button data-tab="tab-quests"><span class="nav-badge" id="quests-badge"></span><span class="nav-ic">📜</span><span class="nav-lbl">Quêtes</span></button>
-      <button data-tab="tab-prestige"><span class="nav-ic">🔮</span><span class="nav-lbl">Ascension</span></button>
+      <button data-tab="tab-prestige"><span class="nav-ic">⭐</span><span class="nav-lbl">Étoiles</span></button>
     </nav>
   </div>
 
@@ -235,7 +235,7 @@
       <button id="btn-export" class="btn-modal">📤 Exporter la sauvegarde</button>
       <button id="btn-import" class="btn-modal">📥 Importer une sauvegarde</button>
       <button id="btn-reset" class="btn-modal btn-danger">🗑️ Réinitialiser la progression</button>
-      <p class="settings-version">Lucky City Tycoon · v21</p>
+      <p class="settings-version">Lucky Chef Tycoon · v22</p>
       <p class="settings-credit">Modèles 3D : Poly Pizza · Kenney · Quaternius</p>
       <button id="btn-settings-close" class="btn-modal-ghost">Fermer</button>
     </div>

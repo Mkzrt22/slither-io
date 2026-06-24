@@ -39,16 +39,16 @@ function el(id) {
 const fmt = EconomyEngine.formatCurrency;
 const fmtInt = (n) => Math.round(n).toString();
 const SYMBOL_EMOJI = {
-    COIN: '🪙',
-    BAG: '💰',
+    COIN: '🍒',
+    BAG: '🍔',
     GEM: '💎',
-    SHIELD: '🛡️',
-    SWORD: '🔨',
+    SHIELD: '🧊',
+    SWORD: '🔥',
     SKULL: '💣',
 };
-/** Vault face by floor band, so deeper floors feel different. */
+/** Big-order dish by service band, so deeper services feel different. */
 function bossEmoji(floor) {
-    const faces = ['🔐', '🏦', '💼', '🔒', '🏧', '💳', '🪙', '💎'];
+    const faces = ['🍱', '🍣', '🍝', '🍛', '🥘', '🍲', '🎂', '🦞'];
     return faces[(floor - 1) % faces.length];
 }
 // --- Element handles ---------------------------------------------------------
@@ -270,8 +270,9 @@ advanceBtn.addEventListener('click', () => {
 });
 const questCards = new Map();
 const QUEST_ICONS = {
-    first_vein: '🪙', spin_100: '🎰', foreman: '👷', first_boss: '🔐',
-    floor_5: '🏙️', magnate: '💰', ascended: '🔮', builder: '🏗️', pioneer: '🚩',
+    first_vein: '💶', spin_100: '🎰', foreman: '👨‍🍳', first_boss: '🔥',
+    floor_5: '🛎️', magnate: '💰', ascended: '⭐', builder: '🏗️', pioneer: '🚩',
+    industrialist: '📈', overlord: '🏆',
 };
 for (const quest of QUESTS) {
     const card = document.createElement('div');
@@ -348,7 +349,7 @@ function render(state) {
     if (state.bossHp !== null) {
         const maxHp = EconomyEngine.getBossMaxHp(state.floor);
         bossSpriteEl.textContent = bossEmoji(state.floor);
-        bossTitleEl.textContent = `Coffre-fort · Étage ${state.floor}`;
+        bossTitleEl.textContent = `Grosse commande · Service ${state.floor}`;
         bossHpFillEl.style.width = `${Math.max(0, (state.bossHp / maxHp) * 100)}%`;
         bossHpTextEl.textContent = `${fmt(state.bossHp)} / ${fmt(maxHp)}`;
         if (lastBossHp !== null && state.bossHp < lastBossHp) {
@@ -362,12 +363,12 @@ function render(state) {
     }
     else {
         lastBossHp = null;
-        bossBtn.innerHTML = `🔨<span>Forcer le coffre (étage ${state.floor})</span>`;
+        bossBtn.innerHTML = `🔥<span>Lancer la commande (service ${state.floor})</span>`;
     }
-    // Village header
+    // Restaurant header
     villageNameEl.textContent = `${VillageEngine.getVillageName(state.village)} · Niv. ${state.village}`;
     villageMultEl.textContent = `×${VillageEngine.getVillageMultiplier(state.village).toFixed(1)} production`;
-    const villageEmojis = ['🏘️', '🏙️', '🌆', '🌃', '🏢', '🏛️'];
+    const villageEmojis = ['🚚', '🥪', '🍽️', '🍷', '⭐', '👨‍🍳'];
     villageEmojiEl.textContent = villageEmojis[(state.village - 1) % villageEmojis.length];
     // Village advancement
     const required = VillageEngine.getRequiredLevels(state.village);
@@ -424,14 +425,14 @@ function render(state) {
     prestigeMultEl.textContent = `×${EconomyEngine.getRelicMultiplier(state.relics).toFixed(1)}`;
     prestigeProgressEl.style.width = `${Math.min(100, (state.stats.goldEarnedRun / threshold) * 100)}%`;
     ascendBtn.disabled = relics <= 0;
-    ascendBtn.textContent = relics > 0 ? `Ascendre · +${relics} 🔮` : 'Ascendre';
+    ascendBtn.textContent = relics > 0 ? `Décrocher · +${relics} ⭐` : 'Décrocher une étoile';
     prestigeNoteEl.textContent = relics > 0
-        ? `Prêt ! L’ascension rapporterait ${relics} relique(s).`
-        : `Amassez ${fmt(threshold)} or dans ce cycle (actuel : ${fmt(state.stats.goldEarnedRun)}).`;
+        ? `Prêt ! Une nouvelle étoile rapporterait ${relics} ⭐.`
+        : `Encaissez ${fmt(threshold)} € dans ce cycle (actuel : ${fmt(state.stats.goldEarnedRun)}).`;
     statsSummaryEl.innerHTML =
-        `💰 ${fmt(state.stats.goldEarnedAll)} or amassé<br/>` +
-            `🎰 ${state.stats.totalSpins} spins · 🔐 ${state.stats.bossesKilled} coffres<br/>` +
-            `🔮 ${state.stats.prestiges} ascension(s)`;
+        `💰 ${fmt(state.stats.goldEarnedAll)} € encaissés<br/>` +
+            `🎰 ${state.stats.totalSpins} tours · 🔥 ${state.stats.bossesKilled} grosses commandes<br/>` +
+            `⭐ ${state.stats.prestiges} étoile(s)`;
     // Relic shop
     relicBalanceEl.textContent = `${fmtInt(state.relics)} 🔮`;
     for (const def of RELIC_UPGRADES) {
@@ -454,15 +455,15 @@ function render(state) {
 function showSpinResult(result) {
     void reels.spinTo(result.symbols, () => { });
     // Build the result line.
-    const parts = [`+${fmt(result.goldGained)} or`];
+    const parts = [`+${fmt(result.goldGained)} €`];
     if (result.gemsGained > 0)
         parts.push(`+${result.gemsGained} 💎`);
     if (result.shieldsGained > 0)
-        parts.push(`+${result.shieldsGained} 🛡️`);
+        parts.push(`+${result.shieldsGained} 🧊`);
     if (result.goldStolen > 0)
-        parts.push(`−${fmt(result.goldStolen)} or`);
+        parts.push(`−${fmt(result.goldStolen)} €`);
     if (result.bossDamage > 0)
-        parts.push(`${fmt(result.bossDamage)} dégâts`);
+        parts.push(`${fmt(result.bossDamage)} servis`);
     // After the reels settle, fire the payoff effects.
     const settleMs = 1450;
     window.setTimeout(() => {
@@ -498,7 +499,7 @@ let pendingOfflineGold = 0;
 let pendingDaily = null;
 gameEvents.on('ui:offline_earnings', (s) => {
     pendingOfflineGold = s.goldEarned;
-    offlineAmountEl.textContent = `+${fmt(s.goldEarned)} or`;
+    offlineAmountEl.textContent = `+${fmt(s.goldEarned)} €`;
     const bits = [];
     const hrs = Math.floor(s.seconds / 3600);
     const mins = Math.floor((s.seconds % 3600) / 60);
@@ -506,9 +507,9 @@ gameEvents.on('ui:offline_earnings', (s) => {
     if (s.energyEarned > 0)
         bits.push(`+${s.energyEarned} ⚡`);
     if (s.raidGold > 0)
-        bits.push(`raid −${fmt(s.raidGold)} or`);
+        bits.push(`vol −${fmt(s.raidGold)} €`);
     if (s.shieldBlocked)
-        bits.push('🛡️ raid bloqué');
+        bits.push('🧊 vol bloqué');
     offlineDetailEl.textContent = bits.join(' · ');
     offlineX2Btn.hidden = s.goldEarned <= 0;
     offlineModal.classList.add('visible');
@@ -520,7 +521,7 @@ function maybeShowDaily() {
     if (offlineModal.classList.contains('visible'))
         return;
     dailyStreakEl.textContent = `Jour ${pendingDaily.streak} · série de ${pendingDaily.streak}`;
-    dailyRewardEl.textContent = `+${pendingDaily.gemReward} 💎 · +${fmt(pendingDaily.goldReward)} or`;
+    dailyRewardEl.textContent = `+${pendingDaily.gemReward} 💎 · +${fmt(pendingDaily.goldReward)} €`;
     dailyModal.classList.add('visible');
 }
 gameEvents.on('ui:daily', (d) => { pendingDaily = d; maybeShowDaily(); });

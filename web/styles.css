@@ -3,19 +3,19 @@
    ========================================================================= */
 
 :root {
-  --bg-0: #0d0a16;
-  --bg-1: #161023;
-  --panel: #211934;
-  --panel-2: #2b2147;
-  --edge: #3d2f63;
-  --edge-soft: #4a3a72;
-  --text: #f1ecff;
-  --muted: #9a8dc4;
+  --bg-0: #15100a;
+  --bg-1: #1f160d;
+  --panel: #2a2014;
+  --panel-2: #34281a;
+  --edge: #4d3c22;
+  --edge-soft: #5d4830;
+  --text: #f7efe3;
+  --muted: #c6ad8a;
   --gold: #f6c244;
   --gold-2: #ffe08a;
   --gold-dark: #b3801c;
   --gem: #5fd4f5;
-  --relic: #c08af5;
+  --relic: #ffd24a;
   --green: #6fe08a;
   --red: #f0636c;
   --orange: #f5a23c;
@@ -27,7 +27,7 @@
 html, body { height: 100%; }
 body {
   background:
-    radial-gradient(1200px 600px at 50% -10%, #2a1f44 0%, var(--bg-0) 60%),
+    radial-gradient(1200px 600px at 50% -10%, #3c2a16 0%, var(--bg-0) 60%),
     var(--bg-0);
   color: var(--text);
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;

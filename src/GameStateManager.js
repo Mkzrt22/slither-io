@@ -141,7 +141,7 @@ export class GameStateManager {
             if (earned > 0) {
                 creditGold(next, earned);
                 summary.goldEarned = earned;
-                logs.push(`Production hors-ligne : +${EconomyEngine.formatCurrency(earned)} or`);
+                logs.push(`Production hors-ligne : +${EconomyEngine.formatCurrency(earned)} €`);
             }
         }
         // --- 3. Offline Raid Determinator ---------------------------------------
@@ -151,13 +151,13 @@ export class GameStateManager {
                 if (next.shields > 0) {
                     next.shields -= 1;
                     summary.shieldBlocked = true;
-                    logs.push('Shield blocked raid');
+                    logs.push('Glacière : vol bloqué');
                 }
                 else {
                     const stolen = Math.floor(next.gold * RAID_GOLD_TAX);
                     next.gold = Math.max(0, next.gold - stolen);
                     summary.raidGold = stolen;
-                    logs.push(`Raid stole ${stolen} gold`);
+                    logs.push(`Vol nocturne : −${stolen} €`);
                 }
             }
         }
