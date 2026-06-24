@@ -5,9 +5,11 @@
  * shingles, grass), a gradient sky dome with a moving sun/moon and stars, a
  * full day/night cycle (warm windows + lamp posts that glow at dusk), additive
  * glow sprites for a bloom-like feel, atmospheric particles (dust by day,
- * fireflies by night), a rippling pond, a perimeter fence, a waving flag,
- * high-resolution soft shadows, chimney smoke, wandering workers, gold-coin
- * pops, drag-to-rotate, pinch/wheel zoom, and raycast tap-to-upgrade.
+ * fireflies by night), a rippling pond, cobblestone walkways, a perimeter
+ * fence, a waving flag, scattered props (bushes, flower beds, rocks, crates,
+ * barrels, benches), high-resolution soft shadows, chimney smoke, wandering
+ * workers, gold-coin pops, drag-to-rotate, pinch/wheel zoom, and raycast
+ * tap-to-upgrade.
  *
  * Each business has its own dedicated low-poly model (café, shop, diner,
  * store, office tower, bank) from Poly Pizza — a mix of CC0 and CC-BY 3.0
@@ -20,7 +22,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { BUILDING_TYPES } from '../src/types.js';
-import { makeGlow, texGrass, texPlanks, texShingle, texStone, texStoneWall, } from './iso3dtex.js';
+import { makeGlow, texCobble, texGrass, texPlanks, texShingle, texStone, texStoneWall, } from './iso3dtex.js';
 /**
  * Dedicated low-poly model per business, so each building reads as what it is
  * — a café, a shop, a diner, a store, an office tower and a bank. Sourced from
@@ -172,6 +174,7 @@ export class Iso3DScene {
         this.buildPaths();
         this.buildBuildings();
         this.decorate();
+        this.scatterProps();
         this.applyTheme(1);
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -311,7 +314,6 @@ export class Iso3DScene {
         }
     }
     buildPaths() {
-        const mat = new THREE.MeshStandardMaterial({ color: 0x9c8b6e, roughness: 1 });
         const c = tileToWorld(LAYOUT.market.gx, LAYOUT.market.gy);
         for (const type of BUILDING_TYPES) {
             if (type === 'market')
@@ -319,8 +321,14 @@ export class Iso3DScene {
             const b = tileToWorld(LAYOUT[type].gx, LAYOUT[type].gy);
             const dx = b.x - c.x, dz = b.z - c.z;
             const len = Math.hypot(dx, dz);
-            const path = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, len), mat);
-            path.position.set((b.x + c.x) / 2, 0.04, (b.z + c.z) / 2);
+            // Clone the cached cobble texture so each path can set its own repeat
+            // (a shared instance would let the last path overwrite the others).
+            const tex = texCobble().clone();
+            tex.needsUpdate = true;
+            tex.repeat.set(1, Math.max(1, Math.round(len / 0.9)));
+            const mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xb6a784, roughness: 1 });
+            const path = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.07, len), mat);
+            path.position.set((b.x + c.x) / 2, 0.045, (b.z + c.z) / 2);
             path.rotation.y = Math.atan2(dx, dz);
             path.receiveShadow = true;
             this.world.add(path);
@@ -549,6 +557,156 @@ export class Iso3DScene {
             this.world.add(glow);
             this.nightGlow.push(glow);
         }
+    }
+    // --- Procedural props (bushes, flowers, rocks, crates, barrels, benches) ----
+    /**
+     * Fills the empty lot with small procedural props so the village feels
+     * lived-in. Everything is pure geometry (no model downloads), placed on a
+     * jittered grid that skips tiles near a building, the pond or the fountain.
+     */
+    scatterProps() {
+        const blocked = (x, z) => {
+            for (const type of BUILDING_TYPES) {
+                const p = tileToWorld(LAYOUT[type].gx, LAYOUT[type].gy);
+                if (Math.hypot(x - p.x, z - p.z) < 2.0)
+                    return true;
+            }
+            if (Math.hypot(x - (HALF + 1.6), z - (-HALF - 1.6)) < 2.3)
+                return true; // pond
+            if (Math.hypot(x - (HALF + 1.7), z - (HALF + 1.7)) < 2.3)
+                return true; // fountain
+            return false;
+        };
+        for (let gx = 0.5; gx <= GRID - 0.5; gx += 1) {
+            for (let gy = 0.5; gy <= GRID - 0.5; gy += 1) {
+                const { x, z } = tileToWorld(gx, gy);
+                const px = x + (Math.random() - 0.5) * 0.9, pz = z + (Math.random() - 0.5) * 0.9;
+                if (blocked(px, pz) || Math.random() < 0.42)
+                    continue;
+                const pick = Math.random();
+                if (pick < 0.38)
+                    this.makeBush(px, pz);
+                else if (pick < 0.66)
+                    this.makeFlowerBed(px, pz);
+                else if (pick < 0.82)
+                    this.makeRock(px, pz);
+                else if (pick < 0.93)
+                    this.makeCrate(px, pz);
+                else
+                    this.makeBarrel(px, pz);
+            }
+        }
+        // Benches facing the fountain and the pond.
+        this.makeBench(HALF - 0.2, HALF + 1.7, -Math.PI / 2);
+        this.makeBench(HALF + 1.7, -HALF + 0.2, Math.PI);
+    }
+    makeBush(x, z) {
+        const mat = new THREE.MeshStandardMaterial({ color: 0x4e8a3c, roughness: 0.9, flatShading: true });
+        const bush = new THREE.Group();
+        const n = 3 + ((Math.random() * 2) | 0);
+        for (let i = 0; i < n; i++) {
+            const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22 + Math.random() * 0.18, 0), mat);
+            blob.position.set((Math.random() - 0.5) * 0.42, 0.18 + Math.random() * 0.12, (Math.random() - 0.5) * 0.42);
+            blob.castShadow = true;
+            bush.add(blob);
+        }
+        // A few berry/flower dots for colour.
+        if (Math.random() < 0.6) {
+            const dotMat = new THREE.MeshStandardMaterial({ color: 0xff6f6f, roughness: 0.6 });
+            for (let i = 0; i < 4; i++) {
+                const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 5), dotMat);
+                dot.position.set((Math.random() - 0.5) * 0.5, 0.3 + Math.random() * 0.1, (Math.random() - 0.5) * 0.5);
+                bush.add(dot);
+            }
+        }
+        bush.position.set(x, -0.7, z);
+        bush.scale.setScalar(0.85 + Math.random() * 0.5);
+        this.world.add(bush);
+    }
+    makeFlowerBed(x, z) {
+        const bed = new THREE.Group();
+        const colors = [0xff5a5a, 0xffd24a, 0xff8ec2, 0x9a6cff, 0xffffff];
+        const stemMat = new THREE.MeshStandardMaterial({ color: 0x3e7a32, roughness: 1 });
+        for (let i = 0; i < 5; i++) {
+            const fx = (Math.random() - 0.5) * 0.7, fz = (Math.random() - 0.5) * 0.7;
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.022, 0.3, 5), stemMat);
+            stem.position.set(fx, 0.15, fz);
+            bed.add(stem);
+            const bloomMat = new THREE.MeshStandardMaterial({
+                color: colors[(Math.random() * colors.length) | 0], roughness: 0.7,
+                emissive: 0x1a1400, emissiveIntensity: 0.15,
+            });
+            const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), bloomMat);
+            bloom.position.set(fx, 0.32, fz);
+            bloom.scale.y = 0.72;
+            bed.add(bloom);
+        }
+        bed.position.set(x, -0.7, z);
+        this.world.add(bed);
+    }
+    makeRock(x, z) {
+        const mat = new THREE.MeshStandardMaterial({ color: 0x8a8479, roughness: 1, flatShading: true });
+        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.3 + Math.random() * 0.2, 0), mat);
+        rock.position.set(x, -0.55, z);
+        rock.rotation.set(Math.random(), Math.random(), Math.random());
+        rock.scale.set(1, 0.7, 1);
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        this.world.add(rock);
+    }
+    makeCrate(x, z) {
+        const mat = new THREE.MeshStandardMaterial({ map: texPlanks(0x9a6f3f), roughness: 0.9 });
+        const crate = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), mat);
+        crate.position.set(x, -0.45, z);
+        crate.rotation.y = Math.random() * Math.PI;
+        crate.castShadow = true;
+        crate.receiveShadow = true;
+        this.world.add(crate);
+        if (Math.random() < 0.4) {
+            const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), mat);
+            c2.position.set(x + 0.32, -0.5, z + 0.22);
+            c2.rotation.y = Math.random() * Math.PI;
+            c2.castShadow = true;
+            this.world.add(c2);
+        }
+    }
+    makeBarrel(x, z) {
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a5a2e, roughness: 0.9 });
+        const bandMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.5, roughness: 0.5 });
+        const barrel = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.55, 12), woodMat);
+        body.position.y = 0.27;
+        body.castShadow = true;
+        barrel.add(body);
+        for (const by of [0.12, 0.42]) {
+            const band = new THREE.Mesh(new THREE.TorusGeometry(0.225, 0.025, 6, 12), bandMat);
+            band.rotation.x = Math.PI / 2;
+            band.position.y = by;
+            barrel.add(band);
+        }
+        barrel.position.set(x, -0.7, z);
+        barrel.rotation.y = Math.random() * Math.PI;
+        this.world.add(barrel);
+    }
+    makeBench(x, z, ry) {
+        const mat = new THREE.MeshStandardMaterial({ color: 0x7a5a36, roughness: 0.9 });
+        const bench = new THREE.Group();
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, 0.28), mat);
+        seat.position.y = 0.26;
+        seat.castShadow = true;
+        bench.add(seat);
+        const back = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.24, 0.05), mat);
+        back.position.set(0, 0.4, -0.11);
+        back.castShadow = true;
+        bench.add(back);
+        for (const lx of [-0.34, 0.34]) {
+            const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.26, 0.24), mat);
+            leg.position.set(lx, 0.13, 0);
+            bench.add(leg);
+        }
+        bench.position.set(x, -0.7, z);
+        bench.rotation.y = ry;
+        this.world.add(bench);
     }
     makeWorker() {
         const group = new THREE.Group();
