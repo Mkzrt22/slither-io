@@ -79,7 +79,7 @@ export class GameController {
       for (const message of logs) {
         this.bus.emit('ui:notification', {
           message,
-          severity: message.startsWith('Raid stole') ? 'warning' : 'info',
+          severity: message.startsWith('Vol nocturne') ? 'warning' : 'info',
         });
       }
     }
@@ -122,7 +122,7 @@ export class GameController {
     creditGold(this.state, status.goldReward);
     this.persistAndAnnounce();
     this.bus.emit('ui:notification', {
-      message: `🎁 Récompense du jour ${status.streak} : +${status.gemReward} 💎 · +${EconomyEngine.formatCurrency(status.goldReward)} or`,
+      message: `🎁 Récompense du jour ${status.streak} : +${status.gemReward} 💎 · +${EconomyEngine.formatCurrency(status.goldReward)} €`,
       severity: 'success',
     });
     return { streak: status.streak, gems: status.gemReward, gold: status.goldReward };
@@ -253,7 +253,7 @@ export class GameController {
     const cost = this.getNextUpgradeCost();
     if (this.state.gold < cost) {
       this.bus.emit('ui:notification', {
-        message: `Amélioration : il faut ${EconomyEngine.formatCurrency(cost)} or`,
+        message: `Amélioration : il faut ${EconomyEngine.formatCurrency(cost)} €`,
         severity: 'warning',
       });
       return false;
@@ -263,7 +263,7 @@ export class GameController {
     this.state.dungeonLevel += 1;
     this.persistAndAnnounce();
     this.bus.emit('ui:notification', {
-      message: `Mine améliorée au niveau ${this.state.dungeonLevel} !`,
+      message: `Roue améliorée au niveau ${this.state.dungeonLevel} !`,
       severity: 'success',
     });
     return true;
@@ -307,7 +307,7 @@ export class GameController {
     const plan = this.getBuildingPlan(type, mode);
     if (plan.count < 1 || this.state.gold < plan.cost) {
       this.bus.emit('ui:notification', {
-        message: `Amélioration : pas assez d’or (${EconomyEngine.formatCurrency(plan.cost)})`,
+        message: `Amélioration : pas assez d’argent (${EconomyEngine.formatCurrency(plan.cost)})`,
         severity: 'warning',
       });
       return 0;
@@ -360,7 +360,7 @@ export class GameController {
     const cost = this.getMinerCost(tier);
     if (this.state.gold < cost) {
       this.bus.emit('ui:notification', {
-        message: `Recrutement : il faut ${EconomyEngine.formatCurrency(cost)} or`,
+        message: `Recrutement : il faut ${EconomyEngine.formatCurrency(cost)} €`,
         severity: 'warning',
       });
       return false;
@@ -388,7 +388,7 @@ export class GameController {
     this.state.bossHp = EconomyEngine.getBossMaxHp(this.state.floor);
     this.persistAndAnnounce();
     this.bus.emit('ui:notification', {
-      message: `Le coffre-fort de l’étage ${this.state.floor} apparaît ! Forcez-le avec 🔨`,
+      message: `Grosse commande du service ${this.state.floor} ! Honorez-la avec 🔥`,
       severity: 'info',
     });
     return true;
@@ -410,7 +410,7 @@ export class GameController {
     this.state.floor += 1;
     this.state.gems += reward;
     this.bus.emit('ui:notification', {
-      message: `Coffre forcé ! Étage ${this.state.floor} débloqué, butin : +${reward} gemmes`,
+      message: `Commande honorée ! Service ${this.state.floor} débloqué, pourboire : +${reward} gemmes`,
       severity: 'success',
     });
   }
@@ -438,7 +438,7 @@ export class GameController {
     const relics = this.getPrestigeRelics();
     if (relics <= 0) {
       this.bus.emit('ui:notification', {
-        message: `Ascension : amassez ${EconomyEngine.formatCurrency(this.getPrestigeThreshold())} or dans ce cycle`,
+        message: `Étoile : encaissez ${EconomyEngine.formatCurrency(this.getPrestigeThreshold())} € dans ce cycle`,
         severity: 'warning',
       });
       return false;
@@ -459,7 +459,7 @@ export class GameController {
 
     this.persistAndAnnounce();
     this.bus.emit('ui:notification', {
-      message: `✨ Ascension ! +${relics} relique(s) — production ×${EconomyEngine.getRelicMultiplier(this.state.relics).toFixed(1)} permanente`,
+      message: `⭐ Étoile décrochée ! +${relics} étoile(s) — production ×${EconomyEngine.getRelicMultiplier(this.state.relics).toFixed(1)} permanente`,
       severity: 'success',
     });
     return true;
@@ -493,7 +493,7 @@ export class GameController {
     if (!RelicShopEngine.purchase(this.state, id)) {
       const cost = RelicShopEngine.getCost(this.state, id) ?? 0;
       this.bus.emit('ui:notification', {
-        message: `Reliques insuffisantes (${cost} 🔮 requises)`,
+        message: `Étoiles insuffisantes (${cost} ⭐ requises)`,
         severity: 'warning',
       });
       return false;

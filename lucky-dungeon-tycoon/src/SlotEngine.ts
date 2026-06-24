@@ -71,11 +71,11 @@ const SWORD_DAMAGE: Record<number, number> = { 0: 0, 1: 1, 2: 4, 3: 10 };
 const SKULL_PAIR_TAX = 0.05;
 
 const SYMBOL_ICONS: Record<SlotSymbol, string> = {
-  COIN: '🪙',
-  BAG: '💰',
+  COIN: '🍒',
+  BAG: '🍔',
   GEM: '💎',
-  SHIELD: '🛡️',
-  SWORD: '🔨',
+  SHIELD: '🧊',
+  SWORD: '🔥',
   SKULL: '💣',
 };
 
@@ -148,11 +148,11 @@ export class SlotEngine {
           if (granted < 2) {
             goldGained += baseGain * 3 * (2 - granted);
           }
-          label = granted > 0 ? `JACKPOT 🛡️×3 — +${granted} bouclier(s) !` : 'JACKPOT 🛡️×3 — boucliers pleins, or compensé !';
+          label = granted > 0 ? `JACKPOT 🧊×3 — +${granted} glacière(s) !` : 'JACKPOT 🧊×3 — glacières pleines, € compensés !';
           break;
         }
         case 'SKULL':
-          // Cursed hoard: a huge payout, but the curse consumes a shield.
+          // Spoiled batch: a huge payout, but it burns through a cooler.
           if (state.shields > 0) {
             state.shields -= 1;
             shieldsGained = -1;
@@ -160,7 +160,7 @@ export class SlotEngine {
           label = 'JACKPOT 💣×3 — jackpot piégé !';
           break;
         case 'SWORD':
-          label = 'JACKPOT 🔨×3 — gros casse !';
+          label = 'JACKPOT 🔥×3 — coup de feu !';
           break;
         default:
           label = `JACKPOT ${SYMBOL_ICONS[triple]}×3 !`;
@@ -171,14 +171,14 @@ export class SlotEngine {
       if (pair === 'SHIELD') {
         if (state.shields < MAX_SHIELDS) {
           shieldsGained = 1;
-          label = 'Paire 🛡️ — +1 bouclier';
+          label = 'Paire 🧊 — +1 glacière';
         } else {
           goldGained = baseGain * 1.5;
-          label = 'Paire 🛡️ — boucliers pleins, or compensé';
+          label = 'Paire 🧊 — glacières pleines, € compensés';
         }
       } else if (pair === 'SKULL') {
         goldStolen = Math.floor(state.gold * SKULL_PAIR_TAX);
-        label = 'Paire 💣 — arnaque !';
+        label = 'Paire 💣 — note salée !';
       } else {
         label = `Paire ${SYMBOL_ICONS[pair]}`;
       }
@@ -192,7 +192,7 @@ export class SlotEngine {
       for (const s of symbols) {
         goldGained += baseGain * SCATTER_GOLD[s];
       }
-      label = 'Butin éparpillé';
+      label = 'Petite commande';
     }
 
     // Consolation floor: every spin pays at least a fifth of the base gain,

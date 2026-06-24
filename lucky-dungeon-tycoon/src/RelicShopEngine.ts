@@ -35,8 +35,8 @@ export interface RelicUpgradeDef {
 export const RELIC_UPGRADES: readonly RelicUpgradeDef[] = [
   {
     id: 'fortune',
-    name: 'Fortune ancestrale',
-    icon: '🪙',
+    name: 'Recette secrète',
+    icon: '📜',
     description: 'Production globale',
     effect: 'gold',
     perLevel: 0.06,
@@ -46,9 +46,9 @@ export const RELIC_UPGRADES: readonly RelicUpgradeDef[] = [
   },
   {
     id: 'butin',
-    name: 'Veine d’or',
+    name: 'Roue truquée',
     icon: '🎰',
-    description: 'Gains de la machine à sous',
+    description: 'Gains de la roue de la chance',
     effect: 'slot',
     perLevel: 0.08,
     baseCost: 2,
@@ -57,9 +57,9 @@ export const RELIC_UPGRADES: readonly RelicUpgradeDef[] = [
   },
   {
     id: 'frappe',
-    name: 'Perceuse pro',
-    icon: '🔨',
-    description: 'Perçage des coffres-forts',
+    name: 'Chef étoilé',
+    icon: '👨‍🍳',
+    description: 'Réussite des grosses commandes',
     effect: 'boss',
     perLevel: 0.1,
     baseCost: 2,
@@ -68,7 +68,7 @@ export const RELIC_UPGRADES: readonly RelicUpgradeDef[] = [
   },
   {
     id: 'eveil',
-    name: 'Œil nocturne',
+    name: 'Service de nuit',
     icon: '🌙',
     description: 'Gains hors-ligne',
     effect: 'offline',

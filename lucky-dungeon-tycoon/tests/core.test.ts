@@ -210,7 +210,7 @@ test('raid determinator fires only at >= 4h and rng < 0.7', () => {
   // At the threshold with no shields: steals 15%, floored.
   const robbed = raid.applyOfflineRegen(rich, 14_400);
   assert.equal(robbed.state.gold, 850);
-  assert.deepEqual(robbed.logs, ['Raid stole 150 gold']);
+  assert.deepEqual(robbed.logs, ['Vol nocturne : −150 €']);
 
   // rng >= 0.7: eligible window but no attack.
   const safe = new GameStateManager('t3', neverRaid);
@@ -223,7 +223,7 @@ test('a shield absorbs the raid and is consumed', () => {
   const out = gsm.applyOfflineRegen(guarded, 14_400);
   assert.equal(out.state.shields, 1);
   assert.equal(out.state.gold, 1_000);
-  assert.deepEqual(out.logs, ['Shield blocked raid']);
+  assert.deepEqual(out.logs, ['Glacière : vol bloqué']);
 });
 
 test('applyOfflineRegen never mutates its input and tolerates bad windows', () => {
@@ -358,7 +358,7 @@ test('loadStateWithLogs applies offline events on launch', () => {
   const { state, logs } = gsm.loadStateWithLogs();
   assert.equal(state.energy, 30); // 14400 / 300 = 48 regenerated, capped at 30
   assert.equal(state.gold, 850);
-  assert.ok(logs.some((l) => l.includes('Raid stole 150 gold')));
+  assert.ok(logs.some((l) => l.includes('Vol nocturne : −150 €')));
 });
 
 test('clearState removes the record so the next load is fresh', () => {

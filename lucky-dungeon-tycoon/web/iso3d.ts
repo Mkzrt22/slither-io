@@ -39,11 +39,11 @@ import {
 const MODEL_DIR = 'models/';
 const BUILDING_MODELS: Record<BuildingType, string> = {
   mine: 'city/cafe.glb', // Café
-  farm: 'city/shop.glb', // Boutique
-  sawmill: 'city/restaurant.glb', // Restaurant
-  market: 'city/market.glb', // Supermarché
-  blacksmith: 'city/office.glb', // Bureau
-  castle: 'city/bank.glb', // Banque
+  farm: 'city/shop.glb', // Boulangerie
+  sawmill: 'city/restaurant.glb', // Diner
+  market: 'city/market.glb', // Pizzeria
+  blacksmith: 'city/office.glb', // Restaurant
+  castle: 'city/bank.glb', // Grand Chef
 };
 /** Footprint each model is normalised to (world units), before level growth. */
 const MODEL_FOOTPRINT: Record<BuildingType, number> = {
@@ -104,6 +104,17 @@ interface Building3D {
 interface Worker3D { mesh: THREE.Group; x: number; z: number; tx: number; tz: number; speed: number; pause: number; phase: number; }
 interface Coin3D { group: THREE.Group; vy: number; life: number; }
 interface Smoke3D { mesh: THREE.Mesh; vy: number; life: number; }
+/**
+ * A delivery scooter shuttling food between the plaza hub and an eatery. It
+ * drives out with a glowing food box, pauses at each end, then heads back —
+ * the genre's signature "things moving along the routes" bustle.
+ */
+interface Scooter3D {
+  mesh: THREE.Group;
+  hub: THREE.Vector3; dest: THREE.Vector3;
+  leg: 'out' | 'back';
+  t: number; speed: number; pause: number;
+}
 
 export function webglAvailable(): boolean {
   try {
@@ -141,6 +152,7 @@ export class Iso3DScene {
 
   private readonly buildings = new Map<BuildingType, Building3D>();
   private workers: Worker3D[] = [];
+  private scooters: Scooter3D[] = [];
   private coins: Coin3D[] = [];
   private smoke: Smoke3D[] = [];
   private floaters: { sprite: THREE.Sprite; life: number; vy: number }[] = [];
@@ -730,6 +742,65 @@ export class Iso3DScene {
     return { mesh: group, x, z, tx: x, tz: z, speed: 1.0 + Math.random(), pause: Math.random() * 2, phase: Math.random() * 6 };
   }
 
+  /** Builds a little delivery scooter with a rider and a glowing food box. */
+  private makeScooterMesh(): THREE.Group {
+    const g = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8533a, roughness: 0.55, metalness: 0.1 });
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.62), bodyMat);
+    deck.position.y = 0.24; deck.castShadow = true; g.add(deck);
+    const front = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.34, 0.12), bodyMat);
+    front.position.set(0, 0.36, 0.3); front.castShadow = true; g.add(front);
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.8 });
+    for (const wz of [0.28, -0.28]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.07, 12), wheelMat);
+      w.rotation.z = Math.PI / 2; w.position.set(0, 0.12, wz); g.add(w);
+    }
+    // Glowing insulated food box on the back — the package that's "in transit".
+    const boxMat = new THREE.MeshStandardMaterial({
+      color: 0xf4b942, emissive: 0xff8c1a, emissiveIntensity: 0.25, roughness: 0.5,
+    });
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.3, 0.28), boxMat);
+    box.position.set(0, 0.46, -0.28); box.castShadow = true; g.add(box);
+    this.nightMats.push(boxMat); // the box glows warmer at dusk
+    const rider = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.1, 0.2, 4, 8),
+      new THREE.MeshStandardMaterial({ color: 0x2f55c8, roughness: 0.7 }),
+    );
+    rider.position.set(0, 0.5, 0.04); rider.castShadow = true; g.add(rider);
+    const helmet = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.4 }),
+    );
+    helmet.position.set(0, 0.72, 0.04); g.add(helmet);
+    g.scale.setScalar(0.9);
+    this.world.add(g);
+    return g;
+  }
+
+  /** Spawns one scooter running between the plaza hub and an eatery tile. */
+  private makeScooter(dest: BuildingType): Scooter3D {
+    const hubXZ = tileToWorld(LAYOUT.market.gx, LAYOUT.market.gy);
+    const dXZ = tileToWorld(LAYOUT[dest].gx, LAYOUT[dest].gy);
+    return {
+      mesh: this.makeScooterMesh(),
+      hub: new THREE.Vector3(hubXZ.x, 0, hubXZ.z),
+      dest: new THREE.Vector3(dXZ.x, 0, dXZ.z),
+      leg: 'out', t: Math.random(), speed: 0.5 + Math.random() * 0.35, pause: Math.random(),
+    };
+  }
+
+  /** Keeps the scooter fleet matched to the built eateries (one route each). */
+  private refreshScooters(built: BuildingType[]): void {
+    const routes = built.filter((t) => t !== 'market'); // hub is the Pizzeria tile
+    const want = Math.min(5, routes.length);
+    while (this.scooters.length > want) {
+      const s = this.scooters.pop(); if (s) this.world.remove(s.mesh);
+    }
+    while (this.scooters.length < want) {
+      this.scooters.push(this.makeScooter(routes[this.scooters.length % routes.length]));
+    }
+  }
+
   private applyTheme(village: number): void {
     const theme = THEMES[(Math.max(1, village) - 1) % THEMES.length];
     this.themeVillage = village;
@@ -744,16 +815,19 @@ export class Iso3DScene {
 
   public setState(state: UserProfile): void {
     let total = 0;
+    const built: BuildingType[] = [];
     for (const type of BUILDING_TYPES) {
       const b = this.buildings.get(type)!;
       b.level = Math.max(0, Math.floor(state.buildings[type]));
       b.group.visible = b.level > 0;
+      if (b.level > 0) built.push(type);
       total += b.level;
     }
     if (state.village !== this.themeVillage) this.applyTheme(state.village);
     const target = Math.min(14, 3 + Math.floor(total / 3));
     while (this.workers.length < target) this.workers.push(this.makeWorker());
     while (this.workers.length > target) { const w = this.workers.pop(); if (w) this.world.remove(w.mesh); }
+    this.refreshScooters(built);
     this.ensureRunning();
   }
 
@@ -824,14 +898,23 @@ export class Iso3DScene {
     m.map?.dispose(); m.dispose();
   }
 
+  /** Curls of white kitchen steam from whichever eateries are cooking. */
   private spawnSmoke(): void {
-    const b = this.buildings.get('blacksmith');
-    if (!b || !b.group.visible) return;
-    const mat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.5, roughness: 1 });
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), mat);
-    puff.position.set(b.group.position.x + 0.5, b.shownHeight + 1.4, b.group.position.z - 0.4);
+    const kitchens: BuildingType[] = ['sawmill', 'market', 'blacksmith', 'castle'];
+    const open = kitchens.filter((t) => this.buildings.get(t)?.group.visible);
+    if (open.length === 0) return;
+    const b = this.buildings.get(open[(Math.random() * open.length) | 0])!;
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xf2f2f2, transparent: true, opacity: 0.45, roughness: 1,
+    });
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), mat);
+    puff.position.set(
+      b.group.position.x + (Math.random() - 0.5) * 0.8,
+      b.shownHeight + 1.3,
+      b.group.position.z - 0.3,
+    );
     this.world.add(puff);
-    this.smoke.push({ mesh: puff, vy: 0.7 + Math.random() * 0.4, life: 0 });
+    this.smoke.push({ mesh: puff, vy: 0.6 + Math.random() * 0.4, life: 0 });
   }
 
   private updateCameraFrustum(): void {
@@ -905,6 +988,24 @@ export class Iso3DScene {
         w.mesh.rotation.y = Math.atan2(dx, dz);
         w.mesh.position.y = Math.abs(Math.sin((this.t + w.phase) * 9)) * 0.07;
       }
+    }
+
+    // Delivery scooters shuttle food between the hub and each eatery.
+    for (const s of this.scooters) {
+      if (s.pause > 0) { s.pause -= dt; continue; }
+      const from = s.leg === 'out' ? s.hub : s.dest;
+      const to = s.leg === 'out' ? s.dest : s.hub;
+      s.t += s.speed * this.boostSpeed * dt;
+      if (s.t >= 1) {
+        s.t = 0; s.leg = s.leg === 'out' ? 'back' : 'out';
+        s.pause = (0.4 + Math.random() * 0.6) / this.boostSpeed; // loading/unloading
+        continue;
+      }
+      const x = from.x + (to.x - from.x) * s.t;
+      const z = from.z + (to.z - from.z) * s.t;
+      s.mesh.position.set(x, 0, z);
+      s.mesh.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+      s.mesh.position.y = Math.abs(Math.sin((this.t + s.t) * 14)) * 0.025; // road bounce
     }
 
     for (const c of this.coins) {

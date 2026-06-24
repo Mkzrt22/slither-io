@@ -26,24 +26,24 @@ export interface BuildingConfig {
 
 export const BUILDING_CONFIGS: Readonly<Record<BuildingType, BuildingConfig>> =
   Object.freeze({
-    mine:       { name: 'Café',        icon: '☕', baseCost: 30,      costGrowth: 1.18, baseProd: 1 },
-    farm:       { name: 'Boutique',    icon: '🛍️', baseCost: 130,     costGrowth: 1.19, baseProd: 4 },
-    sawmill:    { name: 'Restaurant',  icon: '🍔', baseCost: 700,     costGrowth: 1.20, baseProd: 16 },
-    market:     { name: 'Supermarché', icon: '🏪', baseCost: 3_500,   costGrowth: 1.21, baseProd: 60 },
-    blacksmith: { name: 'Bureau',      icon: '🏢', baseCost: 18_000,  costGrowth: 1.22, baseProd: 240 },
-    castle:     { name: 'Banque',      icon: '🏦', baseCost: 95_000,  costGrowth: 1.23, baseProd: 1_000 },
+    mine:       { name: 'Café',         icon: '☕', baseCost: 30,      costGrowth: 1.18, baseProd: 1 },
+    farm:       { name: 'Boulangerie',  icon: '🥐', baseCost: 130,     costGrowth: 1.19, baseProd: 4 },
+    sawmill:    { name: 'Diner',        icon: '🍔', baseCost: 700,     costGrowth: 1.20, baseProd: 16 },
+    market:     { name: 'Pizzeria',     icon: '🍕', baseCost: 3_500,   costGrowth: 1.21, baseProd: 60 },
+    blacksmith: { name: 'Restaurant',   icon: '🍝', baseCost: 18_000,  costGrowth: 1.22, baseProd: 240 },
+    castle:     { name: 'Grand Chef',   icon: '🍽️', baseCost: 95_000,  costGrowth: 1.23, baseProd: 1_000 },
   });
 
-/** City-tier names, cycled with the numeric tier for deeper cities. */
+/** Restaurant-empire tier names, cycled with the numeric tier for deeper runs. */
 export const VILLAGE_NAMES: readonly string[] = [
-  'Quartier',
-  'Ville',
-  'Grande ville',
-  'Métropole',
-  'Mégapole',
-  'Capitale',
-  'Région',
-  'Cité mondiale',
+  'Food Truck',
+  'Snack Bar',
+  'Bistro',
+  'Brasserie',
+  'Restaurant',
+  'Étoilé',
+  'Chaîne',
+  'Empire Gourmet',
 ];
 
 /** Permanent global production multiplier gained per village beyond the first. */
@@ -206,10 +206,10 @@ export class VillageEngine {
   public static getSynergyText(type: BuildingType, level: number): string {
     const l = VillageEngine.clampLevel(level);
     switch (type) {
-      case 'mine': return `🎰 +${2 * l}% gains machine à sous`;
-      case 'sawmill': return `🏭 +${(1.5 * l).toFixed(1)}% production`;
+      case 'mine': return `🎰 +${2 * l}% gains roue de la chance`;
+      case 'sawmill': return `🍳 +${(1.5 * l).toFixed(1)}% production cuisine`;
       case 'castle': return `📈 +${2 * l}% production`;
-      case 'blacksmith': return `💥 +${3 * l}% perçage de coffre`;
+      case 'blacksmith': return `💥 +${3 * l}% grosses commandes`;
       case 'market': return `💎 +${Math.floor(l / 8)} gemme(s) par jackpot`;
       case 'farm': return `🌙 hors-ligne ${Math.round(Math.min(1, 0.5 + 0.01 * l) * 100)}% · ${8 + Math.floor(l / 5)} h`;
     }

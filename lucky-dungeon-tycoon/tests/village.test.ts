@@ -97,9 +97,9 @@ test('passive rate includes buildings scaled by the global multiplier', () => {
 });
 
 test('village names cycle with a tier marker', () => {
-  assert.equal(VillageEngine.getVillageName(1), 'Quartier');
-  assert.equal(VillageEngine.getVillageName(3), 'Grande ville');
-  assert.equal(VillageEngine.getVillageName(9), 'Quartier ✦2');
+  assert.equal(VillageEngine.getVillageName(1), 'Food Truck');
+  assert.equal(VillageEngine.getVillageName(3), 'Bistro');
+  assert.equal(VillageEngine.getVillageName(9), 'Food Truck ✦2');
 });
 
 // ---------------------------------------------------------------------------
