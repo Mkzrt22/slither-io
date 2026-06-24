@@ -1,7 +1,7 @@
 {
-  "name": "Lucky Chef Tycoon",
-  "short_name": "Chef Tycoon",
-  "description": "Build a restaurant empire: serve dishes, spin the lucky wheel, and stack cash.",
+  "name": "Chef Factory Tycoon",
+  "short_name": "Chef Factory",
+  "description": "Run a food production line: balance stations, fix bottlenecks, hire staff, and scale your kitchen empire.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

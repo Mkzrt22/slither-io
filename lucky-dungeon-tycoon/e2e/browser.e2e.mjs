@@ -1,12 +1,10 @@
 /**
- * browser.e2e.mjs — Headless-browser end-to-end test of the web UI.
+ * browser.e2e.mjs — Headless end-to-end test of Chef Factory Tycoon.
  *
- * Self-contained: starts its own static server over dist-web (run
- * `npm run build:web` first — `npm run test:e2e` does both), drives the game
- * in Chromium, and exits non-zero on any failed expectation or console error.
- *
- * Requires Playwright with Chromium installed (locally or globally):
- *   npm i -D playwright && npx playwright install chromium
+ * Serves dist-web (run `npm run build:web` first — `npm run test:e2e` does
+ * both), drives the game in Chromium, and fails on any broken expectation or
+ * console error. Validates that the simulation runs (cash accrues), the 3D
+ * factory canvas mounts, stations are upgradeable, and every tab renders.
  */
 
 import { createServer } from 'node:http';
@@ -17,185 +15,103 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-
 function loadPlaywright() {
-  try {
-    return require('playwright');
-  } catch {
-    const globalRoot = execSync('npm root -g').toString().trim();
-    return require(path.join(globalRoot, 'playwright'));
-  }
+  try { return require('playwright'); }
+  catch { return require(path.join(execSync('npm root -g').toString().trim(), 'playwright')); }
 }
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist-web');
-const MIME = {
-  '.html': 'text/html',
-  '.js': 'text/javascript',
-  '.css': 'text/css',
-  '.webmanifest': 'application/manifest+json',
-  '.png': 'image/png',
-};
-
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.glb': 'model/gltf-binary' };
 const server = createServer(async (req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (urlPath.endsWith('/')) urlPath += 'index.html';
   const filePath = path.join(ROOT, path.normalize(urlPath));
-  if (!filePath.startsWith(ROOT)) {
-    res.writeHead(403).end();
-    return;
-  }
+  if (!filePath.startsWith(ROOT)) { res.writeHead(403).end(); return; }
   try {
     const body = await readFile(filePath);
     res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] ?? 'application/octet-stream' });
     res.end(body);
-  } catch {
-    res.writeHead(404).end();
-  }
+  } catch { res.writeHead(404).end(); }
 });
 
-function expect(condition, label) {
-  if (!condition) throw new Error(`expectation failed: ${label}`);
-  console.log(`ok - ${label}`);
-}
+function expect(cond, label) { if (!cond) throw new Error(`expectation failed: ${label}`); console.log(`ok - ${label}`); }
 
 const { chromium } = loadPlaywright();
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'] });
 
 try {
-  const page = await browser.newPage({ viewport: { width: 420, height: 800 } });
+  const page = await browser.newPage({ viewport: { width: 430, height: 860 } });
   const consoleErrors = [];
-  page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
-  page.on('pageerror', (err) => consoleErrors.push(`pageerror: ${err.message}`));
-
-  // Track CC0 model + GLTFLoader fetches to prove the 3D asset pipeline works.
-  const glbStatuses = [];
-  let gltfLoaderStatus = 0;
-  page.on('response', (r) => {
-    const u = r.url();
-    if (u.endsWith('.glb')) glbStatuses.push(r.status());
-    if (u.endsWith('GLTFLoader.js')) gltfLoaderStatus = r.status();
-  });
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
 
   await page.goto(`${base}/`, { waitUntil: 'networkidle' });
 
-  // Boot: the controller's first state:updated renders a fresh profile.
-  await page.waitForFunction(() => document.getElementById('stat-energy').textContent === '30/30');
-  expect((await page.locator('#stat-gems').innerText()) === '25', 'fresh profile boots with 25 gems');
+  // Boot: fresh profile with 25 gems.
+  await page.waitForFunction(() => document.getElementById('stat-gems')?.textContent === '25', null, { timeout: 10000 });
+  expect(true, 'fresh profile boots with 25 gems');
 
-  // The village is the landing tab and lists six buildings.
-  expect((await page.locator('#buildings-list .card').count()) === 6, 'village lists 6 buildings');
-
-  // A fresh player is greeted by the daily-reward modal; claim to dismiss it.
+  // Daily reward greets the player; claim to dismiss.
   await page.waitForSelector('#daily-modal.visible', { timeout: 5000 });
-  expect(true, 'daily reward modal greets a fresh player');
   await page.click('#btn-daily-claim');
   await page.waitForFunction(() => !document.getElementById('daily-modal').classList.contains('visible'), null, { timeout: 3000 });
+  expect(true, 'daily reward modal claimed');
 
-  // The Donjon (slot) tab holds the spin machine.
-  await page.click('nav button[data-tab="tab-mine"]');
+  // The factory tab is active and shows live line stats.
+  expect(await page.locator('#tab-factory').evaluate((e) => e.classList.contains('active')), 'factory tab is the landing tab');
+  const rev = await page.locator('#ls-revenue').innerText();
+  expect(/[1-9]/.test(rev), `line reports revenue (${rev})`);
 
-  // Spinning consumes energy, pays out, and feeds the log.
-  const logBefore = await page.locator('#log li').count();
-  for (let i = 0; i < 5; i++) await page.click('#btn-spin');
-  expect((await page.locator('#stat-energy').innerText()) === '25/30', '5 spins consume 5 energy');
-  expect((await page.locator('#stat-gold').innerText()) !== '0', 'spins paid out gold');
-  expect((await page.locator('#log li').count()) >= Math.min(9, logBefore + 5), 'each spin logged');
+  // The 3D factory canvas mounted with a WebGL context.
+  const hasGL = await page.evaluate(() => {
+    const c = document.querySelector('#factory-host canvas');
+    return !!c && !!(c.getContext('webgl2') || c.getContext('webgl'));
+  });
+  expect(hasGL, '3D factory canvas has a WebGL context');
 
-  // Draining the tank disables the button; a spin attempt at 0 energy
-  // (e.g. a queued tap racing the disable) opens the refill popup.
-  for (let i = 0; i < 25; i++) await page.click('#btn-spin');
-  expect(await page.locator('#btn-spin').isDisabled(), 'spin button disabled at 0 energy');
-  await page.evaluate(() =>
-    document.getElementById('btn-spin').dispatchEvent(new MouseEvent('click', { bubbles: true })),
-  );
-  await page.waitForSelector('#energy-popup.visible', { timeout: 3000 });
-  expect(true, 'out-of-energy popup shown');
+  // The simulation runs: cash climbs above zero on its own.
+  await page.waitForFunction(() => document.getElementById('stat-cash')?.textContent !== '0', null, { timeout: 15000 });
+  expect(true, 'simulation accrues cash over time');
 
-  // Buying the gem pack from the popup overfills past maxEnergy. Gem
-  // jackpots during the drain may have raised the balance, so assert the
-  // delta rather than an absolute value.
-  const gemsBefore = Number(await page.locator('#stat-gems').innerText());
-  await page.click('#btn-popup-buy');
-  await page.waitForFunction(() => document.getElementById('stat-energy').textContent === '50/30');
-  const gemsAfter = Number(await page.locator('#stat-gems').innerText());
-  expect(gemsAfter === gemsBefore - 10, `purchase deducted 10 gems (${gemsBefore} -> ${gemsAfter})`);
+  // Gestion: five station cards render and one is flagged as the bottleneck.
+  await page.click('nav button[data-tab="tab-manage"]');
+  expect((await page.locator('#station-list .station-card').count()) === 5, 'five production stations listed');
+  await page.waitForFunction(() => document.querySelectorAll('#station-list .station-card.is-bottleneck').length >= 1, null, { timeout: 4000 });
+  expect(true, 'a bottleneck station is highlighted');
 
-  // Persistence: the purchased energy overfill must survive a reload. (Gold
-  // is read from the model after reload rather than the mid-animation HUD
-  // text, which eases toward its target over a few hundred ms.)
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForFunction(() => document.getElementById('stat-energy')?.textContent === '50/30', null, { timeout: 15000 });
-  expect(true, 'paid energy overfill survived reload');
-  const goldAfter = await page.locator('#stat-gold').innerText();
-  expect(goldAfter !== '0', `gold persisted across reload (${goldAfter})`);
+  // Wait until the cheapest upgrade is affordable, then buy it.
+  const firstBuy = '#station-list .station-card:first-child [data-buy]';
+  await page.waitForFunction((sel) => { const b = document.querySelector(sel); return b && !b.disabled; }, firstBuy, { timeout: 20000 });
+  const lvlBefore = await page.locator('#station-list .station-card:first-child [data-level]').innerText();
+  await page.click(firstBuy);
+  const lvlAfter = await page.locator('#station-list .station-card:first-child [data-level]').innerText();
+  expect(Number(lvlAfter) === Number(lvlBefore) + 1, `station upgraded (${lvlBefore} -> ${lvlAfter})`);
 
-  // After reload the village is the active tab again; go to the Donjon tab.
-  await page.click('nav button[data-tab="tab-mine"]');
+  // Opening a station avatar reveals the detail sheet with metrics.
+  await page.click('#station-list .station-card:first-child .sc-avatar');
+  await page.waitForFunction(() => document.getElementById('station-sheet').classList.contains('open'), null, { timeout: 3000 });
+  expect((await page.locator('#st-name').innerText()).length > 0, 'station detail sheet opens with metrics');
+  await page.evaluate(() => document.getElementById('btn-station-close').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  await page.waitForFunction(() => !document.getElementById('station-sheet').classList.contains('open'), null, { timeout: 3000 });
+  expect(true, 'station sheet closes');
 
-  // Engaging the floor guardian shows the HP bar.
-  await page.click('#btn-boss');
-  await page.waitForSelector('#boss-panel:not([hidden])', { timeout: 3000 });
-  expect(true, 'boss fight engages and shows the HP bar');
+  // Research tab lists its upgrades.
+  await page.click('nav button[data-tab="tab-research"]');
+  expect((await page.locator('#research-list .research-card').count()) >= 5, 'research tree renders');
 
-  // Village is a full-screen map; upgrades live in a slide-up sheet opened by a
-  // button. Open it before touching the building cards.
-  await page.click('nav button[data-tab="tab-village"]');
-  expect((await page.locator('#buildings-list .card').count()) === 6, 'building list renders 6 cards');
-  await page.click('#btn-open-build');
-  await page.waitForSelector('#buildings-sheet.open', { timeout: 3000 });
-  expect(true, 'upgrade sheet opens from the map');
-  const mineLvlBefore = await page.locator('#buildings-list .card:first-child [data-level]').innerText();
-  await page.click('#buildings-list .card:first-child [data-buy]');
-  const mineLvlAfter = await page.locator('#buildings-list .card:first-child [data-level]').innerText();
-  expect(Number(mineLvlAfter) === Number(mineLvlBefore) + 1, `building upgraded (${mineLvlBefore} -> ${mineLvlAfter})`);
-
-  // Bulk-buy: switching to ×10 buys ten levels in one click (gold permitting).
-  await page.click('#buy-modes button[data-mode="10"]');
-  const before10 = Number(await page.locator('#buildings-list .card:first-child [data-level]').innerText());
-  const disabled10 = await page.locator('#buildings-list .card:first-child [data-buy]').isDisabled();
-  if (!disabled10) {
-    await page.click('#buildings-list .card:first-child [data-buy]');
-    const after10 = Number(await page.locator('#buildings-list .card:first-child [data-level]').innerText());
-    expect(after10 === before10 + 10, `×10 bought ten levels (${before10} -> ${after10})`);
-  } else {
-    expect(true, '×10 disabled (not enough gold) — toggle still works');
-  }
-  await page.click('#buy-modes button[data-mode="1"]');
-
-  // Close the upgrade sheet (it overlays the rest of the UI while open).
-  await page.click('#btn-build-close');
-  await page.waitForFunction(() => !document.getElementById('buildings-sheet').classList.contains('open'), null, { timeout: 3000 });
-  expect(true, 'upgrade sheet closes');
-
-  // Settings modal opens and the sound toggle flips.
-  await page.click('#btn-settings');
-  await page.waitForSelector('#settings-modal.visible', { timeout: 3000 });
-  const soundLabel1 = await page.locator('#btn-sound').innerText();
-  await page.click('#btn-sound');
-  const soundLabel2 = await page.locator('#btn-sound').innerText();
-  expect(soundLabel1 !== soundLabel2, 'sound toggle flips label');
-  await page.click('#btn-settings-close');
-  await page.waitForFunction(() => !document.getElementById('settings-modal').classList.contains('visible'), null, { timeout: 3000 });
-  expect(true, 'settings modal closes');
-
-  // The quest book renders with progress bars.
-  await page.click('nav button[data-tab="tab-quests"]');
-  expect((await page.locator('#quests-list .card').count()) >= 5, 'quest book renders');
-
-  // The Ascension tab shows the relic shop with its four upgrades; with no
-  // relics yet, every buy button is disabled.
+  // Prestige tab renders; with no run-cash the star button is locked.
   await page.click('nav button[data-tab="tab-prestige"]');
-  expect((await page.locator('#relic-shop-list .relic-card').count()) === 4, 'relic shop lists 4 upgrades');
-  expect((await page.locator('#relic-shop-list .r-buy:disabled').count()) === 4, 'relic buys locked without relics');
+  await page.waitForFunction(() => document.getElementById('btn-prestige').disabled === true, null, { timeout: 3000 });
+  expect(true, 'prestige locked below the threshold');
 
-  // 3D asset pipeline: the vendored GLTFLoader and the CC0 building models must
-  // all have loaded over the import map without error.
-  await page.waitForFunction(() => true, null, { timeout: 500 }).catch(() => {});
-  expect(gltfLoaderStatus === 200, `GLTFLoader vendored & served (status ${gltfLoaderStatus})`);
-  const okGlb = glbStatuses.filter((s) => s === 200).length;
-  expect(okGlb >= 6, `at least 6 CC0 models loaded (got ${okGlb}: [${glbStatuses.join(',')}])`);
+  // Persistence: progress survives a reload.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForFunction(() => document.getElementById('stat-gems') !== null, null, { timeout: 10000 });
+  await page.click('nav button[data-tab="tab-manage"]');
+  const lvlReloaded = await page.locator('#station-list .station-card:first-child [data-level]').innerText();
+  expect(Number(lvlReloaded) >= Number(lvlAfter), `upgrade persisted across reload (${lvlReloaded})`);
 
   expect(consoleErrors.length === 0, `no console errors (got: ${consoleErrors.join(' | ')})`);
   console.log('BROWSER E2E PASSED');

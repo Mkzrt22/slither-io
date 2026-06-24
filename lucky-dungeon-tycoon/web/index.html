@@ -3,19 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Lucky Chef Tycoon</title>
+  <title>Chef Factory Tycoon</title>
   <link rel="manifest" href="./manifest.webmanifest" />
-  <meta name="theme-color" content="#15100a" />
+  <meta name="theme-color" content="#12161d" />
   <link rel="icon" type="image/png" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Chef Tycoon" />
-  <link rel="stylesheet" href="./web/styles.css" />
+  <meta name="apple-mobile-web-app-title" content="Chef Factory" />
+  <link rel="stylesheet" href="./web/factory/factory.css" />
   <script type="importmap">
     { "imports": {
-      "three": "./vendor/three.module.js",
-      "three/examples/jsm/loaders/GLTFLoader.js": "./vendor/jsm/loaders/GLTFLoader.js"
+      "three": "./vendor/three.module.js"
     } }
   </script>
 </head>
@@ -23,205 +22,140 @@
   <div id="app">
     <!-- ============================= TOP HUD ============================= -->
     <header class="hud">
-      <div class="chip chip-gold">
-        <span class="chip-ic">🪙</span>
-        <span class="chip-val" id="stat-gold">0</span>
-      </div>
-      <div class="chip chip-gem">
-        <span class="chip-ic">💎</span>
-        <span class="chip-val" id="stat-gems">0</span>
-      </div>
-      <div class="chip chip-energy">
-        <span class="chip-ic">⚡</span>
-        <span class="chip-val" id="stat-energy">0/0</span>
-      </div>
-      <div class="chip chip-relic">
-        <span class="chip-ic">⭐</span>
-        <span class="chip-val" id="stat-relics">0</span>
-      </div>
+      <div class="chip chip-cash"><span class="chip-ic">💶</span><span class="chip-val" id="stat-cash">0</span></div>
+      <div class="chip chip-gem"><span class="chip-ic">💎</span><span class="chip-val" id="stat-gems">0</span></div>
+      <div class="chip chip-star"><span class="chip-ic">⭐</span><span class="chip-val" id="stat-stars">0</span></div>
       <button class="hud-gear" id="btn-settings" aria-label="Réglages">⚙️</button>
     </header>
 
     <main>
-      <!-- ===================== TAB: BONUS (lucky wheel) ===================== -->
-      <section id="tab-mine" class="tab">
-        <div class="scene" id="scene">
-          <div class="scene-wall"></div>
-          <div class="scene-pillars"></div>
-          <div class="scene-floor"></div>
-          <div class="torch torch-l"><span class="flame"></span></div>
-          <div class="torch torch-r"><span class="flame"></span></div>
-
-          <div class="floor-banner">SERVICE <span id="stat-level">1</span></div>
-          <div class="rate-badge">💵 <span id="stat-rate">0</span> /s</div>
-
-          <!-- Big-order stage (hidden unless serving) -->
-          <div class="boss-stage" id="boss-panel" hidden>
-            <div class="boss-name" id="boss-title">Grosse commande</div>
-            <div class="boss-sprite" id="boss-sprite">🍱</div>
-            <div class="boss-hpbar">
-              <div class="boss-hp-fill" id="boss-hp-fill"></div>
-              <span class="boss-hp-text" id="boss-hp-text"></span>
-            </div>
-          </div>
-
-          <!-- Slot machine -->
-          <div class="machine" id="machine">
-            <div class="machine-marquee">
-              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-            </div>
-            <div class="reel-window" id="reel">
-              <div class="reel-col"><div class="reel-strip"></div></div>
-              <div class="reel-col"><div class="reel-strip"></div></div>
-              <div class="reel-col"><div class="reel-strip"></div></div>
-              <div class="payline"></div>
-            </div>
-            <div class="machine-base"></div>
-          </div>
-
-          <div class="hoard" id="hoard"></div>
-          <div class="reel-label" id="reel-label">Tournez la roue&nbsp;!</div>
-          <canvas id="fx"></canvas>
+      <!-- ========================= TAB: USINE ========================= -->
+      <section id="tab-factory" class="tab active">
+        <div class="line-stats">
+          <div class="ls-item"><span class="ls-lbl">Revenu</span><span class="ls-val" id="ls-revenue">0 €/s</span></div>
+          <div class="ls-item"><span class="ls-lbl">Cadence</span><span class="ls-val" id="ls-throughput">0 /min</span></div>
+          <div class="ls-item ls-bottleneck"><span class="ls-lbl">Goulot</span><span class="ls-val" id="ls-bottleneck">—</span></div>
         </div>
 
-        <button id="btn-spin" class="btn-spin">
-          <span class="btn-spin-glow"></span>
-          <span class="btn-spin-main">TOURNER</span>
-          <span class="btn-spin-sub">1 ⚡</span>
-        </button>
-
-        <div class="action-row">
-          <button id="btn-boss" class="btn-action btn-boss">🔥<span>Lancer la commande</span></button>
-          <button id="btn-flee" class="btn-action btn-flee" hidden>🏃<span>Annuler</span></button>
-          <button id="btn-upgrade" class="btn-action btn-upgrade">⬆️<span>Améliorer</span></button>
-        </div>
-        <div class="action-row">
-          <button id="btn-buy-energy" class="btn-action">💎<span>+50 énergie</span></button>
-          <button id="btn-watch-ad" class="btn-action">📺<span>Pub +10 ⚡</span></button>
+        <div class="stage-wrap">
+          <div id="factory-host" class="factory-scene"></div>
+          <div class="stage-hint">👆 Touchez une station pour la gérer · glissez pour pivoter</div>
         </div>
 
-        <ul id="log" class="log" aria-label="Journal"></ul>
-      </section>
-
-      <!-- ===================== TAB: VILLAGE (carte plein écran) ===================== -->
-      <section id="tab-village" class="tab tab-map active">
-        <!-- Floating header over the map -->
-        <div class="map-head">
-          <div class="village-id">
-            <span class="village-emoji" id="village-emoji">🚚</span>
-            <div>
-              <div class="village-name" id="village-name">Food Truck</div>
-              <div class="village-mult" id="village-mult">×1.0 production</div>
-            </div>
-          </div>
-          <div class="boost-badge" id="boost-badge" hidden>🚀 ×2 0:00</div>
+        <div class="factory-actions">
+          <button id="btn-rush" class="btn-rush">🚀 Coup de feu ×3 (pub · 60s)</button>
+          <button id="btn-fix-bottleneck" class="btn-fix">🔧 Améliorer le goulot</button>
         </div>
 
-        <!-- The full-screen 3D map — tap a building to upgrade it -->
-        <div class="iso-wrap">
-          <div id="iso-host" class="iso-scene"></div>
-          <div class="iso-hint">👆 Touchez un restaurant pour l’améliorer · glissez pour pivoter</div>
-
-          <!-- Next-restaurant objective, floating at the bottom of the map -->
-          <div class="advance-strip">
-            <div class="advance-label"><span>🚩 Restaurant suivant</span><span id="advance-count">0 / 24</span></div>
-            <div class="advance-track"><div class="advance-fill" id="advance-fill"></div></div>
-            <button id="btn-advance" class="btn-advance">Ouvrir le restaurant suivant</button>
-          </div>
-        </div>
-
-        <!-- Map action bar -->
-        <div class="map-actions">
-          <button id="btn-boost" class="btn-boost">🚀 Boost ×2</button>
-          <button id="btn-open-build" class="btn-build">🍽️ Gérer les restaurants</button>
-        </div>
-
-        <!-- Slide-up upgrade sheet -->
-        <div id="buildings-sheet" class="sheet" aria-hidden="true">
-          <div class="sheet-backdrop" id="sheet-backdrop"></div>
+        <!-- Station detail sheet (slide-up) -->
+        <div id="station-sheet" class="sheet" aria-hidden="true">
+          <div class="sheet-backdrop" id="station-backdrop"></div>
           <div class="sheet-card">
             <div class="sheet-grip"></div>
             <div class="sheet-head">
-              <h2>🍽️ Restaurants</h2>
-              <div class="buy-modes" id="buy-modes">
-                <button data-mode="1" class="active">×1</button>
-                <button data-mode="10">×10</button>
-                <button data-mode="max">Max</button>
+              <div class="st-id"><span class="st-emoji" id="st-emoji">🍳</span>
+                <div><div class="st-name" id="st-name">Station</div><div class="st-blurb" id="st-blurb"></div></div>
               </div>
-              <button id="btn-build-close" class="sheet-close" aria-label="Fermer">✕</button>
+              <button id="btn-station-close" class="sheet-close" aria-label="Fermer">✕</button>
             </div>
-            <div id="buildings-list" class="cards"></div>
+            <div class="st-bottleneck-warn" id="st-warn" hidden>⚠️ C’est le goulot d’étranglement — l’améliorer augmente toute la ligne.</div>
+            <div class="st-metrics">
+              <div class="m"><span class="m-lbl">Niveau</span><span class="m-val" id="st-level">1</span></div>
+              <div class="m"><span class="m-lbl">Cadence</span><span class="m-val" id="st-rate">0/min</span></div>
+              <div class="m"><span class="m-lbl">Tampon</span><span class="m-val" id="st-buffer">0%</span></div>
+              <div class="m"><span class="m-lbl">Ouvriers</span><span class="m-val" id="st-workers">0</span></div>
+            </div>
+            <div class="st-buffer-bar"><div class="st-buffer-fill" id="st-buffer-fill"></div></div>
+            <div class="buy-modes" id="buy-modes">
+              <button data-mode="1" class="active">×1</button>
+              <button data-mode="10">×10</button>
+              <button data-mode="max">Max</button>
+            </div>
+            <button id="btn-upgrade-station" class="btn-upgrade-station">
+              <span id="st-upg-label">Améliorer</span>
+              <span class="cost"><span>💶</span><span id="st-upg-cost">0</span></span>
+            </button>
+            <div class="st-worker-row">
+              <button id="btn-worker-minus" class="wk-btn">−</button>
+              <div class="wk-info"><span id="st-worker-count">0</span> ouvrier(s) ici</div>
+              <button id="btn-worker-plus" class="wk-btn">+</button>
+            </div>
+            <button id="btn-hire-from-station" class="btn-hire">👷 Embaucher (<span id="st-hire-cost">0</span> 💶) · libres : <span id="st-idle">0</span></button>
           </div>
         </div>
       </section>
 
-      <!-- ========================= TAB: QUÊTES ========================= -->
-      <section id="tab-quests" class="tab">
-        <div class="panel-head">
-          <h2>📜 Hauts faits</h2>
-          <p>Accomplissez des objectifs pour gagner des gemmes.</p>
+      <!-- ========================= TAB: GESTION ========================= -->
+      <section id="tab-manage" class="tab">
+        <div class="panel-head"><h2>🏭 Ligne de production</h2><p>Améliorez chaque station et fixez le menu.</p></div>
+        <div class="manage-modes buy-modes" id="manage-modes">
+          <button data-mode="1" class="active">×1</button>
+          <button data-mode="10">×10</button>
+          <button data-mode="max">Max</button>
         </div>
-        <div id="quests-list" class="cards"></div>
+        <div id="station-list" class="cards"></div>
+        <div class="menu-card">
+          <div class="menu-ic">📖</div>
+          <div class="menu-info">
+            <div class="menu-title">Menu · Tier <span id="menu-level">0</span></div>
+            <div class="menu-sub">Prix par plat : <b id="menu-price">0 €</b></div>
+          </div>
+          <button id="btn-menu" class="btn-menu">Améliorer<span class="cost"><span>💶</span><span id="menu-cost">0</span></span></button>
+        </div>
+      </section>
+
+      <!-- ========================= TAB: RECHERCHE ========================= -->
+      <section id="tab-research" class="tab">
+        <div class="panel-head"><h2>🔬 Recherche</h2><p>Améliorations permanentes de toute l’usine.</p></div>
+        <div id="research-list" class="cards"></div>
       </section>
 
       <!-- ========================= TAB: ÉTOILES ========================= -->
       <section id="tab-prestige" class="tab">
-        <div class="panel-head">
-          <h2>⭐ Étoiles</h2>
-          <p id="prestige-note"></p>
-        </div>
+        <div class="panel-head"><h2>⭐ Étoiles Michelin</h2><p id="prestige-note"></p></div>
         <div class="prestige-card">
           <div class="prestige-orb">⭐</div>
           <div class="prestige-mult" id="prestige-mult">×1.0</div>
-          <div class="prestige-track"><div class="prestige-fill" id="prestige-progress"></div></div>
-          <button id="btn-ascend" class="btn-ascend">Décrocher une étoile</button>
-          <p class="prestige-desc">Réinitialise argent, restaurants, services et améliorations.<br/>Conserve gemmes, glacières et étoiles. Chaque étoile : <b>+10 % de revenus</b>, à dépenser dans l’atelier ci-dessous.</p>
-        </div>
-        <div class="relic-shop">
-          <h3>⭐ Atelier des étoiles <span class="relic-balance" id="relic-balance">0 ⭐</span></h3>
-          <p class="relic-shop-desc">Améliorations permanentes — conservées à chaque étoile décrochée.</p>
-          <div id="relic-shop-list"></div>
+          <div class="prestige-track"><div class="prestige-fill" id="prestige-fill"></div></div>
+          <button id="btn-prestige" class="btn-prestige">Décrocher une étoile</button>
+          <p class="prestige-desc">Repart à zéro (ligne, menu, ouvriers, recherche payée en €) mais garde gemmes, étoiles et recherche payée en ⭐. Chaque étoile : <b>+12 % de production permanente</b>.</p>
         </div>
         <div class="stats-card">
           <h3>📊 Statistiques</h3>
           <div id="stats-summary"></div>
-          <div class="mini-stats">
-            <div><span class="mini-ic">🧊</span><span id="stat-shields">0/3</span></div>
-            <div><span class="mini-ic">🍽️</span><span id="stat-buildings">0</span></div>
-          </div>
         </div>
       </section>
     </main>
 
     <!-- ============================= BOTTOM NAV ============================= -->
     <nav class="nav" aria-label="Navigation">
-      <button data-tab="tab-village" class="active"><span class="nav-ic">🍽️</span><span class="nav-lbl">Resto</span></button>
-      <button data-tab="tab-mine"><span class="nav-ic">🎰</span><span class="nav-lbl">Bonus</span></button>
-      <button data-tab="tab-quests"><span class="nav-badge" id="quests-badge"></span><span class="nav-ic">📜</span><span class="nav-lbl">Quêtes</span></button>
+      <button data-tab="tab-factory" class="active"><span class="nav-ic">🏭</span><span class="nav-lbl">Usine</span></button>
+      <button data-tab="tab-manage"><span class="nav-ic">🏗️</span><span class="nav-lbl">Gestion</span></button>
+      <button data-tab="tab-research"><span class="nav-ic">🔬</span><span class="nav-lbl">Recherche</span></button>
       <button data-tab="tab-prestige"><span class="nav-ic">⭐</span><span class="nav-lbl">Étoiles</span></button>
     </nav>
   </div>
 
-  <!-- ============================= OFFLINE EARNINGS ============================= -->
+  <!-- ============================= OFFLINE ============================= -->
   <div id="offline-modal" class="modal" role="dialog" aria-modal="true">
     <div class="modal-card">
       <div class="modal-ic">🌙</div>
-      <h2>Bon retour&nbsp;!</h2>
+      <h2>L’usine a tourné&nbsp;!</h2>
       <p id="offline-sub">Pendant votre absence&nbsp;:</p>
-      <div class="offline-amount" id="offline-amount">+0</div>
-      <p class="offline-detail" id="offline-detail"></p>
+      <div class="big-amount" id="offline-amount">+0 €</div>
+      <p class="modal-detail" id="offline-detail"></p>
       <button id="btn-offline-x2" class="btn-modal-primary">📺 Doubler (×2) via pub</button>
-      <button id="btn-offline-ok" class="btn-modal">Récupérer</button>
+      <button id="btn-offline-ok" class="btn-modal">Encaisser</button>
     </div>
   </div>
 
-  <!-- ============================= DAILY REWARD ============================= -->
+  <!-- ============================= DAILY ============================= -->
   <div id="daily-modal" class="modal" role="dialog" aria-modal="true">
     <div class="modal-card">
       <div class="modal-ic">🎁</div>
-      <h2>Récompense du jour</h2>
+      <h2>Prime du jour</h2>
       <p id="daily-streak">Jour 1</p>
-      <div class="offline-amount" id="daily-reward">+0</div>
+      <div class="big-amount" id="daily-reward">+0</div>
       <button id="btn-daily-claim" class="btn-modal-primary">Récupérer</button>
     </div>
   </div>
@@ -231,37 +165,20 @@
     <div class="modal-card">
       <div class="modal-ic">⚙️</div>
       <h2>Réglages</h2>
-      <button id="btn-sound" class="btn-modal">🔊 Son : activé</button>
+      <button id="btn-buy-cash" class="btn-modal">💎 Échanger 10 gemmes → cash</button>
       <button id="btn-export" class="btn-modal">📤 Exporter la sauvegarde</button>
       <button id="btn-import" class="btn-modal">📥 Importer une sauvegarde</button>
-      <button id="btn-reset" class="btn-modal btn-danger">🗑️ Réinitialiser la progression</button>
-      <p class="settings-version">Lucky Chef Tycoon · v22</p>
-      <p class="settings-credit">Modèles 3D : Poly Pizza · Kenney · Quaternius</p>
+      <button id="btn-reset" class="btn-modal btn-danger">🗑️ Réinitialiser</button>
+      <p class="settings-version">Chef Factory Tycoon · v23</p>
       <button id="btn-settings-close" class="btn-modal-ghost">Fermer</button>
     </div>
   </div>
 
-  <!-- ============================= ENERGY POPUP ============================= -->
-  <div id="energy-popup" class="modal" role="dialog" aria-modal="true" aria-labelledby="popup-title">
-    <div class="modal-card">
-      <div class="modal-ic">⚡</div>
-      <h2 id="popup-title">Plus d’énergie&nbsp;!</h2>
-      <p>L’énergie revient 1 toutes les 5 minutes — ou rechargez maintenant&nbsp;:</p>
-      <button id="btn-popup-buy" class="btn-modal-primary">💎 50 énergie (10 gemmes)</button>
-      <button id="btn-popup-ad" class="btn-modal">📺 Pub (+10 énergie)</button>
-      <button id="btn-popup-close" class="btn-modal-ghost">Attendre</button>
-    </div>
-  </div>
-
-  <!-- Runtime config (cloud sync opt-in). Generated by build:web from the
-       LCT_API_BASE env var; a classic script so it runs before the module. -->
   <script src="./app-config.js"></script>
-  <script type="module" src="./web/main.js"></script>
+  <script type="module" src="./web/factory/app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(() => {});
-      });
+      window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
     }
   </script>
 </body>
