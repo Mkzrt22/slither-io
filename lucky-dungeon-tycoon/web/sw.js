@@ -8,7 +8,7 @@
  * of breaking asset changes.
  */
 
-const CACHE_NAME = 'chef-factory-v27';
+const CACHE_NAME = 'chef-factory-v28';
 const PRECACHE = ['./', './manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
