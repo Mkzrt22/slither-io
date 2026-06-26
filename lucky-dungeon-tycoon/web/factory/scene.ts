@@ -89,6 +89,7 @@ export class FactoryScene {
   private readonly items: Item[] = [];
   private readonly scooters: Scooter[] = [];
   private readonly particles: Particle[] = [];
+  private readonly roamers: { mesh: THREE.Group; x: number; z: number; tx: number; tz: number; speed: number; pause: number; phase: number }[] = [];
   private beltMat!: THREE.MeshStandardMaterial;
 
   private composer: EffectComposer | null = null;
@@ -148,6 +149,7 @@ export class FactoryScene {
     this.buildEnvironment();
     this.buildBelt();
     this.buildStations();
+    this.buildDensity();
     this.resize();
     this.initQuality();
     this.setupPost();
@@ -299,6 +301,228 @@ export class FactoryScene {
       }
       rack.position.set(sx, 0, -5.6); rack.rotation.y = sx < 0 ? 0.2 : -0.2; this.world.add(rack);
     }
+  }
+
+  // --- Density: silos, overhead infra, pillars, props, roamers ----------------
+
+  private buildDensity(): void {
+    this.buildBackline();
+    this.buildOverhead();
+    this.buildPillars();
+    this.buildForeground();
+    this.spawnRoamers(6);
+  }
+
+  /** Bulk ingredient silos + a mixer unit along the back wall. */
+  private buildBackline(): void {
+    const metal = new THREE.MeshStandardMaterial({ color: 0x9aa1ab, roughness: 0.34, metalness: 0.78 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x40454e, roughness: 0.6, metalness: 0.5 });
+    const pipeMat = new THREE.MeshStandardMaterial({ color: 0xb6bcc4, roughness: 0.3, metalness: 0.8 });
+    for (const [x, h] of [[-7.4, 4.4], [-4.2, 3.7], [3.6, 4.0], [7.2, 4.6]] as Array<[number, number]>) {
+      const silo = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, h, 18), metal);
+      body.position.y = h / 2 + 0.9; body.castShadow = true; body.receiveShadow = true; silo.add(body);
+      const hopper = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.18, 0.9, 18), metal);
+      hopper.position.y = 0.95; hopper.castShadow = true; silo.add(hopper);
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(0.95, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), metal);
+      dome.position.y = h + 0.9; silo.add(dome);
+      // Hoop bands.
+      for (let b = 1; b < 3; b++) {
+        const band = new THREE.Mesh(new THREE.TorusGeometry(0.97, 0.05, 8, 20), dark);
+        band.rotation.x = Math.PI / 2; band.position.y = 0.9 + (h * b) / 3; silo.add(band);
+      }
+      // Ladder.
+      const ladder = new THREE.Mesh(new THREE.BoxGeometry(0.05, h, 0.18), dark);
+      ladder.position.set(0.95, h / 2 + 0.9, 0); silo.add(ladder);
+      // Output pipe bending toward the line.
+      const out = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.4, 10), pipeMat);
+      out.rotation.x = Math.PI / 2.3; out.position.set(0, 1.1, 0.9); silo.add(out);
+      silo.position.set(x, 0, -5.6); this.world.add(silo);
+    }
+    // A wide mixer/oven unit centred behind the line.
+    const mixer = new THREE.Group();
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 2.6, 20), new THREE.MeshStandardMaterial({ color: 0x586070, roughness: 0.4, metalness: 0.6 }));
+    drum.rotation.z = Math.PI / 2; drum.position.y = 1.5; drum.castShadow = true; mixer.add(drum);
+    for (const ex of [-1.3, 1.3]) {
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.2, 20), dark);
+      cap.rotation.z = Math.PI / 2; cap.position.set(ex, 1.5, 0); mixer.add(cap);
+    }
+    const motor = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), dark);
+    motor.position.set(0, 2.7, 0); mixer.add(motor);
+    mixer.position.set(-0.2, 0, -6.0); this.world.add(mixer);
+
+    // Wall-mounted control boxes + vents along the back wall.
+    for (const x of [-9.5, -1.5, 5.5, 9.5]) {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.2, 0.3), new THREE.MeshStandardMaterial({ color: 0x2f7d52, roughness: 0.6, metalness: 0.4 }));
+      box.position.set(x, 2.4, -6.85); box.castShadow = true; this.world.add(box);
+      const light = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshStandardMaterial({ color: 0x113322, emissive: 0x44ff88, emissiveIntensity: 1.2 }));
+      light.position.set(x + 0.25, 2.85, -6.7); this.world.add(light);
+    }
+    for (const x of [-6, 2.5]) {
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 0.2), new THREE.MeshStandardMaterial({ color: 0x4a525d, roughness: 0.7, metalness: 0.5 }));
+      vent.position.set(x, 6.2, -6.9); this.world.add(vent);
+    }
+  }
+
+  /** Overhead ducts, pipe runs and cable trays high at the back (no occlusion). */
+  private buildOverhead(): void {
+    const ductMat = new THREE.MeshStandardMaterial({ color: 0x6b7079, roughness: 0.5, metalness: 0.6 });
+    for (const [dz, y] of [[-4.6, 7.4], [-3.2, 6.9]] as Array<[number, number]>) {
+      const duct = new THREE.Mesh(new THREE.BoxGeometry(30, 0.7, 0.7), ductMat);
+      duct.position.set(0, y, dz); duct.castShadow = false; this.world.add(duct);
+      for (let x = -12; x <= 12; x += 4) {
+        const hang = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.0, 0.08), ductMat);
+        hang.position.set(x, y + 0.7, dz); this.world.add(hang);
+      }
+    }
+    // Coloured pipe runs (utility lines).
+    for (const [dz, col] of [[-5.0, 0xb6402f], [-5.25, 0x3a7fb6], [-5.5, 0xd0b54a]] as Array<[number, number]>) {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 30, 12), new THREE.MeshStandardMaterial({ color: col, roughness: 0.45, metalness: 0.4 }));
+      pipe.rotation.z = Math.PI / 2; pipe.position.set(0, 6.6, dz); this.world.add(pipe);
+    }
+    // Two extra lamps to brighten the wings.
+    for (const x of [-10, 10]) {
+      const tube = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff3d0, emissiveIntensity: 1.4 }));
+      tube.position.set(x, 7.5, BELT_Z - 1); this.world.add(tube);
+      const glow = makeGlow(0xfff0c8, 6); glow.position.set(x, 7.2, BELT_Z - 1); glow.material.opacity = 0.4; this.world.add(glow);
+    }
+  }
+
+  /** Structural I-beam pillars at the corners for vertical framing. */
+  private buildPillars(): void {
+    const beam = new THREE.MeshStandardMaterial({ color: 0x586070, roughness: 0.5, metalness: 0.55 });
+    for (const [x, z] of [[-8.2, 3.2], [8.2, 3.2], [-8.2, -5.4], [8.2, -5.4]] as Array<[number, number]>) {
+      const col = new THREE.Group();
+      const web = new THREE.Mesh(new THREE.BoxGeometry(0.18, 8, 0.5), beam);
+      const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 0.14), beam); f1.position.z = 0.25;
+      const f2 = f1.clone(); f2.position.z = -0.25;
+      web.castShadow = f1.castShadow = f2.castShadow = true;
+      col.add(web, f1, f2);
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.16, 0.8), new THREE.MeshStandardMaterial({ color: 0x2c3038, roughness: 0.7 }));
+      base.position.y = -3.9; col.add(base);
+      col.position.set(x, 4, z); this.world.add(col);
+    }
+  }
+
+  /** Foreground clutter: pallets of sacks, barrels, gas bottles, carts, bins. */
+  private buildForeground(): void {
+    const palletMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3e, roughness: 0.9 });
+    const sackCols = [0xccb892, 0xb89a6a, 0xd6c8a0];
+    const makePallet = (x: number, z: number, rot: number): void => {
+      const p = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.16, 1.0), palletMat);
+      base.position.y = 0.08; base.castShadow = true; base.receiveShadow = true; p.add(base);
+      // Stacked sacks (rounded boxes).
+      for (let i = 0; i < 6; i++) {
+        const sack = new THREE.Mesh(
+          new THREE.BoxGeometry(0.55, 0.32, 0.42),
+          new THREE.MeshStandardMaterial({ color: sackCols[i % 3], roughness: 0.95 }),
+        );
+        sack.position.set(-0.32 + (i % 2) * 0.6, 0.34 + Math.floor(i / 2) * 0.32, -0.22 + ((Math.floor(i / 2)) % 2) * 0.18);
+        sack.rotation.y = (i * 0.3) % 0.5; sack.castShadow = true; p.add(sack);
+      }
+      p.position.set(x, 0, z); p.rotation.y = rot; this.world.add(p);
+    };
+    const makeCrateStack = (x: number, z: number): void => {
+      const g = new THREE.Group();
+      for (let i = 0; i < 5; i++) {
+        const c = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.6, 0.6),
+          new THREE.MeshStandardMaterial({ map: this.texCrate(), color: i % 2 ? 0xb0813f : 0x9a6f3f, roughness: 0.85 }),
+        );
+        c.position.set((i % 2) * 0.62 - 0.3, 0.3 + Math.floor(i / 2) * 0.62, (Math.floor(i / 2) % 2) * 0.1);
+        c.rotation.y = (i * 0.4) % 0.6; c.castShadow = true; g.add(c);
+      }
+      g.position.set(x, 0, z); this.world.add(g);
+    };
+    const makeBarrels = (x: number, z: number): void => {
+      const wood = new THREE.MeshStandardMaterial({ color: 0x3f6fb0, roughness: 0.5, metalness: 0.3 });
+      const band = new THREE.MeshStandardMaterial({ color: 0x2a2e35, roughness: 0.6, metalness: 0.5 });
+      for (const [dx, dz] of [[0, 0], [0.62, 0.1], [0.3, -0.55], [0.32, 0.62]] as Array<[number, number]>) {
+        const b = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.7, 14), wood);
+        body.position.y = 0.35; body.castShadow = true; b.add(body);
+        for (const by of [0.16, 0.54]) { const r = new THREE.Mesh(new THREE.TorusGeometry(0.285, 0.03, 6, 14), band); r.rotation.x = Math.PI / 2; r.position.y = by; b.add(r); }
+        b.position.set(x + dx, 0, z + dz); this.world.add(b);
+      }
+    };
+    const makeGasRack = (x: number, z: number): void => {
+      const cage = new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.7, metalness: 0.4 });
+      const cols = [0xcf3b3b, 0x3bcf6a, 0x3b6fcf, 0xd0b54a];
+      const g = new THREE.Group();
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x2c3038, roughness: 0.8, transparent: true, opacity: 0.25 }));
+      frame.position.y = 0.75; g.add(frame);
+      for (let i = 0; i < 4; i++) {
+        const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.1, 12), new THREE.MeshStandardMaterial({ color: cols[i], roughness: 0.4, metalness: 0.3 }));
+        bottle.position.set(-0.5 + i * 0.34, 0.6, 0); bottle.castShadow = true; g.add(bottle);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 10), cage); cap.position.set(-0.5 + i * 0.34, 1.2, 0); g.add(cap);
+      }
+      void cage;
+      g.position.set(x, 0, z); this.world.add(g);
+    };
+    const makeCart = (x: number, z: number, rot: number): void => {
+      const m = new THREE.MeshStandardMaterial({ color: 0x9aa1ab, roughness: 0.4, metalness: 0.6 });
+      const cart = new THREE.Group();
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.7), m); deck.position.y = 0.45; deck.castShadow = true; cart.add(deck);
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.7, 0.06), m); handle.position.set(-0.55, 0.8, 0); cart.add(handle);
+      for (const [wx, wz] of [[-0.5, 0.3], [-0.5, -0.3], [0.5, 0.3], [0.5, -0.3]] as Array<[number, number]>) {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.06, 12), new THREE.MeshStandardMaterial({ color: 0x14141a })); w.rotation.x = Math.PI / 2; w.position.set(wx, 0.14, wz); cart.add(w);
+      }
+      // A crate on the cart.
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), new THREE.MeshStandardMaterial({ map: this.texCrate(), color: 0xb0813f, roughness: 0.85 }));
+      crate.position.y = 0.74; crate.castShadow = true; cart.add(crate);
+      cart.position.set(x, 0, z); cart.rotation.y = rot; this.world.add(cart);
+    };
+
+    makePallet(-6.4, 3.0, 0.2);
+    makePallet(-4.9, 3.4, -0.3);
+    makeCrateStack(6.6, 3.1);
+    makeCrateStack(-1.2, 3.7);
+    makeBarrels(4.4, 3.4);
+    makeGasRack(2.0, 3.5);
+    makeCart(0.2, 2.7, 0.5);
+    makeCart(-3.0, 2.6, -0.6);
+    // A couple of bins.
+    for (const [x, col] of [[5.6, 0x2f7d52], [-7.4, 0xb6402f]] as Array<[number, number]>) {
+      const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.28, 0.8, 14), new THREE.MeshStandardMaterial({ color: col, roughness: 0.6 }));
+      bin.position.set(x, 0.4, 3.3); bin.castShadow = true; this.world.add(bin);
+    }
+    // Painted floor zones for legibility.
+    for (const [x, w, col] of [[-5.6, 2.6, 0xd8a93a], [6.0, 2.2, 0x3a7fb6]] as Array<[number, number, number]>) {
+      const zone = new THREE.Mesh(new THREE.BoxGeometry(w, 0.01, 1.8), new THREE.MeshStandardMaterial({ color: col, roughness: 0.9, transparent: true, opacity: 0.25 }));
+      zone.position.set(x, 0.015, 3.1); this.world.add(zone);
+    }
+  }
+
+  /** Wandering floor workers in chef whites that pace the front aisle. */
+  private spawnRoamers(n: number): void {
+    for (let i = 0; i < n; i++) {
+      const mesh = this.makeChef();
+      const x = -7 + Math.random() * 14, z = 2 + Math.random() * 2.6;
+      mesh.position.set(x, 0, z); this.world.add(mesh);
+      this.roamers.push({ mesh, x, z, tx: x, tz: z, speed: 0.7 + Math.random() * 0.7, pause: Math.random() * 2, phase: Math.random() * 6 });
+    }
+  }
+
+  private makeChef(): THREE.Group {
+    const w = new THREE.Group();
+    const coat = new THREE.Color().setHSL(0.08 + Math.random() * 0.5, 0.15, 0.85);
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.26, 4, 8), new THREE.MeshStandardMaterial({ color: coat, roughness: 0.6 }));
+    body.position.y = 0.44; body.castShadow = true;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), new THREE.MeshStandardMaterial({ color: 0xf1d3a8, roughness: 0.7 }));
+    head.position.y = 0.74;
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.16, 0.16, 12), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }));
+    hat.position.y = 0.9;
+    w.add(body, head, hat);
+    return w;
+  }
+
+  private texCrate(): THREE.Texture {
+    const { c, g } = this.paintCanvas(64);
+    g.fillStyle = '#9a6f3f'; g.fillRect(0, 0, 64, 64);
+    g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 4; g.strokeRect(3, 3, 58, 58);
+    g.beginPath(); g.moveTo(3, 3); g.lineTo(61, 61); g.moveTo(61, 3); g.lineTo(3, 61); g.stroke();
+    return this.finish(c, 1, 1);
   }
 
   private buildBelt(): void {
@@ -681,6 +905,20 @@ export class FactoryScene {
       s.mesh.position.set(STATION_X.delivery + s.t * 6, 0, BELT_Z + 1.5);
       s.mesh.rotation.y = Math.PI / 2;
       if (s.t >= 1) { s.active = false; s.mesh.visible = false; }
+    }
+
+    // Wandering floor workers pace the front aisle.
+    for (const r of this.roamers) {
+      if (r.pause > 0) { r.pause -= dt; continue; }
+      const dx = r.tx - r.x, dz = r.tz - r.z; const d = Math.hypot(dx, dz);
+      if (d < 0.12) {
+        r.tx = -7 + Math.random() * 14; r.tz = 2 + Math.random() * 2.6; r.pause = Math.random() * 1.8;
+      } else {
+        r.x += (dx / d) * r.speed * dt; r.z += (dz / d) * r.speed * dt;
+        r.mesh.position.x = r.x; r.mesh.position.z = r.z;
+        r.mesh.rotation.y = Math.atan2(dx, dz);
+        r.mesh.position.y = Math.abs(Math.sin((this.t + r.phase) * 9)) * 0.06;
+      }
     }
 
     // Steam / spark emitters scale with the relevant station's activity.
