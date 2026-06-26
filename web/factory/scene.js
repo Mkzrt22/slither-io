@@ -28,11 +28,11 @@ import { STATION_DEF_BY_ID } from '../../src/factory/config.js';
 import { makeGlow } from '../iso3dtex.js';
 /** Building footprint centres on the campus map (x, z). */
 const BUILDING_POS = {
-    receiving: [-6.6, -3.2],
-    prep: [-7.0, 3.0],
-    cooking: [0.0, 4.6],
-    plating: [7.0, 3.0],
-    delivery: [6.6, -3.2],
+    receiving: [-8.4, -4.0],
+    prep: [-9.0, 3.8],
+    cooking: [0.0, 6.2],
+    plating: [9.0, 3.8],
+    delivery: [8.4, -4.0],
 };
 const STATION_COLOR = {
     receiving: 0x3f73b4, prep: 0x3aa06e, cooking: 0xd06536, plating: 0xc09a36, delivery: 0xb04246,
@@ -75,8 +75,8 @@ export class FactoryScene {
         this.t = 0;
         this.yaw = 0;
         this.targetYaw = 0;
-        this.viewSize = 16;
-        this.targetViewSize = 16;
+        this.viewSize = 19;
+        this.targetViewSize = 19;
         this.aspect = 1;
         this.raycaster = new THREE.Raycaster();
         this.pointers = new Map();
@@ -159,7 +159,7 @@ export class FactoryScene {
                 radius: 0.9, distanceExponent: 1.0, thickness: 1.0, scale: 1.0, samples: 16, screenSpaceRadius: false,
             });
             composer.addPass(gtao);
-            const bloom = new UnrealBloomPass(size, 0.7, 0.55, 0.62);
+            const bloom = new UnrealBloomPass(size, 0.42, 0.4, 0.85);
             composer.addPass(bloom);
             composer.addPass(new OutputPass());
             composer.addPass(new SMAAPass(size.x, size.y));
@@ -210,12 +210,12 @@ export class FactoryScene {
     }
     // --- Ground & roads ---------------------------------------------------------
     buildGround() {
-        const ground = new THREE.Mesh(new THREE.BoxGeometry(40, 1, 36), new THREE.MeshStandardMaterial({ map: this.texGround(), color: 0x6a7a5e, roughness: 0.95, metalness: 0.05 }));
+        const ground = new THREE.Mesh(new THREE.BoxGeometry(48, 1, 44), new THREE.MeshStandardMaterial({ map: this.texGround(), color: 0x6a7a5e, roughness: 0.95, metalness: 0.05 }));
         ground.position.y = -0.5;
         ground.receiveShadow = true;
         this.world.add(ground);
         // A subtle plaza pad under the central building cluster.
-        const plaza = new THREE.Mesh(new THREE.CircleGeometry(11, 48), new THREE.MeshStandardMaterial({ map: this.texConcrete(), color: 0x8c8f96, roughness: 0.9 }));
+        const plaza = new THREE.Mesh(new THREE.CircleGeometry(13.5, 56), new THREE.MeshStandardMaterial({ map: this.texConcrete(), color: 0x8c8f96, roughness: 0.9 }));
         plaza.rotation.x = -Math.PI / 2;
         plaza.position.y = 0.012;
         plaza.receiveShadow = true;
@@ -226,8 +226,9 @@ export class FactoryScene {
         for (let i = 0; i < ids.length - 1; i++) {
             this.addRoad(this.posOf(ids[i]), this.posOf(ids[i + 1]));
         }
-        // Exit road from delivery toward the front of the map.
-        this.addRoad(this.posOf('delivery'), new THREE.Vector2(BUILDING_POS.delivery[0] - 1, 9));
+        // Exit road (scooters leave) + customer arrival road, both at the front.
+        this.addRoad(this.posOf('delivery'), new THREE.Vector2(BUILDING_POS.delivery[0] - 2, 11));
+        this.addRoad(this.posOf('delivery'), new THREE.Vector2(BUILDING_POS.delivery[0] + 3, 12));
     }
     posOf(id) {
         return new THREE.Vector2(BUILDING_POS[id][0], BUILDING_POS[id][1]);
@@ -240,28 +241,29 @@ export class FactoryScene {
         road.rotation.y = Math.atan2(dx, dz);
         road.receiveShadow = true;
         this.world.add(road);
-        // Kerb lamps along the road.
-        const n = Math.max(1, Math.floor(len / 3));
-        for (let i = 1; i < n; i++) {
-            const f = i / n;
+        // A few kerb lamps along the road (one side, sparse).
+        const n = Math.max(1, Math.floor(len / 5));
+        for (let i = 1; i <= n; i++) {
+            const f = i / (n + 1);
             const px = a.x + dx * f, pz = a.y + dz * f;
-            const off = 1.1;
+            const off = 1.15;
             const nx = -dz / len, nz = dx / len;
             this.addLamp(px + nx * off, pz + nz * off);
         }
     }
     addLamp(x, z) {
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.6, 8), new THREE.MeshStandardMaterial({ color: 0x2c3038, roughness: 0.6, metalness: 0.5 }));
-        pole.position.set(x, 0.8, z);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.7, 8), new THREE.MeshStandardMaterial({ color: 0x2c3038, roughness: 0.6, metalness: 0.5 }));
+        pole.position.set(x, 0.85, z);
         pole.castShadow = true;
         this.world.add(pole);
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.3), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffe6a0, emissiveIntensity: 1.4 }));
-        head.position.set(x, 1.6, z);
-        this.world.add(head);
-        const glow = makeGlow(0xffe6a0, 1.6);
-        glow.position.set(x, 1.55, z);
-        glow.material.opacity = 0.5;
-        this.world.add(glow);
+        // A small shaded head: a dim emissive bulb under a hood. The bloom pass
+        // gives it a *subtle* halo — no additive sprite, which was blowing out.
+        const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.05, 0.18, 10), new THREE.MeshStandardMaterial({ color: 0x33373e, roughness: 0.6, metalness: 0.5 }));
+        hood.position.set(x, 1.78, z);
+        this.world.add(hood);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), new THREE.MeshStandardMaterial({ color: 0xfff2d2, emissive: 0xffdf9a, emissiveIntensity: 0.9 }));
+        bulb.position.set(x, 1.66, z);
+        this.world.add(bulb);
     }
     // --- Buildings --------------------------------------------------------------
     buildBuildings() {
@@ -272,6 +274,7 @@ export class FactoryScene {
             const accent = STATION_ACCENT[id];
             const group = new THREE.Group();
             group.position.set(x, 0, z);
+            group.scale.setScalar(1.3); // bigger, more substantial buildings
             // Face the campus centre.
             group.rotation.y = Math.atan2(-x, -z) * 0.5;
             const dark = new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.6, metalness: 0.45 });
@@ -313,11 +316,12 @@ export class FactoryScene {
             group.add(gaugeFill);
             // Status light.
             const statusMat = new THREE.MeshStandardMaterial({ color: 0x223018, emissive: 0x55e070, emissiveIntensity: 1.2, roughness: 0.4 });
-            const status = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), statusMat);
+            const status = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), statusMat);
             status.position.set(1.05, 2.0, 0.6);
             group.add(status);
-            const statusGlow = makeGlow(0x66ff88, 1.0);
+            const statusGlow = makeGlow(0x66ff88, 0.5);
             statusGlow.position.copy(status.position);
+            statusGlow.material.opacity = 0.5;
             group.add(statusGlow);
             // Bottleneck halo on the pad.
             const ring = new THREE.Mesh(new THREE.TorusGeometry(1.9, 0.09, 10, 32), new THREE.MeshStandardMaterial({ color: 0xff5a4a, emissive: 0xff3a2a, emissiveIntensity: 1.0, roughness: 0.5 }));
@@ -331,7 +335,7 @@ export class FactoryScene {
             pick.userData.id = id;
             group.add(pick);
             this.world.add(group);
-            const door = new THREE.Vector3(x, 0, z + 1.6);
+            const door = new THREE.Vector3(x, 0, z + 2.4);
             const vis = {
                 id, group, body, gaugeFill, ring, pick, screenMat, statusMat, statusGlow,
                 fx: STATION_FX[id], fxAnchor: new THREE.Vector3(x, 2.4, z - 0.2),
@@ -433,8 +437,35 @@ export class FactoryScene {
         }
         // Exit leg: scooters leave delivery toward the front of the map.
         const d = this.buildings.get('delivery').door.clone();
-        const exit = new THREE.Vector3(d.x - 1.5, 0, 10);
+        const exit = new THREE.Vector3(d.x - 2, 0, 11.5);
         this.legs.push({ from: d, to: exit, make: () => this.makeScooter(), pool: [], accum: 0, turn: Math.atan2(exit.x - d.x, exit.z - d.z) });
+        // Customer cars arrive at the delivery point to pick up orders.
+        const arrival = new THREE.Vector3(d.x + 3, 0, 12.5);
+        this.legs.push({ from: arrival, to: d, make: () => this.makeCar(), pool: [], accum: 0, turn: Math.atan2(d.x - arrival.x, d.z - arrival.z) });
+    }
+    makeCar() {
+        const g = new THREE.Group();
+        const cols = [0xd84a4a, 0x4a8fd8, 0x4ad88f, 0xd8c44a, 0xb46ad8, 0xe0863a];
+        const col = cols[(Math.random() * cols.length) | 0];
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.34, 1.35), new THREE.MeshStandardMaterial({ color: col, roughness: 0.3, metalness: 0.5 }));
+        body.position.y = 0.36;
+        body.castShadow = true;
+        g.add(body);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.32, 0.72), new THREE.MeshStandardMaterial({ color: 0x223044, roughness: 0.15, metalness: 0.3 }));
+        cabin.position.set(0, 0.66, -0.05);
+        g.add(cabin);
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), new THREE.MeshStandardMaterial({ color: 0xf1d3a8, roughness: 0.7 }));
+        head.position.set(0, 0.68, 0.08);
+        g.add(head);
+        // Dim headlights (kept below the bloom threshold).
+        for (const hx of [0.24, -0.24]) {
+            const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshStandardMaterial({ color: 0xfff4d6, emissive: 0xffe9b0, emissiveIntensity: 0.6 }));
+            lamp.position.set(hx, 0.34, 0.66);
+            g.add(lamp);
+        }
+        this.wheels(g, [[0.38, 0.46], [-0.38, 0.46], [0.38, -0.46], [-0.38, -0.46]], 0.15);
+        g.visible = false;
+        return g;
     }
     spawnVehicle(leg) {
         let v = leg.pool.find((x) => !x.active);
@@ -569,8 +600,8 @@ export class FactoryScene {
     buildProps() {
         // Perimeter fence posts.
         const postMat = new THREE.MeshStandardMaterial({ color: 0x40454e, roughness: 0.7, metalness: 0.4 });
-        for (let a = 0; a < Math.PI * 2; a += Math.PI / 9) {
-            const r = 12.5;
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 11) {
+            const r = 15.5;
             const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.12), postMat);
             post.position.set(Math.cos(a) * r, 0.4, Math.sin(a) * r * 0.85);
             this.world.add(post);
@@ -590,7 +621,7 @@ export class FactoryScene {
             this.world.add(g);
         }
         // A few planters of greenery for life.
-        for (const [x, z] of [[-9, 6], [9, 6], [-9, -6], [9, -6]]) {
+        for (const [x, z] of [[-11.5, 7.5], [11.5, 7.5], [-11.5, -7], [11.5, -7]]) {
             const box = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), new THREE.MeshStandardMaterial({ color: 0x6a5a40, roughness: 0.9 }));
             box.position.set(x, 0.25, z);
             box.castShadow = true;
