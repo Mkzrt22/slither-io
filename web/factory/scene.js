@@ -17,6 +17,12 @@
  * update loop, preserving the same public API.
  */
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { FactoryEngine } from '../../src/factory/FactoryEngine.js';
 import { STATION_IDS } from '../../src/factory/types.js';
 import { STATION_DEF_BY_ID } from '../../src/factory/config.js';
@@ -56,6 +62,9 @@ export class FactoryScene {
         this.items = [];
         this.scooters = [];
         this.particles = [];
+        this.composer = null;
+        this.bloomPass = null;
+        this.quality = 'ultra';
         this.state = null;
         this.throughput = 0;
         this.bottleneck = 'cooking';
@@ -79,12 +88,12 @@ export class FactoryScene {
         this.lastPinch = 0;
         this.pinching = false;
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.15;
+        this.renderer.toneMappingExposure = 1.28;
         this.scene.background = new THREE.Color(0x10141b);
         this.scene.fog = new THREE.Fog(0x10141b, 30, 60);
         this.camera = new THREE.OrthographicCamera(-12, 12, 12, -12, 0.1, 200);
@@ -115,6 +124,8 @@ export class FactoryScene {
         this.buildBelt();
         this.buildStations();
         this.resize();
+        this.initQuality();
+        this.setupPost();
         window.addEventListener('resize', () => this.resize());
         canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
         canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
@@ -122,6 +133,63 @@ export class FactoryScene {
         window.addEventListener('pointercancel', (e) => this.onPointerUp(e));
         canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     }
+    // --- Post-processing pipeline (bloom + GTAO + ACES + SMAA) ------------------
+    initQuality() {
+        try {
+            const forced = window.LCT_GFX;
+            const saved = localStorage.getItem('chef_gfx');
+            const q = forced ?? saved;
+            if (q === 'basic' || q === 'ultra')
+                this.quality = q;
+        }
+        catch { /* default ultra */ }
+    }
+    /**
+     * Builds the EffectComposer chain: scene render → GTAO ambient occlusion →
+     * UnrealBloom (HDR glow on emissives) → ACES tone-map/sRGB → SMAA antialias.
+     * Any failure (e.g. unsupported shaders) falls back to direct rendering.
+     */
+    setupPost() {
+        if (this.quality !== 'ultra' || this.composer)
+            return;
+        try {
+            const size = new THREE.Vector2();
+            this.renderer.getSize(size);
+            const composer = new EffectComposer(this.renderer);
+            composer.addPass(new RenderPass(this.scene, this.camera));
+            const gtao = new GTAOPass(this.scene, this.camera, size.x, size.y);
+            gtao.output = 0; // GTAOPass.OUTPUT.Default
+            gtao.blendIntensity = 0.6;
+            gtao.updateGtaoMaterial({
+                radius: 0.85, distanceExponent: 1.0, thickness: 1.0, scale: 1.0, samples: 16, screenSpaceRadius: false,
+            });
+            composer.addPass(gtao);
+            const bloom = new UnrealBloomPass(size, 0.7, 0.55, 0.62);
+            composer.addPass(bloom);
+            composer.addPass(new OutputPass());
+            composer.addPass(new SMAAPass(size.x, size.y));
+            this.composer = composer;
+            this.bloomPass = bloom;
+        }
+        catch (err) {
+            console.warn('[factory] post-processing unavailable, using direct render', err);
+            this.composer = null;
+            this.quality = 'basic';
+        }
+    }
+    /** Toggles graphics quality at runtime (persisted). */
+    setQuality(q) {
+        if (q === this.quality)
+            return;
+        this.quality = q;
+        try {
+            localStorage.setItem('chef_gfx', q);
+        }
+        catch { /* ignore */ }
+        if (q === 'ultra')
+            this.setupPost();
+    }
+    getQuality() { return this.quality; }
     // --- Procedural environment map (soft PBR reflections) ----------------------
     buildEnvMap() {
         const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -617,7 +685,10 @@ export class FactoryScene {
         this.t += dt;
         try {
             this.update(dt);
-            this.renderer.render(this.scene, this.camera);
+            if (this.quality === 'ultra' && this.composer)
+                this.composer.render();
+            else
+                this.renderer.render(this.scene, this.camera);
         }
         catch (err) {
             console.warn('[factory] render halted', err);
@@ -740,6 +811,7 @@ export class FactoryScene {
         this.renderer.setSize(w, h, false);
         this.aspect = w / h;
         this.updateCameraFrustum();
+        this.composer?.setSize(w, h);
     }
     onPointerDown(e) {
         this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });

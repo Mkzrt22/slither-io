@@ -251,6 +251,19 @@ el('btn-offline-x2').addEventListener('click', async () => {
 });
 el('btn-settings').addEventListener('click', () => el('settings-modal').classList.add('visible'));
 el('btn-settings-close').addEventListener('click', () => el('settings-modal').classList.remove('visible'));
+// Graphics quality toggle (Ultra post-processing ↔ Performance).
+const qualityBtn = el('btn-quality');
+function refreshQualityBtn() {
+    const q = scene?.getQuality() ?? 'basic';
+    qualityBtn.textContent = q === 'ultra' ? '✨ Graphismes : Ultra' : '⚡ Graphismes : Perf';
+}
+qualityBtn.addEventListener('click', () => {
+    if (!scene)
+        return;
+    scene.setQuality(scene.getQuality() === 'ultra' ? 'basic' : 'ultra');
+    refreshQualityBtn();
+});
+refreshQualityBtn();
 el('btn-buy-cash').addEventListener('click', () => { game.buyCashWithGems(); });
 el('btn-export').addEventListener('click', () => {
     const code = game.exportSave();
