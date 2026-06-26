@@ -14,7 +14,13 @@
   <link rel="stylesheet" href="./web/factory/factory.css" />
   <script type="importmap">
     { "imports": {
-      "three": "./vendor/three.module.js"
+      "three": "./vendor/three.module.js",
+      "three/examples/jsm/postprocessing/EffectComposer.js": "./vendor/jsm/postprocessing/EffectComposer.js",
+      "three/examples/jsm/postprocessing/RenderPass.js": "./vendor/jsm/postprocessing/RenderPass.js",
+      "three/examples/jsm/postprocessing/GTAOPass.js": "./vendor/jsm/postprocessing/GTAOPass.js",
+      "three/examples/jsm/postprocessing/UnrealBloomPass.js": "./vendor/jsm/postprocessing/UnrealBloomPass.js",
+      "three/examples/jsm/postprocessing/OutputPass.js": "./vendor/jsm/postprocessing/OutputPass.js",
+      "three/examples/jsm/postprocessing/SMAAPass.js": "./vendor/jsm/postprocessing/SMAAPass.js"
     } }
   </script>
 </head>
@@ -165,11 +171,12 @@
     <div class="modal-card">
       <div class="modal-ic">⚙️</div>
       <h2>Réglages</h2>
+      <button id="btn-quality" class="btn-modal">✨ Graphismes : Ultra</button>
       <button id="btn-buy-cash" class="btn-modal">💎 Échanger 10 gemmes → cash</button>
       <button id="btn-export" class="btn-modal">📤 Exporter la sauvegarde</button>
       <button id="btn-import" class="btn-modal">📥 Importer une sauvegarde</button>
       <button id="btn-reset" class="btn-modal btn-danger">🗑️ Réinitialiser</button>
-      <p class="settings-version">Chef Factory Tycoon · v24</p>
+      <p class="settings-version">Chef Factory Tycoon · v25</p>
       <button id="btn-settings-close" class="btn-modal-ghost">Fermer</button>
     </div>
   </div>

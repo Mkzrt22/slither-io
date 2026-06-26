@@ -18,10 +18,18 @@
  */
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { FactoryEngine } from '../../src/factory/FactoryEngine.js';
 import { FactoryState, STATION_IDS, StationId } from '../../src/factory/types.js';
 import { STATION_DEF_BY_ID } from '../../src/factory/config.js';
 import { makeGlow } from '../iso3dtex.js';
+
+export type GfxQuality = 'ultra' | 'basic';
 
 const STATION_X: Record<StationId, number> = {
   receiving: -6, prep: -3, cooking: 0, plating: 3, delivery: 6,
@@ -83,6 +91,10 @@ export class FactoryScene {
   private readonly particles: Particle[] = [];
   private beltMat!: THREE.MeshStandardMaterial;
 
+  private composer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
+  private quality: GfxQuality = 'ultra';
+
   private state: FactoryState | null = null;
   private throughput = 0;
   private bottleneck: StationId = 'cooking';
@@ -104,12 +116,12 @@ export class FactoryScene {
     private readonly onTapStation: (id: StationId) => void,
   ) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     (this.renderer as unknown as { outputColorSpace: string }).outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.28;
 
     this.scene.background = new THREE.Color(0x10141b);
     this.scene.fog = new THREE.Fog(0x10141b, 30, 60);
@@ -137,6 +149,8 @@ export class FactoryScene {
     this.buildBelt();
     this.buildStations();
     this.resize();
+    this.initQuality();
+    this.setupPost();
 
     window.addEventListener('resize', () => this.resize());
     canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
@@ -145,6 +159,59 @@ export class FactoryScene {
     window.addEventListener('pointercancel', (e) => this.onPointerUp(e));
     canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
   }
+
+  // --- Post-processing pipeline (bloom + GTAO + ACES + SMAA) ------------------
+
+  private initQuality(): void {
+    try {
+      const forced = (window as unknown as { LCT_GFX?: string }).LCT_GFX;
+      const saved = localStorage.getItem('chef_gfx');
+      const q = forced ?? saved;
+      if (q === 'basic' || q === 'ultra') this.quality = q;
+    } catch { /* default ultra */ }
+  }
+
+  /**
+   * Builds the EffectComposer chain: scene render → GTAO ambient occlusion →
+   * UnrealBloom (HDR glow on emissives) → ACES tone-map/sRGB → SMAA antialias.
+   * Any failure (e.g. unsupported shaders) falls back to direct rendering.
+   */
+  private setupPost(): void {
+    if (this.quality !== 'ultra' || this.composer) return;
+    try {
+      const size = new THREE.Vector2(); this.renderer.getSize(size);
+      const composer = new EffectComposer(this.renderer);
+      composer.addPass(new RenderPass(this.scene, this.camera));
+
+      const gtao = new GTAOPass(this.scene, this.camera, size.x, size.y);
+      (gtao as unknown as { output: number }).output = 0; // GTAOPass.OUTPUT.Default
+      (gtao as unknown as { blendIntensity: number }).blendIntensity = 0.6;
+      (gtao as unknown as { updateGtaoMaterial(p: object): void }).updateGtaoMaterial({
+        radius: 0.85, distanceExponent: 1.0, thickness: 1.0, scale: 1.0, samples: 16, screenSpaceRadius: false,
+      });
+      composer.addPass(gtao);
+
+      const bloom = new UnrealBloomPass(size, 0.7, 0.55, 0.62);
+      composer.addPass(bloom);
+      composer.addPass(new OutputPass());
+      composer.addPass(new SMAAPass(size.x, size.y));
+
+      this.composer = composer; this.bloomPass = bloom;
+    } catch (err) {
+      console.warn('[factory] post-processing unavailable, using direct render', err);
+      this.composer = null; this.quality = 'basic';
+    }
+  }
+
+  /** Toggles graphics quality at runtime (persisted). */
+  public setQuality(q: GfxQuality): void {
+    if (q === this.quality) return;
+    this.quality = q;
+    try { localStorage.setItem('chef_gfx', q); } catch { /* ignore */ }
+    if (q === 'ultra') this.setupPost();
+  }
+
+  public getQuality(): GfxQuality { return this.quality; }
 
   // --- Procedural environment map (soft PBR reflections) ----------------------
 
@@ -555,8 +622,11 @@ export class FactoryScene {
   private loop(now: number): void {
     const dt = Math.min((now - this.last) / 1000, 0.05);
     this.last = now; this.t += dt;
-    try { this.update(dt); this.renderer.render(this.scene, this.camera); }
-    catch (err) { console.warn('[factory] render halted', err); this.stop(); return; }
+    try {
+      this.update(dt);
+      if (this.quality === 'ultra' && this.composer) this.composer.render();
+      else this.renderer.render(this.scene, this.camera);
+    } catch (err) { console.warn('[factory] render halted', err); this.stop(); return; }
     this.raf = requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -648,6 +718,7 @@ export class FactoryScene {
     const rect = this.canvas.getBoundingClientRect();
     const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
     this.renderer.setSize(w, h, false); this.aspect = w / h; this.updateCameraFrustum();
+    this.composer?.setSize(w, h);
   }
   private onPointerDown(e: PointerEvent): void {
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
