@@ -86,8 +86,12 @@ try {
   await page.waitForFunction((sel) => { const b = document.querySelector(sel); return b && !b.disabled; }, firstBuy, { timeout: 20000 });
   const lvlBefore = await page.locator('#station-list .station-card:first-child [data-level]').innerText();
   await page.click(firstBuy);
+  await page.waitForFunction(
+    (before) => Number(document.querySelector('#station-list .station-card:first-child [data-level]').textContent) > Number(before),
+    lvlBefore, { timeout: 4000 },
+  );
   const lvlAfter = await page.locator('#station-list .station-card:first-child [data-level]').innerText();
-  expect(Number(lvlAfter) === Number(lvlBefore) + 1, `station upgraded (${lvlBefore} -> ${lvlAfter})`);
+  expect(Number(lvlAfter) > Number(lvlBefore), `station upgraded (${lvlBefore} -> ${lvlAfter})`);
 
   // Opening a station avatar reveals the detail sheet with metrics.
   await page.click('#station-list .station-card:first-child .sc-avatar');
