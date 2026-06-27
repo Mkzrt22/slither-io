@@ -34,6 +34,10 @@ const BUILDING_POS = {
     plating: [16.0, 7.0],
     delivery: [14.5, -7.0],
 };
+/** Plaza centre; buildings face it and dock toward it. */
+const PLAZA_C = [0, 2];
+/** How far in front of each building its road dock sits (world units). */
+const DOCK_OFFSET = 3.0;
 const STATION_COLOR = {
     receiving: 0x3f73b4, prep: 0x3aa06e, cooking: 0xd06536, plating: 0xc09a36, delivery: 0xb04246,
 };
@@ -118,8 +122,8 @@ export class FactoryScene {
         this.scene.add(rim);
         this.buildEnvMap();
         this.buildGround();
-        this.buildRoads();
         this.buildBuildings();
+        this.buildRoads();
         this.buildVehicles();
         this.buildProps();
         this.spawnRoamers(14);
@@ -223,30 +227,41 @@ export class FactoryScene {
     }
     buildRoads() {
         const ids = STATION_IDS;
+        // Roads connect the building DOCKS (where vehicles actually drive), so the
+        // traffic always rides on the tarmac and never tucks under a building.
         for (let i = 0; i < ids.length - 1; i++) {
-            this.addRoad(this.posOf(ids[i]), this.posOf(ids[i + 1]));
+            this.addRoad(this.dockOf(ids[i]), this.dockOf(ids[i + 1]));
         }
-        // Exit road (scooters leave) + customer arrival road, both at the front.
-        this.addRoad(this.posOf('delivery'), new THREE.Vector2(BUILDING_POS.delivery[0] - 4, 17));
-        this.addRoad(this.posOf('delivery'), new THREE.Vector2(BUILDING_POS.delivery[0] + 5, 18));
+        // Exit road (scooters leave) + customer arrival road from the delivery dock.
+        const d = this.dockOf('delivery');
+        this.addRoad(d, new THREE.Vector2(d.x - 5, 18));
+        this.addRoad(d, new THREE.Vector2(d.x + 6, 19));
     }
-    posOf(id) {
-        return new THREE.Vector2(BUILDING_POS[id][0], BUILDING_POS[id][1]);
+    dockOf(id) {
+        const v = this.buildings.get(id).door;
+        return new THREE.Vector2(v.x, v.z);
     }
     addRoad(a, b) {
         const dx = b.x - a.x, dz = b.y - a.y;
         const len = Math.hypot(dx, dz);
-        const road = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.04, len), new THREE.MeshStandardMaterial({ map: this.texRoad(len), color: 0x3a3e44, roughness: 0.95 }));
-        road.position.set((a.x + b.x) / 2, 0.03, (a.y + b.y) / 2);
+        const road = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.05, len + 1.2), new THREE.MeshStandardMaterial({ map: this.texRoad(len), color: 0x3a3e44, roughness: 0.95 }));
+        road.position.set((a.x + b.x) / 2, 0.05, (a.y + b.y) / 2);
         road.rotation.y = Math.atan2(dx, dz);
         road.receiveShadow = true;
         this.world.add(road);
+        // A junction pad at each end so corners read cleanly.
+        for (const p of [a, b]) {
+            const pad = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.05, 2.4), new THREE.MeshStandardMaterial({ color: 0x34383e, roughness: 0.95 }));
+            pad.position.set(p.x, 0.048, p.y);
+            pad.receiveShadow = true;
+            this.world.add(pad);
+        }
         // A few kerb lamps along the road (one side, sparse).
-        const n = Math.max(1, Math.floor(len / 5));
+        const n = Math.max(1, Math.floor(len / 6));
         for (let i = 1; i <= n; i++) {
             const f = i / (n + 1);
             const px = a.x + dx * f, pz = a.y + dz * f;
-            const off = 1.15;
+            const off = 1.5;
             const nx = -dz / len, nz = dx / len;
             this.addLamp(px + nx * off, pz + nz * off);
         }
@@ -275,8 +290,11 @@ export class FactoryScene {
             const group = new THREE.Group();
             group.position.set(x, 0, z);
             group.scale.setScalar(1.55); // bigger, more substantial buildings
-            // Face the campus centre.
-            group.rotation.y = Math.atan2(-x, -z) * 0.5;
+            // Face the plaza centre so the facade (door/sign/windows on +z) and the
+            // dock in front of it point at the road network.
+            const dirX = PLAZA_C[0] - x, dirZ = PLAZA_C[1] - z;
+            const dl = Math.hypot(dirX, dirZ) || 1;
+            group.rotation.y = Math.atan2(dirX, dirZ);
             const dark = new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.6, metalness: 0.45 });
             const concrete = new THREE.MeshStandardMaterial({ color: 0x5e646c, roughness: 0.92 });
             // Plot pad — dark concrete so the building sits on it, not on a white slab.
@@ -343,7 +361,9 @@ export class FactoryScene {
             pick.userData.id = id;
             group.add(pick);
             this.world.add(group);
-            const door = new THREE.Vector3(x, 0, z + 2.4);
+            // Dock: a point on the plaza-facing side of the building, where roads
+            // meet and vehicles arrive/depart.
+            const door = new THREE.Vector3(x + (dirX / dl) * DOCK_OFFSET, 0, z + (dirZ / dl) * DOCK_OFFSET);
             const vis = {
                 id, group, body, gaugeFill, ring, pick, screenMat, statusMat, statusGlow,
                 fx: STATION_FX[id], fxAnchor: new THREE.Vector3(x, 2.4, z - 0.2),
@@ -445,10 +465,10 @@ export class FactoryScene {
         }
         // Exit leg: scooters leave delivery toward the front of the map.
         const d = this.buildings.get('delivery').door.clone();
-        const exit = new THREE.Vector3(d.x - 4, 0, 17.5);
+        const exit = new THREE.Vector3(d.x - 5, 0, 18);
         this.legs.push({ from: d, to: exit, make: () => this.makeScooter(), pool: [], accum: 0, turn: Math.atan2(exit.x - d.x, exit.z - d.z) });
         // Customer cars arrive at the delivery point to pick up orders.
-        const arrival = new THREE.Vector3(d.x + 5, 0, 18.5);
+        const arrival = new THREE.Vector3(d.x + 6, 0, 19);
         this.legs.push({ from: arrival, to: d, make: () => this.makeCar(), pool: [], accum: 0, turn: Math.atan2(d.x - arrival.x, d.z - arrival.z) });
     }
     makeCar() {
