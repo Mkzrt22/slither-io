@@ -32,11 +32,11 @@ export type GfxQuality = 'ultra' | 'basic';
 
 /** Building footprint centres on the campus map (x, z). */
 const BUILDING_POS: Record<StationId, [number, number]> = {
-  receiving: [-8.4, -4.0],
-  prep: [-9.0, 3.8],
-  cooking: [0.0, 6.2],
-  plating: [9.0, 3.8],
-  delivery: [8.4, -4.0],
+  receiving: [-14.5, -7.0],
+  prep: [-16.0, 7.0],
+  cooking: [0.0, 11.0],
+  plating: [16.0, 7.0],
+  delivery: [14.5, -7.0],
 };
 
 const STATION_COLOR: Record<StationId, number> = {
@@ -106,7 +106,7 @@ export class FactoryScene {
 
   private raf = 0; private last = 0; private t = 0;
   private yaw = 0; private targetYaw = 0;
-  private viewSize = 19; private targetViewSize = 19; private aspect = 1;
+  private viewSize = 42; private targetViewSize = 42; private aspect = 1;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointers = new Map<number, { x: number; y: number }>();
   private dragging = false; private dragMoved = 0; private lastPX = 0;
@@ -125,20 +125,20 @@ export class FactoryScene {
     this.renderer.toneMappingExposure = 1.3;
 
     this.scene.background = new THREE.Color(0x121821);
-    this.scene.fog = new THREE.Fog(0x121821, 34, 64);
-    this.camera = new THREE.OrthographicCamera(-12, 12, 12, -12, 0.1, 200);
-    this.camera.position.set(16, 17, 18);
-    this.camera.lookAt(0, 0.8, 0.5);
+    this.scene.fog = new THREE.Fog(0x121821, 50, 95);
+    this.camera = new THREE.OrthographicCamera(-12, 12, 12, -12, 0.1, 240);
+    this.camera.position.set(26, 28, 30);
+    this.camera.lookAt(0, 0.8, 2.0);
     this.scene.add(this.world);
 
     this.scene.add(new THREE.HemisphereLight(0xdce8ff, 0x2b3038, 0.85));
     this.sun = new THREE.DirectionalLight(0xfff1da, 2.05);
-    this.sun.position.set(10, 20, 12);
+    this.sun.position.set(16, 30, 20);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.radius = 4;
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
-    sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 64;
+    sc.left = -30; sc.right = 30; sc.top = 30; sc.bottom = -30; sc.near = 1; sc.far = 110;
     this.sun.shadow.bias = -0.0004;
     this.scene.add(this.sun, this.sun.target);
     const rim = new THREE.DirectionalLight(0x9fc0ff, 0.55);
@@ -150,7 +150,7 @@ export class FactoryScene {
     this.buildBuildings();
     this.buildVehicles();
     this.buildProps();
-    this.spawnRoamers(6);
+    this.spawnRoamers(14);
     this.resize();
     this.initQuality();
     this.setupPost();
@@ -229,16 +229,16 @@ export class FactoryScene {
 
   private buildGround(): void {
     const ground = new THREE.Mesh(
-      new THREE.BoxGeometry(48, 1, 44),
+      new THREE.BoxGeometry(90, 1, 84),
       new THREE.MeshStandardMaterial({ map: this.texGround(), color: 0x6a7a5e, roughness: 0.95, metalness: 0.05 }),
     );
     ground.position.y = -0.5; ground.receiveShadow = true; this.world.add(ground);
     // A subtle plaza pad under the central building cluster.
     const plaza = new THREE.Mesh(
-      new THREE.CircleGeometry(13.5, 56),
-      new THREE.MeshStandardMaterial({ map: this.texConcrete(), color: 0x8c8f96, roughness: 0.9 }),
+      new THREE.CircleGeometry(25, 64),
+      new THREE.MeshStandardMaterial({ map: this.texConcrete(), color: 0x82868d, roughness: 0.9 }),
     );
-    plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.012; plaza.receiveShadow = true; this.world.add(plaza);
+    plaza.rotation.x = -Math.PI / 2; plaza.position.set(0, 0.012, 2); plaza.receiveShadow = true; this.world.add(plaza);
   }
 
   private buildRoads(): void {
@@ -247,8 +247,8 @@ export class FactoryScene {
       this.addRoad(this.posOf(ids[i]), this.posOf(ids[i + 1]));
     }
     // Exit road (scooters leave) + customer arrival road, both at the front.
-    this.addRoad(this.posOf('delivery'), new THREE.Vector2(BUILDING_POS.delivery[0] - 2, 11));
-    this.addRoad(this.posOf('delivery'), new THREE.Vector2(BUILDING_POS.delivery[0] + 3, 12));
+    this.addRoad(this.posOf('delivery'), new THREE.Vector2(BUILDING_POS.delivery[0] - 4, 17));
+    this.addRoad(this.posOf('delivery'), new THREE.Vector2(BUILDING_POS.delivery[0] + 5, 18));
   }
 
   private posOf(id: StationId): THREE.Vector2 {
@@ -306,16 +306,16 @@ export class FactoryScene {
       const accent = STATION_ACCENT[id];
       const group = new THREE.Group();
       group.position.set(x, 0, z);
-      group.scale.setScalar(1.3); // bigger, more substantial buildings
+      group.scale.setScalar(1.55); // bigger, more substantial buildings
       // Face the campus centre.
       group.rotation.y = Math.atan2(-x, -z) * 0.5;
 
       const dark = new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.6, metalness: 0.45 });
-      const concrete = new THREE.MeshStandardMaterial({ color: 0x8a8f98, roughness: 0.9 });
+      const concrete = new THREE.MeshStandardMaterial({ color: 0x5e646c, roughness: 0.92 });
 
-      // Plot pad.
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.16, 3.0), concrete);
-      pad.position.y = 0.08; pad.receiveShadow = true; group.add(pad);
+      // Plot pad — dark concrete so the building sits on it, not on a white slab.
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.12, 2.7), concrete);
+      pad.position.y = 0.06; pad.receiveShadow = true; group.add(pad);
 
       // Main body (scaled by level).
       const body = new THREE.Mesh(
@@ -329,16 +329,22 @@ export class FactoryScene {
 
       this.addRoof(group, id, dark);
 
-      // Big glowing door/window panel facing front.
-      const screenMat = new THREE.MeshStandardMaterial({
-        map: this.texScreen(def.icon, accent), emissive: accent, emissiveIntensity: 0.85, roughness: 0.3,
-      });
-      const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.9), screenMat);
-      screen.position.set(0, 0.95, 0.92); group.add(screen);
+      // Facade: a service door and two warm-lit windows.
+      const doorMat = new THREE.MeshStandardMaterial({ color: 0x565d67, roughness: 0.5, metalness: 0.5 });
+      const fdoor = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.95, 0.08), doorMat);
+      fdoor.position.set(0, 0.55, 1.01); group.add(fdoor);
+      const winMat = new THREE.MeshStandardMaterial({ color: 0x14181f, emissive: 0xffce7a, emissiveIntensity: 0.45, roughness: 0.3 });
+      for (const wx of [-0.78, 0.78]) {
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.06), winMat);
+        win.position.set(wx, 1.05, 1.01); group.add(win);
+      }
 
-      // Rooftop sign with the station icon.
-      const sign = this.makeIconSprite(def.icon);
-      sign.position.set(0, 2.7, -0.1); sign.scale.set(1.5, 1.5, 1); group.add(sign);
+      // Illuminated facade sign board with the station pictogram (no floating frame).
+      const screenMat = new THREE.MeshStandardMaterial({ color: 0x0e1117, emissive: accent, emissiveIntensity: 0.6, roughness: 0.4 });
+      const signBoard = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.46, 0.09), screenMat);
+      signBoard.position.set(0, 1.5, 1.0); group.add(signBoard);
+      const icon = this.makeIconSprite(def.icon);
+      icon.scale.set(0.6, 0.6, 1); icon.position.set(0, 1.5, 1.08); group.add(icon);
 
       // Buffer gauge on the front trim.
       const gaugeBg = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.18, 0.05), new THREE.MeshStandardMaterial({ color: 0x0c0f14, roughness: 1 }));
@@ -448,10 +454,10 @@ export class FactoryScene {
     }
     // Exit leg: scooters leave delivery toward the front of the map.
     const d = this.buildings.get('delivery')!.door.clone();
-    const exit = new THREE.Vector3(d.x - 2, 0, 11.5);
+    const exit = new THREE.Vector3(d.x - 4, 0, 17.5);
     this.legs.push({ from: d, to: exit, make: () => this.makeScooter(), pool: [], accum: 0, turn: Math.atan2(exit.x - d.x, exit.z - d.z) });
     // Customer cars arrive at the delivery point to pick up orders.
-    const arrival = new THREE.Vector3(d.x + 3, 0, 12.5);
+    const arrival = new THREE.Vector3(d.x + 5, 0, 18.5);
     this.legs.push({ from: arrival, to: d, make: () => this.makeCar(), pool: [], accum: 0, turn: Math.atan2(d.x - arrival.x, d.z - arrival.z) });
   }
 
@@ -478,8 +484,10 @@ export class FactoryScene {
   private spawnVehicle(leg: Leg): void {
     let v = leg.pool.find((x) => !x.active);
     if (!v) {
-      if (leg.pool.length >= 4) return;
-      v = { group: leg.make(), t: 0, speed: 0.22 + Math.random() * 0.08, active: false };
+      if (leg.pool.length >= 5) return;
+      // Speed is per-road so world-speed stays constant on the bigger map.
+      const len = Math.max(4, leg.from.distanceTo(leg.to));
+      v = { group: leg.make(), t: 0, speed: (2.8 + Math.random() * 0.8) / len, active: false };
       this.world.add(v.group);
       leg.pool.push(v);
     }
@@ -582,30 +590,56 @@ export class FactoryScene {
   // --- Props (campus dressing) -----------------------------------------------
 
   private buildProps(): void {
-    // Perimeter fence posts.
+    // Perimeter fence ringing the larger lot.
     const postMat = new THREE.MeshStandardMaterial({ color: 0x40454e, roughness: 0.7, metalness: 0.4 });
-    for (let a = 0; a < Math.PI * 2; a += Math.PI / 11) {
-      const r = 15.5;
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 22) {
+      const rx = 30, rz = 26;
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.12), postMat);
-      post.position.set(Math.cos(a) * r, 0.4, Math.sin(a) * r * 0.85); this.world.add(post);
+      post.position.set(Math.cos(a) * rx, 0.4, 2 + Math.sin(a) * rz); this.world.add(post);
     }
-    // Crate stacks + barrels scattered between buildings.
-    const spots: Array<[number, number]> = [[-2.8, 0.5], [3.0, 0.2], [-4.0, -1.0], [4.2, -1.2], [0.5, 1.6]];
+    // Crate stacks scattered around the bigger plaza.
+    const spots: Array<[number, number]> = [
+      [-5, 1], [5, 0.5], [-7, -2], [7, -2.5], [0.5, 3.5], [-10, 3], [10, 3],
+      [-3, 9], [3, 9], [-9, -4], [9, -4], [0, -3],
+    ];
     for (const [x, z] of spots) {
       const g = new THREE.Group();
-      for (let i = 0; i < 3; i++) {
-        const c = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshStandardMaterial({ map: this.texCrate(), color: i % 2 ? 0xb0813f : 0x9a6f3f, roughness: 0.85 }));
-        c.position.set((i % 2) * 0.52, 0.25 + Math.floor(i / 2) * 0.52, 0); c.castShadow = true; g.add(c);
+      const k = 2 + ((Math.random() * 3) | 0);
+      for (let i = 0; i < k; i++) {
+        const c = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), new THREE.MeshStandardMaterial({ map: this.texCrate(), color: i % 2 ? 0xb0813f : 0x9a6f3f, roughness: 0.85 }));
+        c.position.set((i % 2) * 0.57, 0.28 + Math.floor(i / 2) * 0.57, 0); c.castShadow = true; g.add(c);
       }
       g.position.set(x, 0, z); g.rotation.y = Math.random() * Math.PI; this.world.add(g);
     }
-    // A few planters of greenery for life.
-    for (const [x, z] of [[-11.5, 7.5], [11.5, 7.5], [-11.5, -7], [11.5, -7]] as Array<[number, number]>) {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), new THREE.MeshStandardMaterial({ color: 0x6a5a40, roughness: 0.9 }));
-      box.position.set(x, 0.25, z); box.castShadow = true; this.world.add(box);
-      const bush = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), new THREE.MeshStandardMaterial({ color: 0x4e8a3c, roughness: 0.9, flatShading: true }));
-      bush.position.set(x, 0.9, z); bush.castShadow = true; this.world.add(bush);
+    // Trees and planters lining the wider campus.
+    for (const [x, z] of [[-20, 13], [20, 13], [-21, -10], [21, -10], [-13, 16], [13, 16], [0, 19], [-22, 3], [22, 3]] as Array<[number, number]>) {
+      this.makeTree(x, z);
     }
+    // Two parked box trucks in a yard at the back.
+    for (const [x, z, rot] of [[-9, -11, 0.3], [-6.5, -11.2, 0.3]] as Array<[number, number, number]>) {
+      const truck = this.makeVan(); truck.scale.setScalar(1.4); truck.position.set(x, 0, z); truck.rotation.y = rot; this.world.add(truck);
+    }
+    // A water tower landmark.
+    const tower = new THREE.Group();
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 2.2, 16), new THREE.MeshStandardMaterial({ color: 0x9aa1ab, roughness: 0.4, metalness: 0.6 }));
+    tank.position.y = 5.5; tank.castShadow = true; tower.add(tank);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(1.7, 0.8, 16), new THREE.MeshStandardMaterial({ color: 0x586070, roughness: 0.5, metalness: 0.5 }));
+    cone.position.y = 6.9; tower.add(cone);
+    for (const [lx, lz] of [[1.1, 1.1], [-1.1, 1.1], [1.1, -1.1], [-1.1, -1.1]] as Array<[number, number]>) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 4.4, 0.16), new THREE.MeshStandardMaterial({ color: 0x40454e, roughness: 0.6, metalness: 0.5 }));
+      leg.position.set(lx, 2.2, lz); leg.castShadow = true; tower.add(leg);
+    }
+    tower.position.set(20, 0, -12); this.world.add(tower);
+  }
+
+  private makeTree(x: number, z: number): void {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 1.0, 8), new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 0.9 }));
+    trunk.position.set(x, 0.5, z); trunk.castShadow = true; this.world.add(trunk);
+    const leafMat = new THREE.MeshStandardMaterial({ color: 0x4e8a3c, roughness: 0.9, flatShading: true });
+    const l1 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9, 0), leafMat);
+    l1.position.set(x, 1.5, z); l1.castShadow = true; this.world.add(l1);
+    const l2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), leafMat);
+    l2.position.set(x + 0.3, 1.9, z - 0.2); l2.castShadow = true; this.world.add(l2);
   }
 
   // --- NPCs -------------------------------------------------------------------
@@ -613,7 +647,7 @@ export class FactoryScene {
   private spawnRoamers(n: number): void {
     for (let i = 0; i < n; i++) {
       const mesh = this.makeChef();
-      const x = (Math.random() - 0.5) * 10, z = (Math.random() - 0.5) * 8;
+      const x = (Math.random() - 0.5) * 24, z = 2 + (Math.random() - 0.5) * 22;
       mesh.position.set(x, 0, z); this.world.add(mesh);
       this.roamers.push({ mesh, x, z, tx: x, tz: z, speed: 0.7 + Math.random() * 0.7, pause: Math.random() * 2, phase: Math.random() * 6 });
     }
@@ -815,7 +849,7 @@ export class FactoryScene {
     for (const r of this.roamers) {
       if (r.pause > 0) { r.pause -= dt; continue; }
       const dx = r.tx - r.x, dz = r.tz - r.z; const d = Math.hypot(dx, dz);
-      if (d < 0.12) { r.tx = (Math.random() - 0.5) * 11; r.tz = (Math.random() - 0.5) * 8; r.pause = Math.random() * 1.8; }
+      if (d < 0.12) { r.tx = (Math.random() - 0.5) * 24; r.tz = 2 + (Math.random() - 0.5) * 22; r.pause = Math.random() * 1.8; }
       else {
         r.x += (dx / d) * r.speed * dt; r.z += (dz / d) * r.speed * dt;
         r.mesh.position.x = r.x; r.mesh.position.z = r.z;
@@ -871,7 +905,7 @@ export class FactoryScene {
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (this.pinching && this.pointers.size >= 2) {
       const d = this.pinchDistance();
-      if (this.lastPinch > 0 && d > 0) this.targetViewSize = Math.max(10, Math.min(28, this.targetViewSize * (this.lastPinch / d)));
+      if (this.lastPinch > 0 && d > 0) this.targetViewSize = Math.max(13, Math.min(48, this.targetViewSize * (this.lastPinch / d)));
       this.lastPinch = d;
     } else if (this.dragging) {
       const dx = e.clientX - this.lastPX; this.lastPX = e.clientX;
@@ -885,7 +919,7 @@ export class FactoryScene {
   }
   private onWheel(e: WheelEvent): void {
     e.preventDefault();
-    this.targetViewSize = Math.max(10, Math.min(28, this.targetViewSize + e.deltaY * 0.01));
+    this.targetViewSize = Math.max(13, Math.min(48, this.targetViewSize + e.deltaY * 0.01));
   }
   private pinchDistance(): number {
     const pts = [...this.pointers.values()];
