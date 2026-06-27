@@ -107,6 +107,7 @@ export class FactoryScene {
   private bottleneck: StationId = 'cooking';
   private steamAccum = 0;
   private sparkAccum = 0;
+  private centerFlag: THREE.Mesh | null = null;
 
   private raf = 0; private last = 0; private t = 0;
   private yaw = 0; private targetYaw = 0;
@@ -154,6 +155,7 @@ export class FactoryScene {
     this.buildRoads();
     this.buildVehicles();
     this.buildProps();
+    this.buildCenterpiece();
     this.spawnRoamers(14);
     this.resize();
     this.initQuality();
@@ -663,6 +665,69 @@ export class FactoryScene {
     l2.position.set(x + 0.3, 1.9, z - 0.2); l2.castShadow = true; this.world.add(l2);
   }
 
+  private makeBench(x: number, z: number, ry: number): void {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x7a5a36, roughness: 0.85 });
+    const b = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.08, 0.34), mat);
+    seat.position.y = 0.32; seat.castShadow = true; b.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.3, 0.06), mat);
+    back.position.set(0, 0.5, -0.14); b.add(back);
+    for (const lx of [-0.42, 0.42]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.32, 0.3), mat);
+      leg.position.set(lx, 0.16, 0); b.add(leg);
+    }
+    b.position.set(x, 0, z); b.rotation.y = ry; this.world.add(b);
+  }
+
+  /**
+   * A landscaped roundabout filling the open plaza centre: a kerbed lawn with
+   * trees, a fountain, benches, and an illuminated company sign with a waving
+   * flag — so the big map doesn't read as a dead expanse of concrete.
+   */
+  private buildCenterpiece(): void {
+    const [cx, cz] = PLAZA_C;
+    const g = new THREE.Group(); g.position.set(cx, 0, cz);
+    const steel = new THREE.MeshStandardMaterial({ color: 0x9aa1ab, roughness: 0.35, metalness: 0.7 });
+
+    // Kerb ring + lawn.
+    const kerb = new THREE.Mesh(new THREE.CylinderGeometry(4.0, 4.1, 0.34, 40), new THREE.MeshStandardMaterial({ color: 0x7d828b, roughness: 0.9 }));
+    kerb.position.y = 0.17; kerb.receiveShadow = true; g.add(kerb);
+    const lawn = new THREE.Mesh(new THREE.CylinderGeometry(3.7, 3.7, 0.36, 40), new THREE.MeshStandardMaterial({ map: this.texGround(), color: 0x5f7048, roughness: 1 }));
+    lawn.position.y = 0.19; lawn.receiveShadow = true; g.add(lawn);
+
+    // Central fountain.
+    const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.2, 0.4, 24), new THREE.MeshStandardMaterial({ color: 0x8a909a, roughness: 0.6, metalness: 0.3 }));
+    basin.position.y = 0.4; basin.castShadow = true; g.add(basin);
+    const water = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 0.98, 0.08, 24), new THREE.MeshStandardMaterial({ color: 0x4f9fd0, roughness: 0.1, metalness: 0.4, emissive: 0x103048, emissiveIntensity: 0.3 }));
+    water.position.y = 0.58; g.add(water);
+    const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.7, 12), steel);
+    spout.position.y = 0.9; g.add(spout);
+
+    // Company sign pylon with a glowing board + pictogram.
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.6, 0.18), new THREE.MeshStandardMaterial({ color: 0x40454e, roughness: 0.6, metalness: 0.5 }));
+    post.position.set(-2.5, 1.3, 1.4); post.castShadow = true; g.add(post);
+    const board = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.95, 0.14), new THREE.MeshStandardMaterial({ color: 0x12161d, emissive: 0xffb24a, emissiveIntensity: 0.55, roughness: 0.4 }));
+    board.position.set(-2.5, 2.9, 1.4); g.add(board);
+    const logo = this.makeIconSprite('🍔'); logo.scale.set(0.8, 0.8, 1); logo.position.set(-2.5, 2.9, 1.5); g.add(logo);
+
+    // Flagpole with a waving flag (animated).
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3.6, 8), steel);
+    pole.position.set(2.6, 1.8, -1.6); pole.castShadow = true; g.add(pole);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.6, 6, 1), new THREE.MeshStandardMaterial({ color: 0xe0843a, roughness: 0.6, side: THREE.DoubleSide }));
+    flag.position.set(3.1, 3.2, -1.6); g.add(flag);
+    this.centerFlag = flag;
+
+    // Trees + benches around the lawn.
+    for (const a of [0.6, 2.4, 4.1]) {
+      const tx = cx + Math.cos(a) * 2.6, tz = cz + Math.sin(a) * 2.6;
+      this.makeTree(tx, tz);
+    }
+    this.makeBench(cx - 1.6, cz + 2.6, 0.2);
+    this.makeBench(cx + 1.6, cz + 2.6, -0.2);
+
+    this.world.add(g);
+  }
+
   // --- NPCs -------------------------------------------------------------------
 
   private spawnRoamers(n: number): void {
@@ -732,18 +797,6 @@ export class FactoryScene {
     for (let y = 6; y < 64; y += 22) g.fillRect(29, y, 6, 12); // dashed centre line
     g.fillStyle = '#5a5f66'; g.fillRect(2, 0, 3, 64); g.fillRect(59, 0, 3, 64); // kerbs
     return this.finish(c, 1, Math.max(1, Math.round(len / 1.7)));
-  }
-  private texScreen(emoji: string, accent: number): THREE.Texture {
-    const { c, g } = this.paintCanvas(128);
-    g.fillStyle = '#0b0f14'; g.fillRect(0, 0, 128, 128);
-    g.font = '70px system-ui, "Segoe UI Emoji", sans-serif';
-    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(emoji, 64, 50);
-    const hex = '#' + (accent & 0xffffff).toString(16).padStart(6, '0');
-    g.fillStyle = hex;
-    for (let i = 0; i < 4; i++) g.fillRect(20 + i * 24, 92, 16, 8 + (i % 2) * 18);
-    const t = new THREE.CanvasTexture(c);
-    (t as unknown as { colorSpace: string }).colorSpace = THREE.SRGBColorSpace; t.minFilter = THREE.LinearFilter;
-    return t;
   }
   private texCrate(): THREE.Texture {
     const { c, g } = this.paintCanvas(64);
@@ -829,6 +882,8 @@ export class FactoryScene {
       this.viewSize += (this.targetViewSize - this.viewSize) * Math.min(1, dt * 8);
       this.updateCameraFrustum();
     }
+
+    if (this.centerFlag) this.centerFlag.rotation.y = Math.sin(this.t * 4) * 0.25;
 
     // Building life: pulsing screens, blinking status (red on bottleneck), halo.
     for (const vis of this.buildings.values()) {
