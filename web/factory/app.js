@@ -10,7 +10,7 @@ import { EconomyEngine } from '../../src/EconomyEngine.js';
 import { FactoryGame } from '../../src/factory/FactoryGame.js';
 import { FactoryEngine } from '../../src/factory/FactoryEngine.js';
 import { STATION_IDS } from '../../src/factory/types.js';
-import { RECIPE_DEFS, RESEARCH_DEFS, STATION_DEF_BY_ID, STATION_DEFS, WORKERS_PER_STATION_CAP, } from '../../src/factory/config.js';
+import { MANAGER_BY_ID, MANAGER_DEFS, RECIPE_DEFS, RESEARCH_DEFS, STATION_DEF_BY_ID, STATION_DEFS, WORKERS_PER_STATION_CAP, } from '../../src/factory/config.js';
 import { FactoryScene, webglAvailable } from './scene.js';
 import { NumberTween } from '../effects.js';
 import { CloudSync } from '../sync.js';
@@ -224,6 +224,94 @@ el('btn-worker-minus').addEventListener('click', () => { if (openStation)
     game.unassignWorker(openStation); });
 el('btn-hire-from-station').addEventListener('click', () => { if (game.hireWorker())
     buzz(10); });
+el('btn-chef-skill').addEventListener('click', () => { if (openStation && game.triggerSkill(openStation))
+    buzz(15); });
+const chefCards = new Map();
+const chefsListEl = el('chefs-list');
+const RARITY_LABEL = { COMMON: 'Commun', RARE: 'Rare', EPIC: 'Épique', LEGENDARY: 'Légendaire' };
+function modText(m) {
+    const where = m.targetId === 'global' ? 'toute la ligne' : STATION_DEF_BY_ID[m.targetId]?.name ?? m.targetId;
+    const pct = Math.round(Math.abs(1 - m.value) * 100);
+    switch (m.type) {
+        case 'MULTIPLY_SPEED': return `+${Math.round((m.value - 1) * 100)}% cadence · ${where}`;
+        case 'MULTIPLY_VALUE': return `+${Math.round((m.value - 1) * 100)}% valeur · ${where}`;
+        case 'EXPAND_BUFFER': return `+${Math.round((m.value - 1) * 100)}% tampon · ${where}`;
+        case 'REDUCE_UPGRADE_COST': return `−${pct}% coût d’amélioration · ${where}`;
+        default: return '';
+    }
+}
+for (const def of MANAGER_DEFS) {
+    const card = document.createElement('div');
+    card.className = `card chef-card rarity-${def.rarity.toLowerCase()}`;
+    card.innerHTML = `
+    <div class="chef-ic">${def.icon}</div>
+    <div class="chef-info">
+      <div class="chef-name">${def.name} <span class="chef-rar">${RARITY_LABEL[def.rarity]}</span></div>
+      <div class="chef-eff">${modText(def.passive)}</div>
+      ${def.active ? `<div class="chef-skill-d">⚡ ${modText(def.active)} (${def.activeDurationMs / 1000}s)</div>` : ''}
+    </div>
+    <div class="chef-acts"><button data-alt class="chef-alt" hidden>—</button><button data-act class="chef-act">—</button></div>`;
+    const btn = card.querySelector('[data-act]');
+    const alt = card.querySelector('[data-alt]');
+    btn.addEventListener('click', () => {
+        const s = game.getState();
+        if (!s.managers[def.id]) {
+            if (game.hireManager(def.id))
+                buzz(15);
+        }
+        else if (openStation && s.stations[openStation].managerId === def.id) {
+            game.unassignManager(openStation);
+        }
+        else if (openStation) {
+            game.assignManager(def.id, openStation);
+            buzz(8);
+        }
+        renderChefs();
+    });
+    alt.addEventListener('click', () => { if (openStation) {
+        game.assignManager(def.id, openStation);
+        buzz(8);
+        renderChefs();
+    } });
+    chefsListEl.appendChild(card);
+    chefCards.set(def.id, { root: card, btn, alt });
+}
+function openChefs() { if (!openStation)
+    return; renderChefs(); el('chefs-modal').classList.add('visible'); }
+el('btn-chef-manage').addEventListener('click', openChefs);
+el('btn-chefs-close').addEventListener('click', () => el('chefs-modal').classList.remove('visible'));
+function renderChefs() {
+    if (!openStation)
+        return;
+    const s = game.getState();
+    el('chefs-title').textContent = `Chef · ${STATION_DEF_BY_ID[openStation].name}`;
+    for (const def of MANAGER_DEFS) {
+        const c = chefCards.get(def.id);
+        const owned = !!s.managers[def.id];
+        const hereStation = STATION_IDS.find((id) => s.stations[id].managerId === def.id) ?? null;
+        c.alt.hidden = true;
+        if (!owned) {
+            c.btn.innerHTML = `💎 ${def.hireCost}`;
+            c.btn.disabled = s.gems < def.hireCost;
+            c.btn.className = s.gems >= def.hireCost ? 'chef-act affordable' : 'chef-act';
+        }
+        else if (hereStation === openStation) {
+            c.btn.textContent = 'Retirer';
+            c.btn.disabled = false;
+            c.btn.className = 'chef-act remove';
+        }
+        else if (hereStation) {
+            c.btn.textContent = `Déplacer ici`;
+            c.btn.disabled = false;
+            c.btn.className = 'chef-act';
+        }
+        else {
+            c.btn.textContent = 'Poster ici';
+            c.btn.disabled = false;
+            c.btn.className = 'chef-act affordable';
+        }
+    }
+}
 // --- Tab navigation ----------------------------------------------------------
 const tabButtons = Array.from(document.querySelectorAll('nav button[data-tab]'));
 for (const btn of tabButtons) {
@@ -463,6 +551,24 @@ function renderStationSheet(s) {
     el('st-hire-cost').textContent = fmt(hireCost);
     el('st-idle').textContent = String(s.workersIdle);
     el('btn-hire-from-station').disabled = s.cash < hireCost;
+    // Chef de partie row + active-skill button.
+    const mgrId = st.managerId;
+    const mgr = mgrId ? MANAGER_BY_ID[mgrId] : null;
+    el('st-chef-ic').textContent = mgr ? mgr.icon : '👨‍🍳';
+    el('st-chef-name').textContent = mgr ? mgr.name : 'Aucun chef';
+    el('st-chef-eff').textContent = mgr ? modText(mgr.passive) : 'Affectez un chef de partie';
+    const skillBtn = el('btn-chef-skill');
+    if (mgr && mgr.active) {
+        skillBtn.hidden = false;
+        const cd = FactoryEngine.skillCooldownRemainingMs(s, id, Date.now());
+        const live = FactoryEngine.isSkillActive(s, id, Date.now());
+        skillBtn.textContent = live ? '🔥 Actif' : cd > 0 ? `⚡ ${Math.ceil(cd / 1000)}s` : '⚡ Skill';
+        skillBtn.disabled = live || cd > 0;
+        skillBtn.classList.toggle('ready', !live && cd <= 0);
+    }
+    else {
+        skillBtn.hidden = true;
+    }
 }
 function upgradePlan(s, id, mode) {
     return mode === 'max'

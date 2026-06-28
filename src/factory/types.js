@@ -21,7 +21,7 @@ export const STATION_IDS = [
 ];
 /** A fresh, fully-built starter line so money flows from the first second. */
 export function createDefaultFactory(now = Date.now()) {
-    const station = (level) => ({ level, workers: 0, output: 0 });
+    const station = (level) => ({ level, workers: 0, output: 0, managerId: null, skillEndsAt: 0, skillReadyAt: 0 });
     return {
         kind: 'factory',
         version: 1,
@@ -41,6 +41,7 @@ export function createDefaultFactory(now = Date.now()) {
         menuLevel: 0,
         workersIdle: 0,
         workersHired: 0,
+        managers: {},
         research: {},
         rushEndsAt: 0,
         lastDailyClaim: 0,
@@ -51,7 +52,7 @@ export function createDefaultFactory(now = Date.now()) {
 }
 /** Deep clone, field by field, so the compiler flags shape changes. */
 export function cloneFactory(s) {
-    const st = (x) => ({ level: x.level, workers: x.workers, output: x.output });
+    const st = (x) => ({ level: x.level, workers: x.workers, output: x.output, managerId: x.managerId, skillEndsAt: x.skillEndsAt, skillReadyAt: x.skillReadyAt });
     return {
         kind: 'factory',
         version: s.version,
@@ -71,6 +72,7 @@ export function cloneFactory(s) {
         menuLevel: s.menuLevel,
         workersIdle: s.workersIdle,
         workersHired: s.workersHired,
+        managers: { ...s.managers },
         research: { ...s.research },
         rushEndsAt: s.rushEndsAt,
         lastDailyClaim: s.lastDailyClaim,

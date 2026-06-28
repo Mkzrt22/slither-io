@@ -8,7 +8,7 @@
  * the UI shows (cadence, capacity, throughput, costs, prestige) is computed
  * here so the view stays dumb.
  */
-import { MENU_BASE_COST, MENU_COST_GROWTH, MENU_PRICE_GROWTH, OFFLINE_BASE_EFFICIENCY, OFFLINE_CAP_HOURS, PRESTIGE_BASE_THRESHOLD, RECIPE_BY_ID, RESEARCH_BY_ID, RESEARCH_DEFS, RUSH_MULTIPLIER, STAR_BONUS, STATION_DEFS, STATION_DEF_BY_ID, WORKERS_PER_STATION_CAP, WORKER_BASE_COST, WORKER_BOOST, WORKER_COST_GROWTH, } from './config.js';
+import { MANAGER_BY_ID, MENU_BASE_COST, MENU_COST_GROWTH, MENU_PRICE_GROWTH, OFFLINE_BASE_EFFICIENCY, OFFLINE_CAP_HOURS, PRESTIGE_BASE_THRESHOLD, RECIPE_BY_ID, RESEARCH_BY_ID, RESEARCH_DEFS, RUSH_MULTIPLIER, STAR_BONUS, STATION_DEFS, STATION_DEF_BY_ID, WORKERS_PER_STATION_CAP, WORKER_BASE_COST, WORKER_BOOST, WORKER_COST_GROWTH, } from './config.js';
 import { STATION_IDS } from './types.js';
 export class FactoryEngine {
     // --- Research helpers -------------------------------------------------------
@@ -47,6 +47,53 @@ export class FactoryEngine {
     static activeRecipe(state) {
         return RECIPE_BY_ID[state.activeRecipeId] ?? RECIPE_BY_ID.fast_food_burger;
     }
+    // --- Managers (chefs) -------------------------------------------------------
+    static manager(id) {
+        return id ? (MANAGER_BY_ID[id] ?? null) : null;
+    }
+    static isSkillActive(state, station, now) {
+        return now < state.stations[station].skillEndsAt;
+    }
+    /** The modifier a station's assigned manager currently applies (active skill
+     *  takes over from the passive while running), or null. */
+    static currentMod(state, station, now) {
+        const st = state.stations[station];
+        const m = FactoryEngine.manager(st.managerId);
+        if (!m)
+            return null;
+        if (m.active && FactoryEngine.isSkillActive(state, station, now))
+            return m.active;
+        return m.passive;
+    }
+    /**
+     * Per-station chef multiplier of `type` consumed at `station`: global chefs
+     * (anywhere) plus the chef posted at `station` whose modifier targets it.
+     */
+    static stationChefMult(state, type, station, now) {
+        let mult = 1;
+        for (const s of STATION_IDS) {
+            const mod = FactoryEngine.currentMod(state, s, now);
+            if (!mod || mod.type !== type)
+                continue;
+            if (mod.targetId === 'global')
+                mult *= mod.value;
+            else if (mod.targetId === station && s === station)
+                mult *= mod.value;
+        }
+        return mult;
+    }
+    /** Line-wide dish-value multiplier from all assigned value chefs. */
+    static valueChefMult(state, now) {
+        let mult = 1;
+        for (const s of STATION_IDS) {
+            const mod = FactoryEngine.currentMod(state, s, now);
+            if (!mod || mod.type !== 'MULTIPLY_VALUE')
+                continue;
+            if (mod.targetId === 'global' || mod.targetId === s)
+                mult *= mod.value;
+        }
+        return mult;
+    }
     /**
      * Effective cadence (units/sec) of a station, all multipliers included.
      * The active recipe's per-station complexity divides the rate, so a fancier
@@ -59,23 +106,26 @@ export class FactoryEngine {
             return 0;
         const workerMult = 1 + WORKER_BOOST * Math.min(st.workers, WORKERS_PER_STATION_CAP);
         const complexity = FactoryEngine.activeRecipe(state).complexity[id] || 1;
-        return (def.baseRate / complexity) * st.level * workerMult * FactoryEngine.globalRateMultiplier(state, now);
+        const chefMult = FactoryEngine.stationChefMult(state, 'MULTIPLY_SPEED', id, now);
+        return (def.baseRate / complexity) * st.level * workerMult * chefMult * FactoryEngine.globalRateMultiplier(state, now);
     }
-    /** Output-buffer capacity of a station (grows with level and research). */
+    /** Output-buffer capacity of a station (grows with level, research, chef). */
     static stationCapacity(state, id) {
         const def = STATION_DEF_BY_ID[id];
         const st = state.stations[id];
         const bufferBonus = 1 + FactoryEngine.researchBonus(state, 'buffer');
-        return Math.max(1, Math.round(def.baseBuffer * (1 + 0.2 * (st.level - 1)) * bufferBonus));
+        const chefMult = FactoryEngine.stationChefMult(state, 'EXPAND_BUFFER', id, 0);
+        return Math.max(1, Math.round(def.baseBuffer * (1 + 0.2 * (st.level - 1)) * bufferBonus * chefMult));
     }
     /**
      * € paid per dish sold: the active recipe's market value, scaled by the menu
      * tier, price research, and the permanent Michelin-star multiplier.
      */
-    static dishPrice(state) {
+    static dishPrice(state, now = 0) {
         const recipe = FactoryEngine.activeRecipe(state).marketValue;
         const menu = Math.pow(MENU_PRICE_GROWTH, Math.max(0, state.menuLevel));
-        return recipe * menu * (1 + FactoryEngine.researchBonus(state, 'price')) * FactoryEngine.starMultiplier(state);
+        const chefMult = FactoryEngine.valueChefMult(state, now);
+        return recipe * menu * (1 + FactoryEngine.researchBonus(state, 'price')) * FactoryEngine.starMultiplier(state) * chefMult;
     }
     /** Steady-state line throughput (units/sec) — the slowest station's rate. */
     static lineThroughput(state, now) {
@@ -100,7 +150,7 @@ export class FactoryEngine {
     }
     /** Steady-state revenue per second (throughput × price). */
     static revenuePerSecond(state, now) {
-        return FactoryEngine.lineThroughput(state, now) * FactoryEngine.dishPrice(state);
+        return FactoryEngine.lineThroughput(state, now) * FactoryEngine.dishPrice(state, now);
     }
     // --- The tick ---------------------------------------------------------------
     /**
@@ -113,7 +163,7 @@ export class FactoryEngine {
     static tick(state, dt, now) {
         if (!(dt > 0))
             return { cashEarned: 0, dishesSold: 0 };
-        const price = FactoryEngine.dishPrice(state);
+        const price = FactoryEngine.dishPrice(state, now);
         let dishesSold = 0;
         // Downstream-first: delivery, plating, cooking, prep (indices 4..1).
         for (let i = STATION_IDS.length - 1; i >= 1; i--) {
@@ -150,19 +200,24 @@ export class FactoryEngine {
         return { cashEarned, dishesSold };
     }
     // --- Upgrades ---------------------------------------------------------------
+    /** Accountant chefs make a station's upgrades cheaper (factor <= 1). */
+    static upgradeCostMult(state, id) {
+        return FactoryEngine.stationChefMult(state, 'REDUCE_UPGRADE_COST', id, 0);
+    }
     /** Cost to take a station from its current level to the next. */
     static upgradeCost(state, id) {
         const def = STATION_DEF_BY_ID[id];
         const level = Math.max(0, Math.floor(state.stations[id].level));
-        return Math.round(def.upgradeBaseCost * Math.pow(def.upgradeGrowth, level));
+        return Math.round(def.upgradeBaseCost * Math.pow(def.upgradeGrowth, level) * FactoryEngine.upgradeCostMult(state, id));
     }
     /** Total cost to buy `count` consecutive station levels. */
     static upgradeBulkCost(state, id, count) {
         const def = STATION_DEF_BY_ID[id];
         const start = Math.max(0, Math.floor(state.stations[id].level));
+        const costMult = FactoryEngine.upgradeCostMult(state, id);
         let total = 0;
         for (let i = 0; i < Math.max(0, Math.floor(count)); i++) {
-            total += Math.round(def.upgradeBaseCost * Math.pow(def.upgradeGrowth, start + i));
+            total += Math.round(def.upgradeBaseCost * Math.pow(def.upgradeGrowth, start + i) * costMult);
         }
         return total;
     }
@@ -170,11 +225,12 @@ export class FactoryEngine {
     static maxAffordableUpgrades(state, id) {
         const def = STATION_DEF_BY_ID[id];
         const start = Math.max(0, Math.floor(state.stations[id].level));
+        const costMult = FactoryEngine.upgradeCostMult(state, id);
         const budget = state.cash > 0 ? state.cash : 0;
         let count = 0;
         let cost = 0;
         while (count < 100000) {
-            const next = Math.round(def.upgradeBaseCost * Math.pow(def.upgradeGrowth, start + count));
+            const next = Math.round(def.upgradeBaseCost * Math.pow(def.upgradeGrowth, start + count) * costMult);
             if (cost + next > budget)
                 break;
             cost += next;
@@ -224,6 +280,67 @@ export class FactoryEngine {
             return false;
         state.stations[id].workers -= 1;
         state.workersIdle += 1;
+        return true;
+    }
+    // --- Managers (chefs) actions ----------------------------------------------
+    static ownsManager(state, managerId) {
+        return (state.managers[managerId] ?? 0) > 0;
+    }
+    /** Which station a manager is currently posted at, or null. */
+    static managerStation(state, managerId) {
+        for (const id of STATION_IDS)
+            if (state.stations[id].managerId === managerId)
+                return id;
+        return null;
+    }
+    /** Recruits a manager with gems. False when unknown, owned, or unaffordable. */
+    static hireManager(state, managerId) {
+        const def = MANAGER_BY_ID[managerId];
+        if (!def || FactoryEngine.ownsManager(state, managerId))
+            return false;
+        if (state.gems < def.hireCost)
+            return false;
+        state.gems -= def.hireCost;
+        state.managers[managerId] = 1;
+        return true;
+    }
+    /** Posts an owned manager to a station (moving it off any other station). */
+    static assignManager(state, managerId, id) {
+        if (!FactoryEngine.ownsManager(state, managerId))
+            return false;
+        const prev = FactoryEngine.managerStation(state, managerId);
+        if (prev) {
+            state.stations[prev].managerId = null;
+            state.stations[prev].skillEndsAt = 0;
+            state.stations[prev].skillReadyAt = 0;
+        }
+        state.stations[id].managerId = managerId;
+        state.stations[id].skillEndsAt = 0;
+        state.stations[id].skillReadyAt = 0;
+        return true;
+    }
+    /** Removes whatever manager is posted at a station. */
+    static unassignManager(state, id) {
+        if (!state.stations[id].managerId)
+            return false;
+        state.stations[id].managerId = null;
+        state.stations[id].skillEndsAt = 0;
+        state.stations[id].skillReadyAt = 0;
+        return true;
+    }
+    static skillCooldownRemainingMs(state, id, now) {
+        return Math.max(0, state.stations[id].skillReadyAt - now);
+    }
+    /** Fires the assigned manager's active skill if it's off cooldown. */
+    static triggerSkill(state, id, now) {
+        const st = state.stations[id];
+        const m = FactoryEngine.manager(st.managerId);
+        if (!m || !m.active)
+            return false;
+        if (now < st.skillReadyAt)
+            return false;
+        st.skillEndsAt = now + m.activeDurationMs;
+        st.skillReadyAt = now + m.cooldownMs;
         return true;
     }
     // --- Recipes ----------------------------------------------------------------
@@ -326,8 +443,9 @@ export class FactoryEngine {
         // The line restarts on the starter dish; unlocked recipes are a permanent
         // collection and survive (you just re-cook your way back up).
         state.activeRecipeId = 'fast_food_burger';
+        // Managers (gem-bought) survive but come off the line on reset.
         for (const id of STATION_IDS) {
-            state.stations[id] = { level: 1, workers: 0, output: 0 };
+            state.stations[id] = { level: 1, workers: 0, output: 0, managerId: null, skillEndsAt: 0, skillReadyAt: 0 };
         }
         // Cash-bought research resets; star-bought research is permanent.
         const keep = {};

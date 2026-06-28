@@ -74,6 +74,45 @@ export const MENU_PRICE_GROWTH = 1.6;
 /** Cost of the first menu upgrade; grows per tier. */
 export const MENU_BASE_COST = 500;
 export const MENU_COST_GROWTH = 2.15;
+/** Recruitable chefs. Passives are permanent while assigned; actives burst. */
+export const MANAGER_DEFS = [
+    {
+        id: 'marco', name: 'Marco le Rapide', icon: '🧑‍🍳', rarity: 'COMMON', hireCost: 20,
+        passive: { targetId: 'cooking', type: 'MULTIPLY_SPEED', value: 1.25 },
+        active: { targetId: 'cooking', type: 'MULTIPLY_SPEED', value: 3 }, activeDurationMs: 15000, cooldownMs: 120000,
+    },
+    {
+        id: 'lena', name: 'Léna la Précise', icon: '👩‍🍳', rarity: 'COMMON', hireCost: 20,
+        passive: { targetId: 'prep', type: 'MULTIPLY_SPEED', value: 1.25 },
+        active: { targetId: 'prep', type: 'MULTIPLY_SPEED', value: 3 }, activeDurationMs: 15000, cooldownMs: 120000,
+    },
+    {
+        id: 'sofia', name: 'Sofia Réserve', icon: '🧊', rarity: 'RARE', hireCost: 60,
+        passive: { targetId: 'global', type: 'EXPAND_BUFFER', value: 1.6 },
+        active: null, activeDurationMs: 0, cooldownMs: 0,
+    },
+    {
+        id: 'auguste', name: 'Auguste Dresseur', icon: '🎨', rarity: 'RARE', hireCost: 70,
+        passive: { targetId: 'plating', type: 'MULTIPLY_VALUE', value: 1.35 },
+        active: { targetId: 'plating', type: 'MULTIPLY_VALUE', value: 2 }, activeDurationMs: 20000, cooldownMs: 150000,
+    },
+    {
+        id: 'kenji', name: 'Kenji Logistique', icon: '🚚', rarity: 'EPIC', hireCost: 150,
+        passive: { targetId: 'global', type: 'MULTIPLY_SPEED', value: 1.2 },
+        active: { targetId: 'global', type: 'MULTIPLY_SPEED', value: 2.5 }, activeDurationMs: 20000, cooldownMs: 180000,
+    },
+    {
+        id: 'gaspard', name: 'Gaspard Comptable', icon: '💼', rarity: 'EPIC', hireCost: 160,
+        passive: { targetId: 'global', type: 'REDUCE_UPGRADE_COST', value: 0.85 },
+        active: null, activeDurationMs: 0, cooldownMs: 0,
+    },
+    {
+        id: 'celeste', name: 'Céleste 3 Étoiles', icon: '🌟', rarity: 'LEGENDARY', hireCost: 400,
+        passive: { targetId: 'global', type: 'MULTIPLY_VALUE', value: 1.5 },
+        active: { targetId: 'global', type: 'MULTIPLY_VALUE', value: 3 }, activeDurationMs: 25000, cooldownMs: 240000,
+    },
+];
+export const MANAGER_BY_ID = Object.freeze(MANAGER_DEFS.reduce((acc, d) => { acc[d.id] = d; return acc; }, {}));
 export const RESEARCH_DEFS = [
     {
         id: 'sharp_knives', name: 'Couteaux affûtés', icon: '⚡',
