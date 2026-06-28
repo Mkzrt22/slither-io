@@ -576,7 +576,23 @@ function upgradePlan(s, id, mode) {
         : { count: mode, cost: FactoryEngine.upgradeBulkCost(s, id, mode) };
 }
 // --- Notifications (lightweight toast via the document title flash) ----------
-game.on('notify', () => { });
+// Transient toasts for non-blocking feedback (recruit, errors, prestige…).
+const toastHost = el('toast-host');
+function showToast(message, severity) {
+    const t = document.createElement('div');
+    t.className = `toast toast-${severity}`;
+    t.textContent = message;
+    toastHost.appendChild(t);
+    // Cap the stack so a flood can't pile up.
+    while (toastHost.children.length > 4)
+        toastHost.removeChild(toastHost.firstChild);
+    requestAnimationFrame(() => t.classList.add('show'));
+    window.setTimeout(() => {
+        t.classList.remove('show');
+        window.setTimeout(() => t.remove(), 280);
+    }, 2600);
+}
+game.on('notify', (n) => showToast(n.message, n.severity));
 // --- Boot the simulation -----------------------------------------------------
 game.start();
 let lastFrame = performance.now();
