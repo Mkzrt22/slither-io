@@ -8,7 +8,7 @@
  * emitter the view subscribes to. No rendering, no DOM.
  */
 import { FactoryEngine } from './FactoryEngine.js';
-import { cloneFactory, createDefaultFactory, STATION_IDS, } from './types.js';
+import { cloneFactory, createDefaultFactory, RECIPE_IDS, STATION_IDS, } from './types.js';
 import { RUSH_SECONDS } from './config.js';
 const SAVE_KEY = 'chef_factory_save_v1';
 const DAY_MS = 86400000;
@@ -136,6 +136,22 @@ export class FactoryGame {
             this.emit('notify', { message: 'Pas assez d’argent pour le menu', severity: 'warning' });
         return ok;
     }
+    unlockRecipe(id) {
+        const ok = FactoryEngine.unlockRecipe(this.state, id);
+        if (ok) {
+            this.persistAnnounce();
+            this.emit('notify', { message: 'Nouvelle recette débloquée !', severity: 'success' });
+        }
+        else
+            this.emit('notify', { message: 'Pas assez d’argent pour cette recette', severity: 'warning' });
+        return ok;
+    }
+    switchRecipe(id) {
+        const ok = FactoryEngine.switchRecipe(this.state, id);
+        if (ok)
+            this.persistAnnounce();
+        return ok;
+    }
     buyResearch(id) {
         const ok = FactoryEngine.buyResearch(this.state, id);
         if (ok)
@@ -217,6 +233,12 @@ export class FactoryGame {
         out.gems = Math.floor(num(raw.gems, base.gems));
         out.stars = Math.floor(num(raw.stars, 0));
         out.menuLevel = Math.floor(num(raw.menuLevel, 0));
+        // Recipes: keep only known ids, always include the starter, clamp active.
+        const known = new Set(RECIPE_IDS);
+        const unlocked = Array.isArray(raw.unlockedRecipes) ? raw.unlockedRecipes.filter((r) => known.has(r)) : [];
+        out.unlockedRecipes = Array.from(new Set(['fast_food_burger', ...unlocked]));
+        out.activeRecipeId = typeof raw.activeRecipeId === 'string' && out.unlockedRecipes.includes(raw.activeRecipeId)
+            ? raw.activeRecipeId : 'fast_food_burger';
         out.workersIdle = Math.floor(num(raw.workersIdle, 0));
         out.workersHired = Math.floor(num(raw.workersHired, 0));
         out.rushEndsAt = num(raw.rushEndsAt, 0);

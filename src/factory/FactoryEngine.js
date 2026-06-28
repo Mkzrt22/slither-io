@@ -8,7 +8,7 @@
  * the UI shows (cadence, capacity, throughput, costs, prestige) is computed
  * here so the view stays dumb.
  */
-import { BASE_DISH_PRICE, MENU_BASE_COST, MENU_COST_GROWTH, MENU_PRICE_GROWTH, OFFLINE_BASE_EFFICIENCY, OFFLINE_CAP_HOURS, PRESTIGE_BASE_THRESHOLD, RESEARCH_BY_ID, RESEARCH_DEFS, RUSH_MULTIPLIER, STAR_BONUS, STATION_DEFS, STATION_DEF_BY_ID, WORKERS_PER_STATION_CAP, WORKER_BASE_COST, WORKER_BOOST, WORKER_COST_GROWTH, } from './config.js';
+import { MENU_BASE_COST, MENU_COST_GROWTH, MENU_PRICE_GROWTH, OFFLINE_BASE_EFFICIENCY, OFFLINE_CAP_HOURS, PRESTIGE_BASE_THRESHOLD, RECIPE_BY_ID, RESEARCH_BY_ID, RESEARCH_DEFS, RUSH_MULTIPLIER, STAR_BONUS, STATION_DEFS, STATION_DEF_BY_ID, WORKERS_PER_STATION_CAP, WORKER_BASE_COST, WORKER_BOOST, WORKER_COST_GROWTH, } from './config.js';
 import { STATION_IDS } from './types.js';
 export class FactoryEngine {
     // --- Research helpers -------------------------------------------------------
@@ -33,20 +33,33 @@ export class FactoryEngine {
     static rushActive(state, now) {
         return now < state.rushEndsAt;
     }
-    /** Global cadence multiplier (stars × rate-research × active rush). */
+    /**
+     * Global cadence multiplier (rate-research × active rush). Michelin stars
+     * deliberately do NOT speed the line — they raise the dish value instead, so
+     * prestige scales earnings without trivialising the bottleneck puzzle.
+     */
     static globalRateMultiplier(state, now) {
         const rush = FactoryEngine.rushActive(state, now) ? RUSH_MULTIPLIER : 1;
-        return FactoryEngine.starMultiplier(state) * (1 + FactoryEngine.researchBonus(state, 'rate')) * rush;
+        return (1 + FactoryEngine.researchBonus(state, 'rate')) * rush;
     }
     // --- Per-station derived values --------------------------------------------
-    /** Effective cadence (units/sec) of a station, all multipliers included. */
+    /** The recipe currently in production. */
+    static activeRecipe(state) {
+        return RECIPE_BY_ID[state.activeRecipeId] ?? RECIPE_BY_ID.fast_food_burger;
+    }
+    /**
+     * Effective cadence (units/sec) of a station, all multipliers included.
+     * The active recipe's per-station complexity divides the rate, so a fancier
+     * dish slows some stations more than others and moves the bottleneck.
+     */
     static stationRate(state, id, now) {
         const def = STATION_DEF_BY_ID[id];
         const st = state.stations[id];
         if (st.level <= 0)
             return 0;
         const workerMult = 1 + WORKER_BOOST * Math.min(st.workers, WORKERS_PER_STATION_CAP);
-        return def.baseRate * st.level * workerMult * FactoryEngine.globalRateMultiplier(state, now);
+        const complexity = FactoryEngine.activeRecipe(state).complexity[id] || 1;
+        return (def.baseRate / complexity) * st.level * workerMult * FactoryEngine.globalRateMultiplier(state, now);
     }
     /** Output-buffer capacity of a station (grows with level and research). */
     static stationCapacity(state, id) {
@@ -55,10 +68,14 @@ export class FactoryEngine {
         const bufferBonus = 1 + FactoryEngine.researchBonus(state, 'buffer');
         return Math.max(1, Math.round(def.baseBuffer * (1 + 0.2 * (st.level - 1)) * bufferBonus));
     }
-    /** € paid per dish sold, including the menu tier and price research. */
+    /**
+     * € paid per dish sold: the active recipe's market value, scaled by the menu
+     * tier, price research, and the permanent Michelin-star multiplier.
+     */
     static dishPrice(state) {
-        const menu = BASE_DISH_PRICE * Math.pow(MENU_PRICE_GROWTH, Math.max(0, state.menuLevel));
-        return menu * (1 + FactoryEngine.researchBonus(state, 'price'));
+        const recipe = FactoryEngine.activeRecipe(state).marketValue;
+        const menu = Math.pow(MENU_PRICE_GROWTH, Math.max(0, state.menuLevel));
+        return recipe * menu * (1 + FactoryEngine.researchBonus(state, 'price')) * FactoryEngine.starMultiplier(state);
     }
     /** Steady-state line throughput (units/sec) — the slowest station's rate. */
     static lineThroughput(state, now) {
@@ -209,6 +226,30 @@ export class FactoryEngine {
         state.workersIdle += 1;
         return true;
     }
+    // --- Recipes ----------------------------------------------------------------
+    static isRecipeUnlocked(state, id) {
+        return state.unlockedRecipes.includes(id);
+    }
+    /** Unlocks a recipe for cash. False when already owned or unaffordable. */
+    static unlockRecipe(state, id) {
+        if (FactoryEngine.isRecipeUnlocked(state, id))
+            return false;
+        const def = RECIPE_BY_ID[id];
+        if (!def || state.cash < def.unlockCost)
+            return false;
+        state.cash -= def.unlockCost;
+        state.unlockedRecipes.push(id);
+        return true;
+    }
+    /** Switches the line to an unlocked recipe (clears in-flight buffers). */
+    static switchRecipe(state, id) {
+        if (!FactoryEngine.isRecipeUnlocked(state, id) || state.activeRecipeId === id)
+            return false;
+        state.activeRecipeId = id;
+        for (const sid of STATION_IDS)
+            state.stations[sid].output = 0; // changeover empties the line
+        return true;
+    }
     // --- Menu (dish price) ------------------------------------------------------
     static menuCost(state) {
         return Math.round(MENU_BASE_COST * Math.pow(MENU_COST_GROWTH, Math.max(0, state.menuLevel)));
@@ -282,6 +323,9 @@ export class FactoryEngine {
         state.menuLevel = 0;
         state.workersIdle = 0;
         state.workersHired = 0;
+        // The line restarts on the starter dish; unlocked recipes are a permanent
+        // collection and survive (you just re-cook your way back up).
+        state.activeRecipeId = 'fast_food_burger';
         for (const id of STATION_IDS) {
             state.stations[id] = { level: 1, workers: 0, output: 0 };
         }

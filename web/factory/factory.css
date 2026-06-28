@@ -211,3 +211,24 @@ section.tab.active { display: flex; }
 .btn-modal-ghost { background: transparent; color: var(--muted); }
 .btn-danger { color: var(--red); border-color: rgba(240,99,108,0.4); }
 .settings-version { color: var(--muted); font-size: 11px; margin: 12px 0 4px; }
+
+/* ----------------------- Recipe picker ----------------------- */
+.recipe-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.recipe-pick {
+  flex: 0 0 auto; width: 150px; display: flex; flex-direction: column; gap: 6px;
+  align-items: center; text-align: center; padding: 10px 8px;
+}
+.recipe-pick.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.recipe-pick.locked { opacity: 0.85; }
+.rp-ic { font-size: 30px; }
+.rp-info { min-height: 38px; }
+.rp-name { font-weight: 800; font-size: 13px; line-height: 1.1; }
+.rp-val { color: var(--cash); font-size: 12px; font-weight: 700; margin-top: 2px; }
+.rp-btn {
+  width: 100%; border: 1px solid var(--edge); background: var(--panel-2); color: var(--text);
+  font-weight: 800; font-size: 12px; border-radius: 10px; padding: 8px; cursor: pointer;
+}
+.rp-btn.affordable { background: linear-gradient(180deg, #7be0a0, var(--cash)); color: #08361b; border-color: transparent; }
+.rp-btn.active { background: linear-gradient(180deg, var(--accent-2), var(--accent)); color: #fff; border-color: transparent; }
+.rp-btn:disabled { cursor: default; }
+.rp-btn.active:disabled, .rp-btn:disabled:not(.active) { opacity: 0.9; }

@@ -9,6 +9,9 @@
  *
  * Pure data + factory functions. No imports, no side effects.
  */
+export const RECIPE_IDS = [
+    'fast_food_burger', 'bento_box', 'gourmet_lobster', 'experimental_molecular',
+];
 export const STATION_IDS = [
     'receiving',
     'prep',
@@ -33,6 +36,8 @@ export function createDefaultFactory(now = Date.now()) {
             plating: station(1),
             delivery: station(1),
         },
+        activeRecipeId: 'fast_food_burger',
+        unlockedRecipes: ['fast_food_burger'],
         menuLevel: 0,
         workersIdle: 0,
         workersHired: 0,
@@ -61,6 +66,8 @@ export function cloneFactory(s) {
             plating: st(s.stations.plating),
             delivery: st(s.stations.delivery),
         },
+        activeRecipeId: s.activeRecipeId,
+        unlockedRecipes: [...s.unlockedRecipes],
         menuLevel: s.menuLevel,
         workersIdle: s.workersIdle,
         workersHired: s.workersHired,

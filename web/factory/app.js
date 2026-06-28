@@ -10,7 +10,7 @@ import { EconomyEngine } from '../../src/EconomyEngine.js';
 import { FactoryGame } from '../../src/factory/FactoryGame.js';
 import { FactoryEngine } from '../../src/factory/FactoryEngine.js';
 import { STATION_IDS } from '../../src/factory/types.js';
-import { RESEARCH_DEFS, STATION_DEF_BY_ID, STATION_DEFS, WORKERS_PER_STATION_CAP, } from '../../src/factory/config.js';
+import { RECIPE_DEFS, RESEARCH_DEFS, STATION_DEF_BY_ID, STATION_DEFS, WORKERS_PER_STATION_CAP, } from '../../src/factory/config.js';
 import { FactoryScene, webglAvailable } from './scene.js';
 import { NumberTween } from '../effects.js';
 import { CloudSync } from '../sync.js';
@@ -122,6 +122,57 @@ for (const def of STATION_DEFS) {
 const menuBtn = el('btn-menu');
 menuBtn.addEventListener('click', () => { if (game.buyMenu())
     buzz(10); });
+const recipeCards = new Map();
+const recipeStripEl = el('recipe-strip');
+for (const def of RECIPE_DEFS) {
+    const card = document.createElement('div');
+    card.className = 'card recipe-pick';
+    card.innerHTML = `
+    <div class="rp-ic">${def.icon}</div>
+    <div class="rp-info">
+      <div class="rp-name">${def.name}</div>
+      <div class="rp-val">💶 ${fmt(def.marketValue)} / plat</div>
+    </div>
+    <button data-pick class="rp-btn">—</button>`;
+    const btn = card.querySelector('[data-pick]');
+    btn.addEventListener('click', () => {
+        const s = game.getState();
+        if (!s.unlockedRecipes.includes(def.id)) {
+            if (game.unlockRecipe(def.id))
+                buzz(15);
+        }
+        else if (s.activeRecipeId !== def.id) {
+            if (game.switchRecipe(def.id))
+                buzz(10);
+        }
+    });
+    recipeStripEl.appendChild(card);
+    recipeCards.set(def.id, { root: card, btn });
+}
+function renderRecipes(s) {
+    for (const def of RECIPE_DEFS) {
+        const c = recipeCards.get(def.id);
+        const unlocked = s.unlockedRecipes.includes(def.id);
+        const active = s.activeRecipeId === def.id;
+        c.root.classList.toggle('active', active);
+        c.root.classList.toggle('locked', !unlocked);
+        if (active) {
+            c.btn.textContent = '✓ En production';
+            c.btn.disabled = true;
+            c.btn.className = 'rp-btn active';
+        }
+        else if (unlocked) {
+            c.btn.textContent = 'Produire';
+            c.btn.disabled = false;
+            c.btn.className = 'rp-btn';
+        }
+        else {
+            c.btn.innerHTML = `🔒 ${fmt(def.unlockCost)}`;
+            c.btn.disabled = s.cash < def.unlockCost;
+            c.btn.className = s.cash >= def.unlockCost ? 'rp-btn affordable' : 'rp-btn';
+        }
+    }
+}
 const researchRows = new Map();
 const researchListEl = el('research-list');
 for (const def of RESEARCH_DEFS) {
@@ -299,8 +350,10 @@ function render(s) {
     el('ls-bottleneck').textContent = STATION_DEF_BY_ID[neck].name;
     scene?.setState(s);
     // Active-tab heavy panels only.
-    if (isActive('tab-manage'))
+    if (isActive('tab-manage')) {
+        renderRecipes(s);
         renderManage(s, now);
+    }
     if (isActive('tab-research'))
         renderResearch(s);
     if (isActive('tab-prestige'))
