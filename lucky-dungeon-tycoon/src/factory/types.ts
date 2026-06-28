@@ -18,6 +18,13 @@ export type StationId =
   | 'plating'
   | 'delivery';
 
+/** Switchable products. Pricier recipes are more complex (slower per station). */
+export type RecipeId = 'fast_food_burger' | 'bento_box' | 'gourmet_lobster' | 'experimental_molecular';
+
+export const RECIPE_IDS: readonly RecipeId[] = [
+  'fast_food_burger', 'bento_box', 'gourmet_lobster', 'experimental_molecular',
+];
+
 export const STATION_IDS: readonly StationId[] = [
   'receiving',
   'prep',
@@ -70,6 +77,10 @@ export interface FactoryState {
 
   /** Per-station state, keyed by station id. */
   stations: Record<StationId, StationState>;
+  /** The dish currently in production (drives value + per-station complexity). */
+  activeRecipeId: RecipeId;
+  /** Recipes the player has unlocked (always includes the starter). */
+  unlockedRecipes: RecipeId[];
   /** Menu tier: raises € earned per dish sold. */
   menuLevel: number;
   /** Idle pool of hired workers not yet assigned to a station. */
@@ -110,6 +121,8 @@ export function createDefaultFactory(now: number = Date.now()): FactoryState {
       plating: station(1),
       delivery: station(1),
     },
+    activeRecipeId: 'fast_food_burger',
+    unlockedRecipes: ['fast_food_burger'],
     menuLevel: 0,
     workersIdle: 0,
     workersHired: 0,
@@ -139,6 +152,8 @@ export function cloneFactory(s: FactoryState): FactoryState {
       plating: st(s.stations.plating),
       delivery: st(s.stations.delivery),
     },
+    activeRecipeId: s.activeRecipeId,
+    unlockedRecipes: [...s.unlockedRecipes],
     menuLevel: s.menuLevel,
     workersIdle: s.workersIdle,
     workersHired: s.workersHired,

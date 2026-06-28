@@ -6,7 +6,46 @@
  * Pure data; the engine reads it.
  */
 
-import { StationId } from './types.js';
+import { RecipeId, StationId } from './types.js';
+
+/**
+ * A recipe: the dish in production. `marketValue` is € earned per plate;
+ * `complexity` divides each station's cadence, so pricier dishes are slower and
+ * shift the bottleneck around — switching recipe is a real strategic choice.
+ */
+export interface RecipeDef {
+  id: RecipeId;
+  name: string;
+  icon: string;
+  marketValue: number;
+  /** Per-station complexity divisor (1 = normal, higher = slower there). */
+  complexity: Record<StationId, number>;
+  /** Cash to unlock (0 = free starter). */
+  unlockCost: number;
+}
+
+export const RECIPE_DEFS: readonly RecipeDef[] = [
+  {
+    id: 'fast_food_burger', name: 'Burger express', icon: '🍔', marketValue: 8, unlockCost: 0,
+    complexity: { receiving: 1.0, prep: 1.0, cooking: 1.0, plating: 1.0, delivery: 1.0 },
+  },
+  {
+    id: 'bento_box', name: 'Bento artisanal', icon: '🍱', marketValue: 27, unlockCost: 25_000,
+    complexity: { receiving: 1.1, prep: 1.4, cooking: 1.2, plating: 1.8, delivery: 1.0 },
+  },
+  {
+    id: 'gourmet_lobster', name: 'Homard beurre noisette', icon: '🦞', marketValue: 145, unlockCost: 1_200_000,
+    complexity: { receiving: 1.5, prep: 2.2, cooking: 3.8, plating: 2.9, delivery: 1.1 },
+  },
+  {
+    id: 'experimental_molecular', name: 'Caviar cryo-sphérique', icon: '⚗️', marketValue: 620, unlockCost: 60_000_000,
+    complexity: { receiving: 2.0, prep: 4.5, cooking: 5.0, plating: 6.0, delivery: 1.5 },
+  },
+];
+
+export const RECIPE_BY_ID: Readonly<Record<RecipeId, RecipeDef>> = Object.freeze(
+  RECIPE_DEFS.reduce((acc, d) => { acc[d.id] = d; return acc; }, {} as Record<RecipeId, RecipeDef>),
+);
 
 export interface StationDef {
   id: StationId;

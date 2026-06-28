@@ -181,3 +181,52 @@ test('a production rush multiplies throughput while active', () => {
   assert.ok(FactoryEngine.lineThroughput(s, NOW) > base * 2.5, 'rush ~3× throughput');
   assert.equal(FactoryEngine.rushActive(s, NOW + 20_000), false, 'rush expires');
 });
+
+// --- Recipes ----------------------------------------------------------------
+
+test('a fresh factory cooks the starter recipe only', () => {
+  const s = fresh();
+  assert.equal(s.activeRecipeId, 'fast_food_burger');
+  assert.deepEqual(s.unlockedRecipes, ['fast_food_burger']);
+  assert.equal(FactoryEngine.isRecipeUnlocked(s, 'bento_box'), false);
+});
+
+test('unlocking a recipe costs cash and is gated', () => {
+  const s = fresh();
+  assert.equal(FactoryEngine.unlockRecipe(s, 'bento_box'), false); // no cash
+  s.cash = 30_000;
+  assert.equal(FactoryEngine.unlockRecipe(s, 'bento_box'), true);
+  assert.ok(s.unlockedRecipes.includes('bento_box'));
+  assert.equal(s.cash, 30_000 - 25_000);
+  assert.equal(FactoryEngine.unlockRecipe(s, 'bento_box'), false); // already owned
+});
+
+test('switching recipe changes value and shifts the bottleneck', () => {
+  const s = fresh();
+  s.cash = 30_000; FactoryEngine.unlockRecipe(s, 'bento_box');
+  const burgerPrice = FactoryEngine.dishPrice(s);
+  const burgerNeck = FactoryEngine.bottleneck(s, NOW);
+  assert.equal(burgerNeck, 'cooking'); // starter bottleneck
+  assert.ok(FactoryEngine.switchRecipe(s, 'bento_box'));
+  assert.ok(FactoryEngine.dishPrice(s) > burgerPrice, 'pricier dish');
+  // Bento's plating complexity (1.8) makes dressage/plating the slowest now.
+  assert.equal(FactoryEngine.bottleneck(s, NOW), 'plating');
+});
+
+test('switching recipe cannot select a locked dish and clears buffers', () => {
+  const s = fresh();
+  for (const id of STATION_IDS) s.stations[id].output = 5;
+  assert.equal(FactoryEngine.switchRecipe(s, 'gourmet_lobster'), false); // locked
+  s.cash = 30_000; FactoryEngine.unlockRecipe(s, 'bento_box');
+  assert.ok(FactoryEngine.switchRecipe(s, 'bento_box'));
+  for (const id of STATION_IDS) assert.equal(s.stations[id].output, 0, 'changeover empties the line');
+});
+
+test('Michelin stars raise value, not speed', () => {
+  const s = fresh();
+  const tp0 = FactoryEngine.lineThroughput(s, NOW);
+  const price0 = FactoryEngine.dishPrice(s);
+  s.stars = 5;
+  assert.equal(FactoryEngine.lineThroughput(s, NOW), tp0, 'stars do not speed the line');
+  assert.ok(FactoryEngine.dishPrice(s) > price0, 'stars raise dish value');
+});
