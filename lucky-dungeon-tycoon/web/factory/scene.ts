@@ -25,7 +25,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { FactoryEngine } from '../../src/factory/FactoryEngine.js';
 import { FactoryState, STATION_IDS, StationId } from '../../src/factory/types.js';
-import { STATION_DEF_BY_ID } from '../../src/factory/config.js';
+import { MANAGER_BY_ID, STATION_DEF_BY_ID } from '../../src/factory/config.js';
 import { makeGlow } from '../iso3dtex.js';
 
 export type GfxQuality = 'ultra' | 'basic';
@@ -67,9 +67,15 @@ interface BuildingVis {
   fx: FxKind;
   fxAnchor: THREE.Vector3;
   npcs: THREE.Group[];
+  managerFigure: THREE.Group | null;
+  managerId: string | null;
   door: THREE.Vector3;          // road/vehicle anchor (world space)
   rate: number;
 }
+
+const RARITY_COLOR: Record<string, number> = {
+  COMMON: 0xffffff, RARE: 0x5fa8ff, EPIC: 0xb46ad8, LEGENDARY: 0xffd24a,
+};
 
 interface Vehicle { group: THREE.Group; t: number; speed: number; active: boolean; }
 interface Leg {
@@ -400,7 +406,7 @@ export class FactoryScene {
       const vis: BuildingVis = {
         id, group, body, gaugeFill, ring, pick, screenMat, statusMat, statusGlow,
         fx: STATION_FX[id], fxAnchor: new THREE.Vector3(x, 2.4, z - 0.2),
-        npcs: [], door, rate: 1,
+        npcs: [], managerFigure: null, managerId: null, door, rate: 1,
       };
       this.buildings.set(id, vis);
     }
@@ -752,6 +758,35 @@ export class FactoryScene {
     return w;
   }
 
+  /** A head-chef figure: bigger, with a rarity-coloured toque and a glow. */
+  private makeManagerChef(rarity: string): THREE.Group {
+    const w = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.34, 4, 8), new THREE.MeshStandardMaterial({ color: 0xf4efe6, roughness: 0.55 }));
+    body.position.y = 0.55; body.castShadow = true;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), new THREE.MeshStandardMaterial({ color: 0xf1d3a8, roughness: 0.7 }));
+    head.position.y = 0.95;
+    const col = RARITY_COLOR[rarity] ?? 0xffffff;
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.21, 0.26, 14), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: col, emissiveIntensity: 0.35, roughness: 0.5 }));
+    hat.position.y = 1.2;
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.205, 0.03, 8, 16), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.6, roughness: 0.4 }));
+    band.rotation.x = Math.PI / 2; band.position.y = 1.08; hat.add(band);
+    w.add(body, head, hat);
+    const glow = makeGlow(col, 0.9); glow.position.set(0, 1.3, 0); glow.material.opacity = 0.5; w.add(glow);
+    return w;
+  }
+
+  private syncManagerFigure(vis: BuildingVis, managerId: string | null): void {
+    if (managerId === vis.managerId) return;
+    vis.managerId = managerId;
+    if (vis.managerFigure) { vis.group.remove(vis.managerFigure); vis.managerFigure = null; }
+    if (managerId) {
+      const def = MANAGER_BY_ID[managerId];
+      const fig = this.makeManagerChef(def?.rarity ?? 'COMMON');
+      fig.position.set(-1.1, 0, 1.5); // by the door, beside the line workers
+      vis.group.add(fig); vis.managerFigure = fig;
+    }
+  }
+
   private syncNpcs(vis: BuildingVis, count: number): void {
     while (vis.npcs.length < count) {
       const chef = this.makeChef();
@@ -855,6 +890,7 @@ export class FactoryScene {
       (vis.gaugeFill.material as THREE.MeshStandardMaterial).color.setHex(fill > 0.92 ? 0xff7a3a : 0x57e08a);
       vis.ring.visible = id === this.bottleneck;
       this.syncNpcs(vis, Math.min(5, 1 + st.workers));
+      this.syncManagerFigure(vis, st.managerId);
     }
   }
 
@@ -899,6 +935,11 @@ export class FactoryScene {
       for (const npc of vis.npcs) {
         const ph = (npc as unknown as { userData: { phase: number } }).userData.phase;
         npc.position.y = Math.abs(Math.sin((this.t + ph) * 4)) * 0.05;
+      }
+      // Head chef gently bobs and turns to oversee the station.
+      if (vis.managerFigure) {
+        vis.managerFigure.position.y = Math.abs(Math.sin(this.t * 3)) * 0.06;
+        vis.managerFigure.rotation.y = Math.sin(this.t * 0.7) * 0.5;
       }
     }
 

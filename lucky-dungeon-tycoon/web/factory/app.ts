@@ -561,7 +561,22 @@ function upgradePlan(s: FactoryState, id: StationId, mode: BuyMode): { count: nu
 
 // --- Notifications (lightweight toast via the document title flash) ----------
 
-game.on('notify', () => { /* reserved for a future toast; warnings are non-blocking */ });
+// Transient toasts for non-blocking feedback (recruit, errors, prestige…).
+const toastHost = el<HTMLDivElement>('toast-host');
+function showToast(message: string, severity: 'info' | 'success' | 'warning'): void {
+  const t = document.createElement('div');
+  t.className = `toast toast-${severity}`;
+  t.textContent = message;
+  toastHost.appendChild(t);
+  // Cap the stack so a flood can't pile up.
+  while (toastHost.children.length > 4) toastHost.removeChild(toastHost.firstChild as Node);
+  requestAnimationFrame(() => t.classList.add('show'));
+  window.setTimeout(() => {
+    t.classList.remove('show');
+    window.setTimeout(() => t.remove(), 280);
+  }, 2600);
+}
+game.on('notify', (n) => showToast(n.message, n.severity));
 
 // --- Boot the simulation -----------------------------------------------------
 
