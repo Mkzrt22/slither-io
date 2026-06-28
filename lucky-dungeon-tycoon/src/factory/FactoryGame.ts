@@ -12,7 +12,7 @@ import { FactoryEngine } from './FactoryEngine.js';
 import {
   cloneFactory, createDefaultFactory, FactoryState, RecipeId, RECIPE_IDS, STATION_IDS, StationId,
 } from './types.js';
-import { RUSH_SECONDS } from './config.js';
+import { MANAGER_DEFS, RUSH_SECONDS } from './config.js';
 
 export interface KeyValueStore {
   getItem(key: string): string | null;
@@ -159,6 +159,33 @@ export class FactoryGame {
     return ok;
   }
 
+  // --- Managers (chefs) -------------------------------------------------------
+
+  public hireManager(managerId: string): boolean {
+    const ok = FactoryEngine.hireManager(this.state, managerId);
+    if (ok) { this.persistAnnounce(); this.emit('notify', { message: 'Chef recruté !', severity: 'success' }); }
+    else this.emit('notify', { message: 'Pas assez de gemmes', severity: 'warning' });
+    return ok;
+  }
+
+  public assignManager(managerId: string, id: StationId): boolean {
+    const ok = FactoryEngine.assignManager(this.state, managerId, id);
+    if (ok) this.persistAnnounce();
+    return ok;
+  }
+
+  public unassignManager(id: StationId): boolean {
+    const ok = FactoryEngine.unassignManager(this.state, id);
+    if (ok) this.persistAnnounce();
+    return ok;
+  }
+
+  public triggerSkill(id: StationId): boolean {
+    const ok = FactoryEngine.triggerSkill(this.state, id, this.now());
+    if (ok) this.persistAnnounce();
+    return ok;
+  }
+
   public buyMenu(): boolean {
     const ok = FactoryEngine.buyMenu(this.state);
     if (ok) this.persistAnnounce();
@@ -278,14 +305,32 @@ export class FactoryGame {
     out.lastDailyClaim = num(raw.lastDailyClaim, 0);
     out.dailyStreak = Math.floor(num(raw.dailyStreak, 0));
     out.lastSaveAt = num(raw.lastSaveAt, this.now());
+    const knownManagers = new Set(MANAGER_DEFS.map((m) => m.id));
+    if (raw.managers && typeof raw.managers === 'object') {
+      for (const [k, v] of Object.entries(raw.managers)) {
+        if (knownManagers.has(k) && Math.floor(num(v, 0)) > 0) out.managers[k] = Math.floor(num(v, 0));
+      }
+    }
     const rawStations = raw.stations ?? {};
     for (const id of STATION_IDS) {
       const s = (rawStations as Record<string, Partial<FactoryState['stations'][StationId]>>)[id] ?? {};
+      const mgr = typeof s.managerId === 'string' && knownManagers.has(s.managerId) && out.managers[s.managerId]
+        ? s.managerId : null;
       out.stations[id] = {
         level: Math.max(1, Math.floor(num(s.level, 1))),
         workers: Math.floor(num(s.workers, 0)),
         output: num(s.output, 0),
+        managerId: mgr,
+        skillEndsAt: num(s.skillEndsAt, 0),
+        skillReadyAt: num(s.skillReadyAt, 0),
       };
+    }
+    // A manager can only be posted at one station — keep the first sighting.
+    const seen = new Set<string>();
+    for (const id of STATION_IDS) {
+      const m = out.stations[id].managerId;
+      if (m && seen.has(m)) out.stations[id].managerId = null;
+      else if (m) seen.add(m);
     }
     if (raw.research && typeof raw.research === 'object') {
       for (const [k, v] of Object.entries(raw.research)) {

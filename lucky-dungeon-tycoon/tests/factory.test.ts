@@ -230,3 +230,72 @@ test('Michelin stars raise value, not speed', () => {
   assert.equal(FactoryEngine.lineThroughput(s, NOW), tp0, 'stars do not speed the line');
   assert.ok(FactoryEngine.dishPrice(s) > price0, 'stars raise dish value');
 });
+
+// --- Managers (chefs) -------------------------------------------------------
+
+test('hiring a manager costs gems and is gated', () => {
+  const s = fresh();
+  s.gems = 10;
+  assert.equal(FactoryEngine.hireManager(s, 'marco'), false); // costs 20
+  s.gems = 50;
+  assert.ok(FactoryEngine.hireManager(s, 'marco'));
+  assert.equal(s.gems, 30);
+  assert.ok(FactoryEngine.ownsManager(s, 'marco'));
+  assert.equal(FactoryEngine.hireManager(s, 'marco'), false); // already owned
+});
+
+test('assigning a station chef boosts only its station; one post per chef', () => {
+  const s = fresh();
+  s.gems = 100; FactoryEngine.hireManager(s, 'marco'); // cooking +25% speed
+  const cook0 = FactoryEngine.stationRate(s, 'cooking', NOW);
+  const prep0 = FactoryEngine.stationRate(s, 'prep', NOW);
+  assert.ok(FactoryEngine.assignManager(s, 'marco', 'cooking'));
+  assert.ok(FactoryEngine.stationRate(s, 'cooking', NOW) > cook0, 'cooking faster');
+  assert.equal(FactoryEngine.stationRate(s, 'prep', NOW), prep0, 'prep unaffected');
+  // Re-posting the same chef leaves the old station.
+  FactoryEngine.assignManager(s, 'marco', 'prep');
+  assert.equal(s.stations.cooking.managerId, null);
+  assert.equal(s.stations.prep.managerId, 'marco');
+});
+
+test('a global chef speeds the whole line wherever posted', () => {
+  const s = fresh();
+  s.gems = 500; FactoryEngine.hireManager(s, 'kenji'); // global +20%
+  const before = STATION_IDS.map((id) => FactoryEngine.stationRate(s, id, NOW));
+  FactoryEngine.assignManager(s, 'kenji', 'delivery');
+  STATION_IDS.forEach((id, i) => assert.ok(FactoryEngine.stationRate(s, id, NOW) > before[i], `${id} faster`));
+});
+
+test('a value chef raises dish price; a buffer chef raises capacity', () => {
+  const s = fresh();
+  s.gems = 1000;
+  const price0 = FactoryEngine.dishPrice(s, NOW);
+  FactoryEngine.hireManager(s, 'auguste'); FactoryEngine.assignManager(s, 'auguste', 'plating');
+  assert.ok(FactoryEngine.dishPrice(s, NOW) > price0, 'plating value chef raises price');
+  const cap0 = FactoryEngine.stationCapacity(s, 'prep');
+  FactoryEngine.hireManager(s, 'sofia'); FactoryEngine.assignManager(s, 'sofia', 'receiving');
+  assert.ok(FactoryEngine.stationCapacity(s, 'prep') > cap0, 'global buffer chef expands all buffers');
+});
+
+test('an active skill bursts then goes on cooldown', () => {
+  const s = fresh();
+  s.gems = 100; FactoryEngine.hireManager(s, 'marco'); FactoryEngine.assignManager(s, 'marco', 'cooking');
+  const passiveRate = FactoryEngine.stationRate(s, 'cooking', NOW);
+  assert.ok(FactoryEngine.triggerSkill(s, 'cooking', NOW));
+  assert.ok(FactoryEngine.isSkillActive(s, 'cooking', NOW));
+  assert.ok(FactoryEngine.stationRate(s, 'cooking', NOW) > passiveRate, 'skill faster than passive');
+  // Can't re-fire while on cooldown.
+  assert.equal(FactoryEngine.triggerSkill(s, 'cooking', NOW + 1000), false);
+  // After the burst ends, back to passive.
+  const after = NOW + 16_000;
+  assert.equal(FactoryEngine.isSkillActive(s, 'cooking', after), false);
+  assert.ok(Math.abs(FactoryEngine.stationRate(s, 'cooking', after) - passiveRate) < 1e-6);
+});
+
+test('a cost chef makes upgrades cheaper', () => {
+  const s = fresh();
+  s.gems = 1000;
+  const cost0 = FactoryEngine.upgradeCost(s, 'cooking');
+  FactoryEngine.hireManager(s, 'gaspard'); FactoryEngine.assignManager(s, 'gaspard', 'cooking');
+  assert.ok(FactoryEngine.upgradeCost(s, 'cooking') < cost0, 'accountant chef discounts upgrades');
+});

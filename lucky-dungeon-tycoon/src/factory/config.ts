@@ -121,6 +121,77 @@ export const MENU_PRICE_GROWTH = 1.6;
 export const MENU_BASE_COST = 500;
 export const MENU_COST_GROWTH = 2.15;
 
+// --- Managers (chefs de partie) --------------------------------------------
+
+export type ModifierType = 'MULTIPLY_SPEED' | 'MULTIPLY_VALUE' | 'REDUCE_UPGRADE_COST' | 'EXPAND_BUFFER';
+
+export interface Modifier {
+  /** Which station the modifier applies to, or the whole line. */
+  targetId: StationId | 'global';
+  type: ModifierType;
+  /** For MULTIPLY_* / EXPAND_BUFFER: a factor (1.5 = +50%). For REDUCE_*: a
+   *  factor < 1 applied to cost (0.85 = 15% cheaper). */
+  value: number;
+}
+
+export interface ManagerDef {
+  id: string;
+  name: string;
+  icon: string;
+  rarity: 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+  /** Gem cost to recruit. */
+  hireCost: number;
+  /** Always-on bonus while assigned. */
+  passive: Modifier;
+  /** Tap-to-fire skill while assigned (null = passive only). */
+  active: Modifier | null;
+  activeDurationMs: number;
+  cooldownMs: number;
+}
+
+/** Recruitable chefs. Passives are permanent while assigned; actives burst. */
+export const MANAGER_DEFS: readonly ManagerDef[] = [
+  {
+    id: 'marco', name: 'Marco le Rapide', icon: '🧑‍🍳', rarity: 'COMMON', hireCost: 20,
+    passive: { targetId: 'cooking', type: 'MULTIPLY_SPEED', value: 1.25 },
+    active: { targetId: 'cooking', type: 'MULTIPLY_SPEED', value: 3 }, activeDurationMs: 15_000, cooldownMs: 120_000,
+  },
+  {
+    id: 'lena', name: 'Léna la Précise', icon: '👩‍🍳', rarity: 'COMMON', hireCost: 20,
+    passive: { targetId: 'prep', type: 'MULTIPLY_SPEED', value: 1.25 },
+    active: { targetId: 'prep', type: 'MULTIPLY_SPEED', value: 3 }, activeDurationMs: 15_000, cooldownMs: 120_000,
+  },
+  {
+    id: 'sofia', name: 'Sofia Réserve', icon: '🧊', rarity: 'RARE', hireCost: 60,
+    passive: { targetId: 'global', type: 'EXPAND_BUFFER', value: 1.6 },
+    active: null, activeDurationMs: 0, cooldownMs: 0,
+  },
+  {
+    id: 'auguste', name: 'Auguste Dresseur', icon: '🎨', rarity: 'RARE', hireCost: 70,
+    passive: { targetId: 'plating', type: 'MULTIPLY_VALUE', value: 1.35 },
+    active: { targetId: 'plating', type: 'MULTIPLY_VALUE', value: 2 }, activeDurationMs: 20_000, cooldownMs: 150_000,
+  },
+  {
+    id: 'kenji', name: 'Kenji Logistique', icon: '🚚', rarity: 'EPIC', hireCost: 150,
+    passive: { targetId: 'global', type: 'MULTIPLY_SPEED', value: 1.2 },
+    active: { targetId: 'global', type: 'MULTIPLY_SPEED', value: 2.5 }, activeDurationMs: 20_000, cooldownMs: 180_000,
+  },
+  {
+    id: 'gaspard', name: 'Gaspard Comptable', icon: '💼', rarity: 'EPIC', hireCost: 160,
+    passive: { targetId: 'global', type: 'REDUCE_UPGRADE_COST', value: 0.85 },
+    active: null, activeDurationMs: 0, cooldownMs: 0,
+  },
+  {
+    id: 'celeste', name: 'Céleste 3 Étoiles', icon: '🌟', rarity: 'LEGENDARY', hireCost: 400,
+    passive: { targetId: 'global', type: 'MULTIPLY_VALUE', value: 1.5 },
+    active: { targetId: 'global', type: 'MULTIPLY_VALUE', value: 3 }, activeDurationMs: 25_000, cooldownMs: 240_000,
+  },
+];
+
+export const MANAGER_BY_ID: Readonly<Record<string, ManagerDef>> = Object.freeze(
+  MANAGER_DEFS.reduce((acc, d) => { acc[d.id] = d; return acc; }, {} as Record<string, ManagerDef>),
+);
+
 /** A research definition: a permanent, line-wide multiplier track. */
 export interface ResearchDef {
   id: string;

@@ -232,3 +232,31 @@ section.tab.active { display: flex; }
 .rp-btn.active { background: linear-gradient(180deg, var(--accent-2), var(--accent)); color: #fff; border-color: transparent; }
 .rp-btn:disabled { cursor: default; }
 .rp-btn.active:disabled, .rp-btn:disabled:not(.active) { opacity: 0.9; }
+
+/* ----------------------- Chefs (managers) ----------------------- */
+.st-chef-row { display: flex; align-items: center; gap: 10px; margin: 12px 0 8px; background: var(--panel-2); border: 1px solid var(--edge); border-radius: 12px; padding: 8px 10px; }
+.st-chef-ic { font-size: 26px; }
+.st-chef-info { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.st-chef-name { font-weight: 800; font-size: 14px; }
+.st-chef-eff { color: var(--muted); font-size: 11.5px; }
+.chef-skill { border: none; border-radius: 11px; padding: 10px 14px; font-weight: 800; font-size: 13px; background: var(--panel); border: 1px solid var(--edge); color: var(--text); cursor: pointer; white-space: nowrap; }
+.chef-skill.ready { background: linear-gradient(180deg, var(--accent-2), var(--accent)); color: #fff; border-color: transparent; }
+.chef-skill:disabled { opacity: 0.7; }
+
+.chefs-card { max-width: 420px; }
+.chefs-list { display: flex; flex-direction: column; gap: 8px; max-height: 56vh; overflow-y: auto; margin: 8px 0 12px; text-align: left; }
+.chef-card { display: flex; align-items: center; gap: 10px; border-left: 4px solid var(--edge); }
+.chef-card.rarity-rare { border-left-color: #5fa8ff; }
+.chef-card.rarity-epic { border-left-color: #b46ad8; }
+.chef-card.rarity-legendary { border-left-color: var(--star); }
+.chef-ic { font-size: 28px; width: 36px; text-align: center; }
+.chef-info { flex: 1; min-width: 0; }
+.chef-name { font-weight: 800; font-size: 13.5px; }
+.chef-rar { font-size: 10px; color: var(--muted); font-weight: 700; text-transform: uppercase; }
+.chef-eff { color: var(--muted); font-size: 12px; margin-top: 1px; }
+.chef-skill-d { color: var(--accent-2); font-size: 11px; margin-top: 1px; }
+.chef-acts { display: flex; flex-direction: column; gap: 4px; }
+.chef-act { border: 1px solid var(--edge); background: var(--panel-2); color: var(--text); font-weight: 800; font-size: 12px; border-radius: 10px; padding: 9px 11px; cursor: pointer; min-width: 86px; }
+.chef-act.affordable { background: linear-gradient(180deg, #7be0a0, var(--cash)); color: #08361b; border-color: transparent; }
+.chef-act.remove { background: transparent; color: var(--red); border-color: rgba(240,99,108,0.4); }
+.chef-act:disabled { opacity: 0.5; cursor: default; }

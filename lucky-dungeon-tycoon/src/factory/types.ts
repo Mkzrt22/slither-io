@@ -41,6 +41,12 @@ export interface StationState {
   workers: number;
   /** Units sitting in this station's output buffer, waiting downstream. */
   output: number;
+  /** Id of the manager (chef de partie) running this station, or null. */
+  managerId: string | null;
+  /** Epoch ms while the assigned manager's active skill is running (0 = idle). */
+  skillEndsAt: number;
+  /** Epoch ms until the assigned manager's active skill can fire again. */
+  skillReadyAt: number;
 }
 
 /** Lifetime counters driving prestige, quests, and the stats panel. */
@@ -88,6 +94,8 @@ export interface FactoryState {
   /** Total workers ever hired (assigned + idle), for hire-cost scaling. */
   workersHired: number;
 
+  /** Owned managers (chefs), keyed by manager id → their level. */
+  managers: Record<string, number>;
   /** Permanent research levels, keyed by research id (absent = 0). */
   research: Record<string, number>;
 
@@ -106,7 +114,8 @@ export interface FactoryState {
 
 /** A fresh, fully-built starter line so money flows from the first second. */
 export function createDefaultFactory(now: number = Date.now()): FactoryState {
-  const station = (level: number): StationState => ({ level, workers: 0, output: 0 });
+  const station = (level: number): StationState =>
+    ({ level, workers: 0, output: 0, managerId: null, skillEndsAt: 0, skillReadyAt: 0 });
   return {
     kind: 'factory',
     version: 1,
@@ -126,6 +135,7 @@ export function createDefaultFactory(now: number = Date.now()): FactoryState {
     menuLevel: 0,
     workersIdle: 0,
     workersHired: 0,
+    managers: {},
     research: {},
     rushEndsAt: 0,
     lastDailyClaim: 0,
@@ -137,7 +147,8 @@ export function createDefaultFactory(now: number = Date.now()): FactoryState {
 
 /** Deep clone, field by field, so the compiler flags shape changes. */
 export function cloneFactory(s: FactoryState): FactoryState {
-  const st = (x: StationState): StationState => ({ level: x.level, workers: x.workers, output: x.output });
+  const st = (x: StationState): StationState =>
+    ({ level: x.level, workers: x.workers, output: x.output, managerId: x.managerId, skillEndsAt: x.skillEndsAt, skillReadyAt: x.skillReadyAt });
   return {
     kind: 'factory',
     version: s.version,
@@ -157,6 +168,7 @@ export function cloneFactory(s: FactoryState): FactoryState {
     menuLevel: s.menuLevel,
     workersIdle: s.workersIdle,
     workersHired: s.workersHired,
+    managers: { ...s.managers },
     research: { ...s.research },
     rushEndsAt: s.rushEndsAt,
     lastDailyClaim: s.lastDailyClaim,
