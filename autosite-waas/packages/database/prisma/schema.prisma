@@ -1,0 +1,85 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum SubscriptionTier {
+  FREE
+  STARTER
+  GROWTH
+  ENTERPRISE
+}
+
+model User {
+  id        String        @id @default(cuid())
+  email     String        @unique
+  name      String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  tenants   TenantOwner[]
+}
+
+model Tenant {
+  id               String           @id @default(cuid())
+  slug             String           @unique
+  customDomain     String?          @unique
+  tier             SubscriptionTier @default(FREE)
+  stripeCustomerId String?          @unique
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  owners           TenantOwner[]
+  websites         Website[]
+  analyticsEvents  AnalyticsEvent[]
+}
+
+model TenantOwner {
+  id        String   @id @default(cuid())
+  userId    String
+  tenantId  String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, tenantId])
+}
+
+model Website {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  version     Int      @default(1)
+  astJson     Json
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  leads       Lead[]
+
+  @@index([tenantId])
+}
+
+model Lead {
+  id        String   @id @default(cuid())
+  websiteId String
+  website   Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([websiteId])
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  eventType String
+  path      String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, eventType])
+}
