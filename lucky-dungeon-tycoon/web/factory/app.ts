@@ -17,6 +17,7 @@ import {
 } from '../../src/factory/config.js';
 import { FactoryScene, webglAvailable } from './scene.js';
 import { NumberTween } from '../effects.js';
+import { Sfx } from '../sfx.js';
 import { CloudSync } from '../sync.js';
 
 type BuyMode = 1 | 10 | 'max';
@@ -32,6 +33,10 @@ function el<T extends HTMLElement>(id: string): T {
 }
 
 function buzz(ms: number): void { try { navigator.vibrate?.(ms); } catch { /* unsupported */ } }
+
+// Synthesized sound effects (WebAudio, offline). Unlocked on first gesture.
+const sfx = new Sfx();
+window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
 
 /** localStorage adapter that degrades to memory if storage is unavailable. */
 function makeStore(): KeyValueStore {
@@ -67,6 +72,8 @@ if (webglAvailable()) {
     host.appendChild(canvas);
     scene = new FactoryScene(canvas, openStationSheet);
     scene.start();
+    // QA hook: lets tooling jump the time of day (scene.setTimeOfDay).
+    (window as unknown as { LCT_SCENE?: FactoryScene }).LCT_SCENE = scene;
   } catch (err) {
     console.warn('[factory] WebGL scene failed', err);
     host.innerHTML = '<div class="scene-fallback">🏭 La vue 3D nécessite WebGL.</div>';
@@ -111,7 +118,7 @@ for (const def of STATION_DEFS) {
     </div>
     <button data-buy class="sc-buy"><span data-buylabel>Améliorer</span><span class="cost"><span>💶</span><span data-cost>0</span></span></button>`;
   card.querySelector<HTMLButtonElement>('[data-buy]')!.addEventListener('click', () => {
-    if (game.upgradeStation(def.id, manageMode) > 0) { buzz(10); }
+    if (game.upgradeStation(def.id, manageMode) > 0) { buzz(10); sfx.upgrade(); }
   });
   card.querySelector<HTMLElement>('.sc-avatar')!.addEventListener('click', () => openStationSheet(def.id));
   stationListEl.appendChild(card);
@@ -132,7 +139,7 @@ for (const def of STATION_DEFS) {
 
 // Menu (dish price) controls.
 const menuBtn = el<HTMLButtonElement>('btn-menu');
-menuBtn.addEventListener('click', () => { if (game.buyMenu()) buzz(10); });
+menuBtn.addEventListener('click', () => { if (game.buyMenu()) { buzz(10); sfx.upgrade(); } });
 
 // --- Recipe picker -----------------------------------------------------------
 
@@ -152,8 +159,8 @@ for (const def of RECIPE_DEFS) {
   const btn = card.querySelector<HTMLButtonElement>('[data-pick]')!;
   btn.addEventListener('click', () => {
     const s = game.getState();
-    if (!s.unlockedRecipes.includes(def.id)) { if (game.unlockRecipe(def.id)) buzz(15); }
-    else if (s.activeRecipeId !== def.id) { if (game.switchRecipe(def.id)) buzz(10); }
+    if (!s.unlockedRecipes.includes(def.id)) { if (game.unlockRecipe(def.id)) { buzz(15); sfx.coin(); } }
+    else if (s.activeRecipeId !== def.id) { if (game.switchRecipe(def.id)) { buzz(10); sfx.click(); } }
   });
   recipeStripEl.appendChild(card);
   recipeCards.set(def.id, { root: card, btn });
@@ -193,7 +200,7 @@ for (const def of RESEARCH_DEFS) {
     </div>
     <button data-buy class="rc-buy">${cur} <span data-cost>—</span></button>`;
   card.querySelector<HTMLButtonElement>('[data-buy]')!.addEventListener('click', () => {
-    if (game.buyResearch(def.id)) buzz(8);
+    if (game.buyResearch(def.id)) { buzz(8); sfx.upgrade(); }
   });
   researchListEl.appendChild(card);
   researchRows.set(def.id, {
@@ -222,12 +229,12 @@ function closeStationSheet(): void {
 el('btn-station-close').addEventListener('click', closeStationSheet);
 el('station-backdrop').addEventListener('click', closeStationSheet);
 el('btn-upgrade-station').addEventListener('click', () => {
-  if (openStation && game.upgradeStation(openStation, sheetMode) > 0) buzz(12);
+  if (openStation && game.upgradeStation(openStation, sheetMode) > 0) { buzz(12); sfx.upgrade(); }
 });
 el('btn-worker-plus').addEventListener('click', () => { if (openStation) game.assignWorker(openStation); });
 el('btn-worker-minus').addEventListener('click', () => { if (openStation) game.unassignWorker(openStation); });
-el('btn-hire-from-station').addEventListener('click', () => { if (game.hireWorker()) buzz(10); });
-el('btn-chef-skill').addEventListener('click', () => { if (openStation && game.triggerSkill(openStation)) buzz(15); });
+el('btn-hire-from-station').addEventListener('click', () => { if (game.hireWorker()) { buzz(10); sfx.coin(); } });
+el('btn-chef-skill').addEventListener('click', () => { if (openStation && game.triggerSkill(openStation)) { buzz(15); sfx.upgrade(); } });
 
 // --- Chefs (managers) modal --------------------------------------------------
 
@@ -261,12 +268,12 @@ for (const def of MANAGER_DEFS) {
   const alt = card.querySelector<HTMLButtonElement>('[data-alt]')!;
   btn.addEventListener('click', () => {
     const s = game.getState();
-    if (!s.managers[def.id]) { if (game.hireManager(def.id)) buzz(15); }
+    if (!s.managers[def.id]) { if (game.hireManager(def.id)) { buzz(15); sfx.coin(); } }
     else if (openStation && s.stations[openStation].managerId === def.id) { game.unassignManager(openStation); }
-    else if (openStation) { game.assignManager(def.id, openStation); buzz(8); }
+    else if (openStation) { game.assignManager(def.id, openStation); buzz(8); sfx.click(); }
     renderChefs();
   });
-  alt.addEventListener('click', () => { if (openStation) { game.assignManager(def.id, openStation); buzz(8); renderChefs(); } });
+  alt.addEventListener('click', () => { if (openStation) { game.assignManager(def.id, openStation); buzz(8); sfx.click(); renderChefs(); } });
   chefsListEl.appendChild(card);
   chefCards.set(def.id, { root: card, btn, alt });
 }
@@ -302,6 +309,7 @@ function renderChefs(): void {
 const tabButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('nav button[data-tab]'));
 for (const btn of tabButtons) {
   btn.addEventListener('click', () => {
+    sfx.click();
     for (const o of tabButtons) o.classList.toggle('active', o === btn);
     for (const s of document.querySelectorAll<HTMLElement>('section.tab')) {
       s.classList.toggle('active', s.id === btn.dataset.tab);
@@ -315,20 +323,20 @@ for (const btn of tabButtons) {
 el('btn-fix-bottleneck').addEventListener('click', () => {
   const s = game.getState();
   const id = FactoryEngine.bottleneck(s, Date.now());
-  if (game.upgradeStation(id, manageMode) > 0) buzz(12);
+  if (game.upgradeStation(id, manageMode) > 0) { buzz(12); sfx.upgrade(); }
 });
 const rushBtn = el<HTMLButtonElement>('btn-rush');
 rushBtn.addEventListener('click', async () => {
   rushBtn.disabled = true;
   // No ad SDK here — simulate a short rewarded-ad delay, then grant the rush.
   await new Promise((r) => setTimeout(r, 400));
-  game.startRush(); buzz(20);
+  game.startRush(); buzz(20); sfx.jackpot();
   rushBtn.disabled = false;
 });
 
 // --- Prestige ----------------------------------------------------------------
 
-el('btn-prestige').addEventListener('click', () => { if (game.prestige() > 0) buzz(30); });
+el('btn-prestige').addEventListener('click', () => { if (game.prestige() > 0) { buzz(30); sfx.jackpot(); } });
 
 // --- Modals ------------------------------------------------------------------
 
@@ -356,7 +364,7 @@ function showDaily(): void {
 }
 el('btn-daily-claim').addEventListener('click', () => {
   game.claimDaily(); pendingDaily = null;
-  el('daily-modal').classList.remove('visible'); buzz(15);
+  el('daily-modal').classList.remove('visible'); buzz(15); sfx.coin();
 });
 el('btn-offline-ok').addEventListener('click', () => {
   el('offline-modal').classList.remove('visible');
@@ -375,6 +383,19 @@ el('btn-settings').addEventListener('click', () => el('settings-modal').classLis
 el('btn-settings-close').addEventListener('click', () => el('settings-modal').classList.remove('visible'));
 
 // Graphics quality toggle (Ultra post-processing ↔ Performance).
+// Sound toggle (persisted by Sfx).
+const soundBtn = el<HTMLButtonElement>('btn-sound');
+function refreshSoundBtn(): void {
+  soundBtn.textContent = sfx.isMuted() ? '🔇 Son : coupé' : '🔊 Son : activé';
+}
+soundBtn.addEventListener('click', () => {
+  sfx.unlock();
+  sfx.setMuted(!sfx.isMuted());
+  refreshSoundBtn();
+  if (!sfx.isMuted()) sfx.coin();
+});
+refreshSoundBtn();
+
 const qualityBtn = el<HTMLButtonElement>('btn-quality');
 function refreshQualityBtn(): void {
   const q = scene?.getQuality() ?? 'basic';
@@ -429,6 +450,16 @@ function render(s: FactoryState): void {
   const remain = game.rushRemainingMs();
   rushBtn.textContent = remain > 0 ? `🔥 Coup de feu actif · ${Math.ceil(remain / 1000)}s` : '🚀 Coup de feu ×3 (pub · 60s)';
 
+  if (firstRender) {
+    // First real frame: hold the splash a beat, then fade it away.
+    const splash = document.getElementById('splash');
+    if (splash) {
+      window.setTimeout(() => {
+        splash.classList.add('done');
+        window.setTimeout(() => splash.remove(), 700);
+      }, 550);
+    }
+  }
   firstRender = false;
 }
 

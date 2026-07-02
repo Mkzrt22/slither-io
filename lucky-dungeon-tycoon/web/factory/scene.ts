@@ -104,6 +104,22 @@ export class FactoryScene {
   private readonly particles: Particle[] = [];
   private readonly roamers: Roamer[] = [];
 
+  // Day/night cycle: emissive materials that brighten after dark, the star
+  // field, and the current darkness factor (0 = noon, 1 = deep night).
+  private hemi!: THREE.HemisphereLight;
+  private readonly nightMats: { mat: THREE.MeshStandardMaterial; day: number; night: number }[] = [];
+  private stars: THREE.Points | null = null;
+  private dayT = 40; // start mid-morning
+  private night = 0;
+  private readonly daySky = new THREE.Color(0x24344a);
+  private readonly nightSky = new THREE.Color(0x080b12);
+  private readonly skyColor = new THREE.Color();
+
+  // Floating "+€" income sprites over the delivery depot.
+  private readonly floaters: { sprite: THREE.Sprite; life: number }[] = [];
+  private incomeAccum = 0;
+  private revPerSec = 0;
+
   private composer: EffectComposer | null = null;
   private bloomPass: UnrealBloomPass | null = null;
   private quality: GfxQuality = 'ultra';
@@ -142,7 +158,8 @@ export class FactoryScene {
     this.camera.lookAt(0, 0.8, 2.0);
     this.scene.add(this.world);
 
-    this.scene.add(new THREE.HemisphereLight(0xdce8ff, 0x2b3038, 0.85));
+    this.hemi = new THREE.HemisphereLight(0xdce8ff, 0x2b3038, 0.85);
+    this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xfff1da, 2.05);
     this.sun.position.set(16, 30, 20);
     this.sun.castShadow = true;
@@ -162,6 +179,7 @@ export class FactoryScene {
     this.buildVehicles();
     this.buildProps();
     this.buildCenterpiece();
+    this.buildStars();
     this.spawnRoamers(14);
     this.resize();
     this.initQuality();
@@ -217,6 +235,71 @@ export class FactoryScene {
     if (q === 'ultra') this.setupPost();
   }
   public getQuality(): GfxQuality { return this.quality; }
+
+  // --- Day/night cycle ---------------------------------------------------------
+
+  /** Registers an emissive material to fade between day/night intensities. */
+  private nightReactive(mat: THREE.MeshStandardMaterial, day: number, night: number): void {
+    this.nightMats.push({ mat, day, night });
+  }
+
+  /** A sparse star field, visible only after dark (fog-exempt). */
+  private buildStars(): void {
+    const N = 260;
+    const pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      const u = Math.random() * Math.PI * 2;
+      const v = 0.12 + Math.random() * 0.55; // upper sky band
+      const r = 95;
+      pos[i * 3] = Math.cos(u) * Math.cos(v * Math.PI / 2) * r;
+      pos[i * 3 + 1] = Math.sin(v * Math.PI / 2) * r * 0.7;
+      pos[i * 3 + 2] = Math.sin(u) * Math.cos(v * Math.PI / 2) * r;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.stars = new THREE.Points(geo, new THREE.PointsMaterial({
+      color: 0xdfe8ff, size: 0.45, sizeAttenuation: true,
+      transparent: true, opacity: 0, depthWrite: false, fog: false,
+    }));
+    this.scene.add(this.stars);
+  }
+
+  private static readonly DAY_CYCLE = 160;
+
+  /** Jumps the clock: 0.25 = noon, 0.75 = midnight (QA / screenshots). */
+  public setTimeOfDay(phase01: number): void {
+    this.dayT = phase01 * FactoryScene.DAY_CYCLE;
+  }
+
+  /**
+   * Advances the sun around the campus on a ~2.5 min cycle. Noon is bright
+   * and warm; night drops the key light, darkens sky/fog, reveals stars, and
+   * hands the scene to the emissives (lamps, windows, signs) + bloom.
+   */
+  private updateDayNight(dt: number): void {
+    const CYCLE = FactoryScene.DAY_CYCLE;
+    this.dayT += dt;
+    const ang = ((this.dayT / CYCLE) % 1) * Math.PI * 2;
+    const elev = Math.sin(ang);
+    const day = Math.max(0, Math.min(1, (elev + 0.3) / 0.7));
+    this.night = 1 - day;
+
+    this.sun.position.set(Math.cos(ang) * 26, 8 + Math.max(-4, elev * 30), Math.sin(ang) * 18 + 10);
+    this.sun.intensity = 0.22 + day * 1.85;
+    // Warmer key light near the horizon (sunrise/sunset).
+    const warmth = Math.max(0, 1 - Math.abs(elev) * 2.2);
+    this.sun.color.setHSL(0.09 + 0.02 * (1 - warmth), 0.5 * warmth + 0.18, 0.85 - warmth * 0.12);
+    this.hemi.intensity = 0.32 + day * 0.55;
+
+    this.skyColor.copy(this.nightSky).lerp(this.daySky, day);
+    (this.scene.background as THREE.Color).copy(this.skyColor);
+    if (this.scene.fog) (this.scene.fog as THREE.Fog).color.copy(this.skyColor);
+
+    if (this.stars) (this.stars.material as THREE.PointsMaterial).opacity = this.night * 0.9;
+    for (const e of this.nightMats) {
+      e.mat.emissiveIntensity = e.day + (e.night - e.day) * this.night;
+    }
+  }
 
   // --- Environment map --------------------------------------------------------
 
@@ -313,11 +396,10 @@ export class FactoryScene {
       new THREE.MeshStandardMaterial({ color: 0x33373e, roughness: 0.6, metalness: 0.5 }),
     );
     hood.position.set(x, 1.78, z); this.world.add(hood);
-    const bulb = new THREE.Mesh(
-      new THREE.SphereGeometry(0.075, 10, 8),
-      new THREE.MeshStandardMaterial({ color: 0xfff2d2, emissive: 0xffdf9a, emissiveIntensity: 0.9 }),
-    );
+    const bulbMat = new THREE.MeshStandardMaterial({ color: 0xfff2d2, emissive: 0xffdf9a, emissiveIntensity: 0.9 });
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), bulbMat);
     bulb.position.set(x, 1.66, z); this.world.add(bulb);
+    this.nightReactive(bulbMat, 0.2, 1.7); // street lights come on at dusk
   }
 
   // --- Buildings --------------------------------------------------------------
@@ -361,6 +443,7 @@ export class FactoryScene {
       const fdoor = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.95, 0.08), doorMat);
       fdoor.position.set(0, 0.55, 1.01); group.add(fdoor);
       const winMat = new THREE.MeshStandardMaterial({ color: 0x14181f, emissive: 0xffce7a, emissiveIntensity: 0.45, roughness: 0.3 });
+      this.nightReactive(winMat, 0.12, 1.35); // warm windows glow after dark
       for (const wx of [-0.78, 0.78]) {
         const win = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.06), winMat);
         win.position.set(wx, 1.05, 1.01); group.add(win);
@@ -704,7 +787,9 @@ export class FactoryScene {
     // Central fountain.
     const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.2, 0.4, 24), new THREE.MeshStandardMaterial({ color: 0x8a909a, roughness: 0.6, metalness: 0.3 }));
     basin.position.y = 0.4; basin.castShadow = true; g.add(basin);
-    const water = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 0.98, 0.08, 24), new THREE.MeshStandardMaterial({ color: 0x4f9fd0, roughness: 0.1, metalness: 0.4, emissive: 0x103048, emissiveIntensity: 0.3 }));
+    const waterMat = new THREE.MeshStandardMaterial({ color: 0x4f9fd0, roughness: 0.1, metalness: 0.4, emissive: 0x1a4a6a, emissiveIntensity: 0.3 });
+    this.nightReactive(waterMat, 0.2, 0.8); // underwater lighting at night
+    const water = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 0.98, 0.08, 24), waterMat);
     water.position.y = 0.58; g.add(water);
     const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.7, 12), steel);
     spout.position.y = 0.9; g.add(spout);
@@ -712,7 +797,9 @@ export class FactoryScene {
     // Company sign pylon with a glowing board + pictogram.
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.6, 0.18), new THREE.MeshStandardMaterial({ color: 0x40454e, roughness: 0.6, metalness: 0.5 }));
     post.position.set(-2.5, 1.3, 1.4); post.castShadow = true; g.add(post);
-    const board = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.95, 0.14), new THREE.MeshStandardMaterial({ color: 0x12161d, emissive: 0xffb24a, emissiveIntensity: 0.55, roughness: 0.4 }));
+    const boardMat = new THREE.MeshStandardMaterial({ color: 0x12161d, emissive: 0xffb24a, emissiveIntensity: 0.55, roughness: 0.4 });
+    this.nightReactive(boardMat, 0.4, 1.4); // the campus sign blazes at night
+    const board = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.95, 0.14), boardMat);
     board.position.set(-2.5, 2.9, 1.4); g.add(board);
     const logo = this.makeIconSprite('🍔'); logo.scale.set(0.8, 0.8, 1); logo.position.set(-2.5, 2.9, 1.5); g.add(logo);
 
@@ -841,6 +928,30 @@ export class FactoryScene {
     return this.finish(c, 1, 1);
   }
 
+  /** Crisp gold "+X €" billboard for the income floaters. */
+  private makeTextSprite(text: string): THREE.Sprite {
+    const { c, g } = this.paintCanvas(256);
+    c.height = 96;
+    g.font = '700 52px system-ui, "Segoe UI", sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 8; g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(0,0,0,0.7)'; g.strokeText(text, 128, 48);
+    g.fillStyle = '#7be0a0'; g.fillText(text, 128, 48);
+    const tex = new THREE.CanvasTexture(c);
+    (tex as unknown as { colorSpace: string }).colorSpace = THREE.SRGBColorSpace;
+    tex.minFilter = THREE.LinearFilter;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    spr.scale.set(3.4, 1.3, 1);
+    return spr;
+  }
+
+  /** Compact € formatter for the floaters (12, 1.4K, 2.1M…). */
+  private fmtShort(n: number): string {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+    return String(Math.max(1, Math.round(n)));
+  }
+
   private makeIconSprite(emoji: string): THREE.Sprite {
     const { c, g } = this.paintCanvas(128);
     g.font = '92px system-ui, "Segoe UI Emoji", sans-serif';
@@ -877,6 +988,7 @@ export class FactoryScene {
     const now = Date.now();
     this.throughput = FactoryEngine.lineThroughput(state, now);
     this.bottleneck = FactoryEngine.bottleneck(state, now);
+    this.revPerSec = FactoryEngine.revenuePerSecond(state, now);
     for (const id of STATION_IDS) {
       const vis = this.buildings.get(id); if (!vis) continue;
       const st = state.stations[id];
@@ -919,12 +1031,14 @@ export class FactoryScene {
       this.updateCameraFrustum();
     }
 
+    this.updateDayNight(dt);
     if (this.centerFlag) this.centerFlag.rotation.y = Math.sin(this.t * 4) * 0.25;
 
     // Building life: pulsing screens, blinking status (red on bottleneck), halo.
     for (const vis of this.buildings.values()) {
       const isNeck = vis.id === this.bottleneck;
-      vis.screenMat.emissiveIntensity = 0.7 + Math.sin(this.t * 3 + vis.rate) * 0.25;
+      // Facade signs pulse, and burn brighter after dark.
+      vis.screenMat.emissiveIntensity = (0.7 + Math.sin(this.t * 3 + vis.rate) * 0.25) * (0.75 + this.night * 0.9);
       const blink = 0.6 + 0.4 * Math.sin(this.t * (isNeck ? 9 : 3));
       vis.statusMat.emissive.setHex(isNeck ? 0xff4a3a : 0x55e070);
       vis.statusMat.emissiveIntensity = 0.6 + blink;
@@ -995,6 +1109,33 @@ export class FactoryScene {
       mat.opacity = Math.max(0, (p.max < 1 ? 0.9 : 0.5) * k);
       if (p.max >= 1) p.mesh.scale.setScalar(1 + p.life * 1.5);
       if (p.life >= p.max) { this.world.remove(p.mesh); this.particles.splice(i, 1); }
+    }
+
+    // Floating "+€" over the dispatch depot as revenue lands (idle juice).
+    if (this.revPerSec > 0.01) {
+      this.incomeAccum += dt;
+      if (this.incomeAccum >= 1.6 && this.floaters.length < 6) {
+        const gained = this.revPerSec * this.incomeAccum;
+        this.incomeAccum = 0;
+        const spr = this.makeTextSprite(`+${this.fmtShort(gained)} €`);
+        const [dx, dz] = BUILDING_POS.delivery;
+        spr.position.set(dx + (Math.random() - 0.5) * 1.4, 4.4, dz + (Math.random() - 0.5) * 1.2);
+        this.world.add(spr);
+        this.floaters.push({ sprite: spr, life: 0 });
+      }
+    }
+    for (let i = this.floaters.length - 1; i >= 0; i--) {
+      const f = this.floaters[i];
+      f.life += dt;
+      f.sprite.position.y += dt * 1.3;
+      const a = f.life < 0.2 ? f.life / 0.2 : Math.max(0, 1 - (f.life - 0.2) / 1.3);
+      (f.sprite.material as THREE.SpriteMaterial).opacity = a;
+      if (f.life >= 1.5) {
+        this.world.remove(f.sprite);
+        const m = f.sprite.material as THREE.SpriteMaterial;
+        m.map?.dispose(); m.dispose();
+        this.floaters.splice(i, 1);
+      }
     }
   }
 
