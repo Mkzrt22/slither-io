@@ -1,0 +1,47 @@
+name: Lucky Dungeon Tycoon
+
+on:
+  push:
+    paths:
+      - 'lucky-dungeon-tycoon/**'
+      - '.github/workflows/lucky-dungeon-tycoon.yml'
+  pull_request:
+    paths:
+      - 'lucky-dungeon-tycoon/**'
+      - '.github/workflows/lucky-dungeon-tycoon.yml'
+
+defaults:
+  run:
+    working-directory: lucky-dungeon-tycoon
+
+jobs:
+  unit:
+    name: Typecheck & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lucky-dungeon-tycoon/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Validate mobile asset sync (Capacitor)
+        run: npm run sync:mobile
+
+  browser:
+    name: Browser end-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lucky-dungeon-tycoon/package-lock.json
+      - run: npm ci
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

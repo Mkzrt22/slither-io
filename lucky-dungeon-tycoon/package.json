@@ -1,0 +1,26 @@
+{
+  "name": "lucky-dungeon-tycoon-core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Framework-agnostic TypeScript core for the Lucky Dungeon Tycoon idle game",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/tests/**/*.test.js\"",
+    "build:web": "tsc -p tsconfig.web.json && cp web/index.html web/manifest.webmanifest web/sw.js dist-web/ && mkdir -p dist-web/web/factory dist-web/icons dist-web/vendor dist-web/models && cp web/styles.css dist-web/web/ && cp web/factory/factory.css dist-web/web/factory/ && cp web/icons/*.png dist-web/icons/ && cp web/vendor/*.js dist-web/vendor/ && cp -r web/vendor/jsm dist-web/vendor/ && cp -r web/models/* dist-web/models/ && node scripts/gen-app-config.mjs",
+    "test:e2e": "npm run build:web && node e2e/browser.e2e.mjs",
+    "serve:web": "npm run build:web && npx -y http-server dist-web -p 8080 -c-1 -o /",
+    "sync:mobile": "npm run build:web && npx cap copy"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/ios": "^6.2.1",
+    "@types/node": "^22.0.0",
+    "@types/three": "^0.160.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.2.1",
+    "three": "^0.160.0"
+  }
+}

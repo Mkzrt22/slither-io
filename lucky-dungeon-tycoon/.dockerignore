@@ -1,0 +1,12 @@
+# Build context is this directory (the server image only needs src/ + server/).
+# Keep the context small and avoid clobbering freshly-installed deps.
+**/node_modules
+**/dist
+**/dist-test
+**/dist-web
+server/.env
+android
+ios
+web/models
+.git
+*.log

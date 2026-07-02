@@ -1,0 +1,21 @@
+# Reverse proxy + static host for Lucky City Tycoon.
+#
+# SITE_ADDRESS defaults to ":80" (plain HTTP on the server's IP — good for
+# first tests). Set it to a domain (e.g. tycoon.example.com) and Caddy will
+# obtain and renew HTTPS certificates automatically.
+
+{$SITE_ADDRESS::80} {
+	encode gzip zstd
+
+	# API: forward /api/* to the Node service, preserving the path.
+	handle /api/* {
+		reverse_proxy api:8787
+	}
+
+	# Everything else: serve the built PWA, falling back to index.html (SPA).
+	handle {
+		root * /srv/www
+		try_files {path} /index.html
+		file_server
+	}
+}

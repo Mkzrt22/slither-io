@@ -1,0 +1,59 @@
+# Full stack for the VPS: Postgres + API + Caddy (static web & TLS).
+#
+#   cd server && cp .env.example .env && nano .env   # set POSTGRES_PASSWORD
+#   docker compose up -d --build
+#
+# Caddy serves the built PWA from ../dist-web and proxies /api to the API.
+# Build the web bundle first from the project root:  npm run build:web
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lct
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: lct
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lct']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://lct:${POSTGRES_PASSWORD:-change-me}@db:5432/lct
+      PORT: 8787
+      ALLOW_ORIGIN: ${ALLOW_ORIGIN:-*}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - '8787'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../dist-web:/srv/www:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - api
+
+volumes:
+  dbdata:
+  caddydata:
+  caddyconfig:

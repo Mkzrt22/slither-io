@@ -1,0 +1,11 @@
+{
+  "appId": "com.luckydungeon.tycoon",
+  "appName": "Lucky Dungeon Tycoon",
+  "webDir": "dist-web",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "automatic"
+  }
+}
