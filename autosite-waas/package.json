@@ -1,0 +1,18 @@
+{
+  "name": "autosite-waas",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter tenant-router dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @autosite/database generate",
+    "db:migrate": "pnpm --filter @autosite/database migrate"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
