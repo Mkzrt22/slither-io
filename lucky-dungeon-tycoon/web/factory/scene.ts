@@ -32,16 +32,16 @@ export type GfxQuality = 'ultra' | 'basic';
 
 /** Building footprint centres on the campus map (x, z). */
 const BUILDING_POS: Record<StationId, [number, number]> = {
-  receiving: [-14.5, -7.0],
-  prep: [-16.0, 7.0],
-  cooking: [0.0, 11.0],
-  plating: [16.0, 7.0],
-  delivery: [14.5, -7.0],
+  receiving: [-26.0, -13.0],
+  prep: [-28.0, 13.0],
+  cooking: [0.0, 21.0],
+  plating: [28.0, 13.0],
+  delivery: [26.0, -13.0],
 };
 /** Plaza centre; buildings face it and dock toward it. */
-const PLAZA_C: [number, number] = [0, 2];
+const PLAZA_C: [number, number] = [0, 3];
 /** How far in front of each building its road dock sits (world units). */
-const DOCK_OFFSET = 3.0;
+const DOCK_OFFSET = 3.8;
 
 const STATION_COLOR: Record<StationId, number> = {
   receiving: 0x3f73b4, prep: 0x3aa06e, cooking: 0xd06536, plating: 0xc09a36, delivery: 0xb04246,
@@ -133,7 +133,7 @@ export class FactoryScene {
 
   private raf = 0; private last = 0; private t = 0;
   private yaw = 0; private targetYaw = 0;
-  private viewSize = 42; private targetViewSize = 42; private aspect = 1;
+  private viewSize = 66; private targetViewSize = 66; private aspect = 1;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointers = new Map<number, { x: number; y: number }>();
   private dragging = false; private dragMoved = 0; private lastPX = 0;
@@ -152,10 +152,10 @@ export class FactoryScene {
     this.renderer.toneMappingExposure = 1.3;
 
     this.scene.background = new THREE.Color(0x121821);
-    this.scene.fog = new THREE.Fog(0x121821, 50, 95);
-    this.camera = new THREE.OrthographicCamera(-12, 12, 12, -12, 0.1, 240);
-    this.camera.position.set(26, 28, 30);
-    this.camera.lookAt(0, 0.8, 2.0);
+    this.scene.fog = new THREE.Fog(0x121821, 85, 175);
+    this.camera = new THREE.OrthographicCamera(-12, 12, 12, -12, 0.1, 320);
+    this.camera.position.set(42, 45, 48);
+    this.camera.lookAt(0, 0.8, 3.0);
     this.scene.add(this.world);
 
     this.hemi = new THREE.HemisphereLight(0xdce8ff, 0x2b3038, 0.85);
@@ -166,7 +166,7 @@ export class FactoryScene {
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.radius = 4;
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
-    sc.left = -30; sc.right = 30; sc.top = 30; sc.bottom = -30; sc.near = 1; sc.far = 110;
+    sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 170;
     this.sun.shadow.bias = -0.0004;
     this.scene.add(this.sun, this.sun.target);
     const rim = new THREE.DirectionalLight(0x9fc0ff, 0.55);
@@ -178,9 +178,11 @@ export class FactoryScene {
     this.buildRoads();
     this.buildVehicles();
     this.buildProps();
+    this.buildDistricts();
+    this.buildScenery();
     this.buildCenterpiece();
     this.buildStars();
-    this.spawnRoamers(14);
+    this.spawnRoamers(26);
     this.resize();
     this.initQuality();
     this.setupPost();
@@ -250,7 +252,7 @@ export class FactoryScene {
     for (let i = 0; i < N; i++) {
       const u = Math.random() * Math.PI * 2;
       const v = 0.12 + Math.random() * 0.55; // upper sky band
-      const r = 95;
+      const r = 150;
       pos[i * 3] = Math.cos(u) * Math.cos(v * Math.PI / 2) * r;
       pos[i * 3 + 1] = Math.sin(v * Math.PI / 2) * r * 0.7;
       pos[i * 3 + 2] = Math.sin(u) * Math.cos(v * Math.PI / 2) * r;
@@ -258,7 +260,7 @@ export class FactoryScene {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     this.stars = new THREE.Points(geo, new THREE.PointsMaterial({
-      color: 0xdfe8ff, size: 0.45, sizeAttenuation: true,
+      color: 0xdfe8ff, size: 0.7, sizeAttenuation: true,
       transparent: true, opacity: 0, depthWrite: false, fog: false,
     }));
     this.scene.add(this.stars);
@@ -284,7 +286,7 @@ export class FactoryScene {
     const day = Math.max(0, Math.min(1, (elev + 0.3) / 0.7));
     this.night = 1 - day;
 
-    this.sun.position.set(Math.cos(ang) * 26, 8 + Math.max(-4, elev * 30), Math.sin(ang) * 18 + 10);
+    this.sun.position.set(Math.cos(ang) * 46, 14 + Math.max(-6, elev * 50), Math.sin(ang) * 32 + 16);
     this.sun.intensity = 0.22 + day * 1.85;
     // Warmer key light near the horizon (sunrise/sunset).
     const warmth = Math.max(0, 1 - Math.abs(elev) * 2.2);
@@ -324,13 +326,13 @@ export class FactoryScene {
 
   private buildGround(): void {
     const ground = new THREE.Mesh(
-      new THREE.BoxGeometry(90, 1, 84),
+      new THREE.BoxGeometry(170, 1, 150),
       new THREE.MeshStandardMaterial({ map: this.texGround(), color: 0x6a7a5e, roughness: 0.95, metalness: 0.05 }),
     );
     ground.position.y = -0.5; ground.receiveShadow = true; this.world.add(ground);
     // A subtle plaza pad under the central building cluster.
     const plaza = new THREE.Mesh(
-      new THREE.CircleGeometry(25, 64),
+      new THREE.CircleGeometry(44, 72),
       new THREE.MeshStandardMaterial({ map: this.texConcrete(), color: 0x82868d, roughness: 0.9 }),
     );
     plaza.rotation.x = -Math.PI / 2; plaza.position.set(0, 0.012, 2); plaza.receiveShadow = true; this.world.add(plaza);
@@ -343,10 +345,13 @@ export class FactoryScene {
     for (let i = 0; i < ids.length - 1; i++) {
       this.addRoad(this.dockOf(ids[i]), this.dockOf(ids[i + 1]));
     }
+    // Close the ring: delivery back to receiving (the empties run), turning
+    // the sequential legs into a full boulevard around the roundabout.
+    this.addRoad(this.dockOf('delivery'), this.dockOf('receiving'));
     // Exit road (scooters leave) + customer arrival road from the delivery dock.
     const d = this.dockOf('delivery');
-    this.addRoad(d, new THREE.Vector2(d.x - 5, 18));
-    this.addRoad(d, new THREE.Vector2(d.x + 6, 19));
+    this.addRoad(d, new THREE.Vector2(d.x - 7, 30));
+    this.addRoad(d, new THREE.Vector2(d.x + 8, 31));
   }
 
   private dockOf(id: StationId): THREE.Vector2 {
@@ -412,7 +417,7 @@ export class FactoryScene {
       const accent = STATION_ACCENT[id];
       const group = new THREE.Group();
       group.position.set(x, 0, z);
-      group.scale.setScalar(1.55); // bigger, more substantial buildings
+      group.scale.setScalar(1.9); // bigger, more substantial buildings
       // Face the plaza centre so the facade (door/sign/windows on +z) and the
       // dock in front of it point at the road network.
       const dirX = PLAZA_C[0] - x, dirZ = PLAZA_C[1] - z;
@@ -564,12 +569,16 @@ export class FactoryScene {
       const b = this.buildings.get(ids[i + 1])!.door.clone();
       this.legs.push({ from: a, to: b, make: makers[i], pool: [], accum: 0, turn: Math.atan2(b.x - a.x, b.z - a.z) });
     }
+    // Return run on the ring's closing edge: empty vans head back to receiving.
+    const d0 = this.buildings.get('delivery')!.door.clone();
+    const r0 = this.buildings.get('receiving')!.door.clone();
+    this.legs.push({ from: d0, to: r0, make: () => this.makeVanCargo(), pool: [], accum: 0, turn: Math.atan2(r0.x - d0.x, r0.z - d0.z) });
     // Exit leg: scooters leave delivery toward the front of the map.
     const d = this.buildings.get('delivery')!.door.clone();
-    const exit = new THREE.Vector3(d.x - 5, 0, 18);
+    const exit = new THREE.Vector3(d.x - 7, 0, 30);
     this.legs.push({ from: d, to: exit, make: () => this.makeScooter(), pool: [], accum: 0, turn: Math.atan2(exit.x - d.x, exit.z - d.z) });
     // Customer cars arrive at the delivery point to pick up orders.
-    const arrival = new THREE.Vector3(d.x + 6, 0, 19);
+    const arrival = new THREE.Vector3(d.x + 8, 0, 31);
     this.legs.push({ from: arrival, to: d, make: () => this.makeCar(), pool: [], accum: 0, turn: Math.atan2(d.x - arrival.x, d.z - arrival.z) });
   }
 
@@ -705,14 +714,15 @@ export class FactoryScene {
     // Perimeter fence ringing the larger lot.
     const postMat = new THREE.MeshStandardMaterial({ color: 0x40454e, roughness: 0.7, metalness: 0.4 });
     for (let a = 0; a < Math.PI * 2; a += Math.PI / 22) {
-      const rx = 30, rz = 26;
+      const rx = 58, rz = 48;
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.12), postMat);
       post.position.set(Math.cos(a) * rx, 0.4, 2 + Math.sin(a) * rz); this.world.add(post);
     }
     // Crate stacks scattered around the bigger plaza.
     const spots: Array<[number, number]> = [
-      [-5, 1], [5, 0.5], [-7, -2], [7, -2.5], [0.5, 3.5], [-10, 3], [10, 3],
-      [-3, 9], [3, 9], [-9, -4], [9, -4], [0, -3],
+      [-9, 2], [9, 1], [-13, -4], [13, -4.5], [1, 6.5], [-18, 6], [18, 6],
+      [-6, 16], [6, 16], [-16, -8], [16, -8], [0, -6], [-12, 11], [12, 11],
+      [-21, -1], [21, -1], [4, -9], [-4, -9],
     ];
     for (const [x, z] of spots) {
       const g = new THREE.Group();
@@ -724,11 +734,11 @@ export class FactoryScene {
       g.position.set(x, 0, z); g.rotation.y = Math.random() * Math.PI; this.world.add(g);
     }
     // Trees and planters lining the wider campus.
-    for (const [x, z] of [[-20, 13], [20, 13], [-21, -10], [21, -10], [-13, 16], [13, 16], [0, 19], [-22, 3], [22, 3]] as Array<[number, number]>) {
+    for (const [x, z] of [[-36, 22], [36, 22], [-38, -18], [38, -18], [-22, 28], [22, 28], [0, 33], [-40, 5], [40, 5], [-10, 26], [10, 26]] as Array<[number, number]>) {
       this.makeTree(x, z);
     }
     // Two parked box trucks in a yard at the back.
-    for (const [x, z, rot] of [[-9, -11, 0.3], [-6.5, -11.2, 0.3]] as Array<[number, number, number]>) {
+    for (const [x, z, rot] of [[-19, -20, 0.3], [-16, -20.5, 0.3], [-22, -19.6, 0.35]] as Array<[number, number, number]>) {
       const truck = this.makeVan(); truck.scale.setScalar(1.4); truck.position.set(x, 0, z); truck.rotation.y = rot; this.world.add(truck);
     }
     // A water tower landmark.
@@ -741,7 +751,7 @@ export class FactoryScene {
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 4.4, 0.16), new THREE.MeshStandardMaterial({ color: 0x40454e, roughness: 0.6, metalness: 0.5 }));
       leg.position.set(lx, 2.2, lz); leg.castShadow = true; tower.add(leg);
     }
-    tower.position.set(20, 0, -12); this.world.add(tower);
+    tower.position.set(38, 0, -24); this.world.add(tower);
   }
 
   private makeTree(x: number, z: number): void {
@@ -769,6 +779,155 @@ export class FactoryScene {
   }
 
   /**
+   * District dressing: each building gets themed surroundings so every corner
+   * of the campus reads as its own place — container yard, greenhouses, gas
+   * tanks, showroom topiary, customer parking.
+   */
+  private buildDistricts(): void {
+    const steel = new THREE.MeshStandardMaterial({ color: 0x9aa1ab, roughness: 0.4, metalness: 0.6 });
+
+    // Receiving: a container yard (stacked coloured shipping containers).
+    const containerCols = [0xb6402f, 0x3a7fb6, 0x3aa06e, 0xd0b54a, 0x8a5aa8];
+    const containers: Array<[number, number, number, number]> = [
+      [-34, -19, 0, 0.15], [-30.5, -21, 0, -0.1], [-36, -14.5, 0, 0.3],
+      [-34, -19, 1, 0.15], [-32.8, -16.8, 0, 0.05],
+    ];
+    containers.forEach(([x, z, lvl, rot], i) => {
+      const c = new THREE.Mesh(
+        new THREE.BoxGeometry(4.2, 1.7, 1.8),
+        new THREE.MeshStandardMaterial({ color: containerCols[i % containerCols.length], roughness: 0.6, metalness: 0.3 }),
+      );
+      c.position.set(x, 0.85 + lvl * 1.72, z); c.rotation.y = rot;
+      c.castShadow = true; c.receiveShadow = true; this.world.add(c);
+    });
+
+    // Prep: two glass greenhouses + crop rows.
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0xbfe0ff, roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.4 });
+    for (const [x, z] of [[-36, 17.5], [-36, 11.5]] as Array<[number, number]>) {
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.14, 2.4), new THREE.MeshStandardMaterial({ color: 0xe9edf2, roughness: 0.5 }));
+      frame.position.set(x, 0.07, z); this.world.add(frame);
+      const house = new THREE.Mesh(new THREE.BoxGeometry(4.4, 1.5, 2.2), glassMat);
+      house.position.set(x, 0.85, z); this.world.add(house);
+      const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 1.35, 0.8, 4), glassMat);
+      ridge.rotation.y = Math.PI / 4; ridge.scale.x = 1.9; ridge.position.set(x, 1.95, z); this.world.add(ridge);
+    }
+    for (let r = 0; r < 4; r++) {
+      const row = new THREE.Mesh(
+        new THREE.BoxGeometry(4.4, 0.24, 0.7),
+        new THREE.MeshStandardMaterial({ color: r % 2 ? 0x4e8a3c : 0x5f7048, roughness: 1 }),
+      );
+      row.position.set(-35, 0.12, 21.5 + r * 1.1); row.receiveShadow = true; this.world.add(row);
+    }
+
+    // Cooking: propane tanks + a wood pile feeding the ovens.
+    for (const [x, z] of [[-6.5, 27.5], [-4.3, 27.8]] as Array<[number, number]>) {
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 2.6, 16), new THREE.MeshStandardMaterial({ color: 0xf2f4f7, roughness: 0.35, metalness: 0.4 }));
+      tank.position.set(x, 1.3, z); tank.castShadow = true; this.world.add(tank);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), steel);
+      cap.position.set(x, 2.6, z); this.world.add(cap);
+    }
+    for (let i = 0; i < 6; i++) {
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 2.2, 8), new THREE.MeshStandardMaterial({ color: 0x8a5a36, roughness: 0.95 }));
+      log.rotation.z = Math.PI / 2;
+      log.position.set(4.5 + (i % 2) * 0.1, 0.24 + Math.floor(i / 2) * 0.42, 26.5 + (i % 3) * 0.5);
+      log.castShadow = true; this.world.add(log);
+    }
+
+    // Plating: showroom topiary + flower beds.
+    for (const [x, z, r] of [[33.5, 17, 0.8], [35, 13.5, 0.6], [32.5, 20, 0.7]] as Array<[number, number, number]>) {
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.4, 0.6, 12), new THREE.MeshStandardMaterial({ color: 0x8a6a3e, roughness: 0.9 }));
+      pot.position.set(x, 0.3, z); pot.castShadow = true; this.world.add(pot);
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), new THREE.MeshStandardMaterial({ color: 0x4e8a3c, roughness: 0.85 }));
+      ball.position.set(x, 0.9 + r, z); ball.castShadow = true; this.world.add(ball);
+    }
+
+    // Delivery: customer parking with painted stalls, parked cars, lockers.
+    const lot = new THREE.Mesh(new THREE.BoxGeometry(11, 0.06, 7.5), new THREE.MeshStandardMaterial({ color: 0x33373d, roughness: 0.95 }));
+    lot.position.set(36, 0.05, -3); lot.receiveShadow = true; this.world.add(lot);
+    const lineMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.9 });
+    for (let i = 0; i < 5; i++) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 3.2), lineMat);
+      line.position.set(31.8 + i * 2.1, 0.09, -4.8); this.world.add(line);
+    }
+    for (let i = 0; i < 3; i++) {
+      const car = this.makeCar(); car.visible = true;
+      car.position.set(32.9 + i * 2.1, 0, -4.8); car.rotation.y = 0; this.world.add(car);
+    }
+    const locker = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.5, 0.8), new THREE.MeshStandardMaterial({ color: 0xd0b54a, roughness: 0.55, metalness: 0.25 }));
+    locker.position.set(36, 0.75, 0.6); locker.castShadow = true; this.world.add(locker);
+  }
+
+  /** Campus scenery: pond, picnic terrace, solar farm, helipad, bus stop, woods. */
+  private buildScenery(): void {
+    // Pond with kerb, rocks and shade trees.
+    const pondMat = new THREE.MeshStandardMaterial({ color: 0x3f8fc0, roughness: 0.08, metalness: 0.35, emissive: 0x123a52, emissiveIntensity: 0.25 });
+    this.nightReactive(pondMat, 0.15, 0.6);
+    const pond = new THREE.Mesh(new THREE.CircleGeometry(6, 40), pondMat);
+    pond.rotation.x = -Math.PI / 2; pond.position.set(-34, 0.06, 28); this.world.add(pond);
+    const kerb = new THREE.Mesh(new THREE.TorusGeometry(6, 0.28, 8, 40), new THREE.MeshStandardMaterial({ color: 0x7d828b, roughness: 0.9 }));
+    kerb.rotation.x = -Math.PI / 2; kerb.position.set(-34, 0.1, 28); this.world.add(kerb);
+    for (const [x, z] of [[-30, 25], [-38, 30], [-31, 31]] as Array<[number, number]>) {
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7, 0), new THREE.MeshStandardMaterial({ color: 0x8a8479, roughness: 1, flatShading: true }));
+      rock.position.set(x, 0.35, z); rock.scale.y = 0.6; rock.castShadow = true; this.world.add(rock);
+    }
+    this.makeTree(-40, 25); this.makeTree(-28, 32);
+
+    // Picnic terrace: parasol tables where the chefs take their break.
+    for (const [x, z] of [[-9, 30], [-5.5, 31.5], [-12, 32]] as Array<[number, number]>) {
+      const table = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.1, 14), new THREE.MeshStandardMaterial({ color: 0xf3ede0, roughness: 0.6 }));
+      table.position.set(x, 1.0, z); table.castShadow = true; this.world.add(table);
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.0, 8), new THREE.MeshStandardMaterial({ color: 0xb8b2a6, roughness: 0.7 }));
+      foot.position.set(x, 0.5, z); this.world.add(foot);
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6), new THREE.MeshStandardMaterial({ color: 0xb8b2a6, roughness: 0.7 }));
+      mast.position.set(x, 2.0, z); this.world.add(mast);
+      const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.6, 0.7, 10), new THREE.MeshStandardMaterial({ color: Math.random() > 0.5 ? 0xe8533a : 0xf0a830, roughness: 0.7, side: THREE.DoubleSide }));
+      canopy.position.set(x, 3.1, z); canopy.castShadow = true; this.world.add(canopy);
+      for (let s = 0; s < 3; s++) {
+        const a = (s / 3) * Math.PI * 2 + x;
+        const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.62, 10), new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 0.9 }));
+        stool.position.set(x + Math.cos(a) * 1.35, 0.31, z + Math.sin(a) * 1.35); stool.castShadow = true; this.world.add(stool);
+      }
+    }
+
+    // Solar farm: tilted panel rows powering the campus.
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 4; c++) {
+        const panel = new THREE.Mesh(
+          new THREE.BoxGeometry(2.2, 0.08, 1.4),
+          new THREE.MeshStandardMaterial({ color: 0x1f3a6e, roughness: 0.2, metalness: 0.6 }),
+        );
+        panel.position.set(30 + c * 2.6, 0.9, 22 + r * 2.2);
+        panel.rotation.x = -0.5; panel.castShadow = true; this.world.add(panel);
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), new THREE.MeshStandardMaterial({ color: 0x586070, roughness: 0.6 }));
+        post.position.set(30 + c * 2.6, 0.4, 22 + r * 2.2); this.world.add(post);
+      }
+    }
+
+    // Helipad on the south lawn.
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(3.6, 36), new THREE.MeshStandardMaterial({ color: 0x2c3038, roughness: 0.95 }));
+    pad.rotation.x = -Math.PI / 2; pad.position.set(0, 0.055, -18); pad.receiveShadow = true; this.world.add(pad);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.1, 0.14, 8, 40), new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.9 }));
+    ring.rotation.x = -Math.PI / 2; ring.position.set(0, 0.06, -18); this.world.add(ring);
+    const h = this.makeIconSprite('🚁'); h.scale.set(2, 2, 1); h.position.set(0, 1.4, -18); this.world.add(h);
+
+    // Bus stop by the front road.
+    const shelterRoof = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.12, 1.6), new THREE.MeshStandardMaterial({ color: 0xbfe0ff, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.55 }));
+    shelterRoof.position.set(12, 2.2, 28); this.world.add(shelterRoof);
+    for (const px of [10.6, 13.4]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.2, 0.12), new THREE.MeshStandardMaterial({ color: 0x40454e, roughness: 0.6 }));
+      post.position.set(px, 1.1, 28.6); this.world.add(post);
+    }
+    this.makeBench(12, 28.4, Math.PI);
+
+    // Woodland clusters at the campus corners.
+    for (const [cx, cz] of [[-45, 30], [45, 30], [-45, -25], [45, -25]] as Array<[number, number]>) {
+      for (let i = 0; i < 5; i++) {
+        this.makeTree(cx + (Math.random() - 0.5) * 7, cz + (Math.random() - 0.5) * 6);
+      }
+    }
+  }
+
+  /**
    * A landscaped roundabout filling the open plaza centre: a kerbed lawn with
    * trees, a fountain, benches, and an illuminated company sign with a waving
    * flag — so the big map doesn't read as a dead expanse of concrete.
@@ -776,6 +935,7 @@ export class FactoryScene {
   private buildCenterpiece(): void {
     const [cx, cz] = PLAZA_C;
     const g = new THREE.Group(); g.position.set(cx, 0, cz);
+    g.scale.setScalar(1.8); // the roundabout grows with the plaza
     const steel = new THREE.MeshStandardMaterial({ color: 0x9aa1ab, roughness: 0.35, metalness: 0.7 });
 
     // Kerb ring + lawn.
@@ -812,11 +972,11 @@ export class FactoryScene {
 
     // Trees + benches around the lawn.
     for (const a of [0.6, 2.4, 4.1]) {
-      const tx = cx + Math.cos(a) * 2.6, tz = cz + Math.sin(a) * 2.6;
+      const tx = cx + Math.cos(a) * 4.6, tz = cz + Math.sin(a) * 4.6;
       this.makeTree(tx, tz);
     }
-    this.makeBench(cx - 1.6, cz + 2.6, 0.2);
-    this.makeBench(cx + 1.6, cz + 2.6, -0.2);
+    this.makeBench(cx - 2.8, cz + 4.7, 0.2);
+    this.makeBench(cx + 2.8, cz + 4.7, -0.2);
 
     this.world.add(g);
   }
@@ -826,7 +986,7 @@ export class FactoryScene {
   private spawnRoamers(n: number): void {
     for (let i = 0; i < n; i++) {
       const mesh = this.makeChef();
-      const x = (Math.random() - 0.5) * 24, z = 2 + (Math.random() - 0.5) * 22;
+      const x = (Math.random() - 0.5) * 48, z = 3 + (Math.random() - 0.5) * 40;
       mesh.position.set(x, 0, z); this.world.add(mesh);
       this.roamers.push({ mesh, x, z, tx: x, tz: z, speed: 0.7 + Math.random() * 0.7, pause: Math.random() * 2, phase: Math.random() * 6 });
     }
@@ -1080,7 +1240,7 @@ export class FactoryScene {
     for (const r of this.roamers) {
       if (r.pause > 0) { r.pause -= dt; continue; }
       const dx = r.tx - r.x, dz = r.tz - r.z; const d = Math.hypot(dx, dz);
-      if (d < 0.12) { r.tx = (Math.random() - 0.5) * 24; r.tz = 2 + (Math.random() - 0.5) * 22; r.pause = Math.random() * 1.8; }
+      if (d < 0.12) { r.tx = (Math.random() - 0.5) * 48; r.tz = 3 + (Math.random() - 0.5) * 40; r.pause = Math.random() * 1.8; }
       else {
         r.x += (dx / d) * r.speed * dt; r.z += (dz / d) * r.speed * dt;
         r.mesh.position.x = r.x; r.mesh.position.z = r.z;
@@ -1119,7 +1279,7 @@ export class FactoryScene {
         this.incomeAccum = 0;
         const spr = this.makeTextSprite(`+${this.fmtShort(gained)} €`);
         const [dx, dz] = BUILDING_POS.delivery;
-        spr.position.set(dx + (Math.random() - 0.5) * 1.4, 4.4, dz + (Math.random() - 0.5) * 1.2);
+        spr.position.set(dx + (Math.random() - 0.5) * 1.6, 5.6, dz + (Math.random() - 0.5) * 1.4);
         this.world.add(spr);
         this.floaters.push({ sprite: spr, life: 0 });
       }
@@ -1163,7 +1323,7 @@ export class FactoryScene {
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (this.pinching && this.pointers.size >= 2) {
       const d = this.pinchDistance();
-      if (this.lastPinch > 0 && d > 0) this.targetViewSize = Math.max(13, Math.min(48, this.targetViewSize * (this.lastPinch / d)));
+      if (this.lastPinch > 0 && d > 0) this.targetViewSize = Math.max(16, Math.min(95, this.targetViewSize * (this.lastPinch / d)));
       this.lastPinch = d;
     } else if (this.dragging) {
       const dx = e.clientX - this.lastPX; this.lastPX = e.clientX;
@@ -1177,7 +1337,7 @@ export class FactoryScene {
   }
   private onWheel(e: WheelEvent): void {
     e.preventDefault();
-    this.targetViewSize = Math.max(13, Math.min(48, this.targetViewSize + e.deltaY * 0.01));
+    this.targetViewSize = Math.max(16, Math.min(95, this.targetViewSize + e.deltaY * 0.01));
   }
   private pinchDistance(): number {
     const pts = [...this.pointers.values()];
