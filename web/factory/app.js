@@ -13,6 +13,7 @@ import { STATION_IDS } from '../../src/factory/types.js';
 import { MANAGER_BY_ID, MANAGER_DEFS, RECIPE_DEFS, RESEARCH_DEFS, STATION_DEF_BY_ID, STATION_DEFS, WORKERS_PER_STATION_CAP, } from '../../src/factory/config.js';
 import { FactoryScene, webglAvailable } from './scene.js';
 import { NumberTween } from '../effects.js';
+import { Sfx } from '../sfx.js';
 import { CloudSync } from '../sync.js';
 const fmt = EconomyEngine.formatCurrency;
 const fmtInt = (n) => Math.round(n).toString();
@@ -27,6 +28,9 @@ function buzz(ms) { try {
     navigator.vibrate?.(ms);
 }
 catch { /* unsupported */ } }
+// Synthesized sound effects (WebAudio, offline). Unlocked on first gesture.
+const sfx = new Sfx();
+window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
 /** localStorage adapter that degrades to memory if storage is unavailable. */
 function makeStore() {
     try {
@@ -60,6 +64,8 @@ if (webglAvailable()) {
         host.appendChild(canvas);
         scene = new FactoryScene(canvas, openStationSheet);
         scene.start();
+        // QA hook: lets tooling jump the time of day (scene.setTimeOfDay).
+        window.LCT_SCENE = scene;
     }
     catch (err) {
         console.warn('[factory] WebGL scene failed', err);
@@ -100,6 +106,7 @@ for (const def of STATION_DEFS) {
     card.querySelector('[data-buy]').addEventListener('click', () => {
         if (game.upgradeStation(def.id, manageMode) > 0) {
             buzz(10);
+            sfx.upgrade();
         }
     });
     card.querySelector('.sc-avatar').addEventListener('click', () => openStationSheet(def.id));
@@ -120,8 +127,10 @@ for (const def of STATION_DEFS) {
 }
 // Menu (dish price) controls.
 const menuBtn = el('btn-menu');
-menuBtn.addEventListener('click', () => { if (game.buyMenu())
-    buzz(10); });
+menuBtn.addEventListener('click', () => { if (game.buyMenu()) {
+    buzz(10);
+    sfx.upgrade();
+} });
 const recipeCards = new Map();
 const recipeStripEl = el('recipe-strip');
 for (const def of RECIPE_DEFS) {
@@ -138,12 +147,16 @@ for (const def of RECIPE_DEFS) {
     btn.addEventListener('click', () => {
         const s = game.getState();
         if (!s.unlockedRecipes.includes(def.id)) {
-            if (game.unlockRecipe(def.id))
+            if (game.unlockRecipe(def.id)) {
                 buzz(15);
+                sfx.coin();
+            }
         }
         else if (s.activeRecipeId !== def.id) {
-            if (game.switchRecipe(def.id))
+            if (game.switchRecipe(def.id)) {
                 buzz(10);
+                sfx.click();
+            }
         }
     });
     recipeStripEl.appendChild(card);
@@ -187,8 +200,10 @@ for (const def of RESEARCH_DEFS) {
     </div>
     <button data-buy class="rc-buy">${cur} <span data-cost>—</span></button>`;
     card.querySelector('[data-buy]').addEventListener('click', () => {
-        if (game.buyResearch(def.id))
+        if (game.buyResearch(def.id)) {
             buzz(8);
+            sfx.upgrade();
+        }
     });
     researchListEl.appendChild(card);
     researchRows.set(def.id, {
@@ -215,17 +230,23 @@ function closeStationSheet() {
 el('btn-station-close').addEventListener('click', closeStationSheet);
 el('station-backdrop').addEventListener('click', closeStationSheet);
 el('btn-upgrade-station').addEventListener('click', () => {
-    if (openStation && game.upgradeStation(openStation, sheetMode) > 0)
+    if (openStation && game.upgradeStation(openStation, sheetMode) > 0) {
         buzz(12);
+        sfx.upgrade();
+    }
 });
 el('btn-worker-plus').addEventListener('click', () => { if (openStation)
     game.assignWorker(openStation); });
 el('btn-worker-minus').addEventListener('click', () => { if (openStation)
     game.unassignWorker(openStation); });
-el('btn-hire-from-station').addEventListener('click', () => { if (game.hireWorker())
-    buzz(10); });
-el('btn-chef-skill').addEventListener('click', () => { if (openStation && game.triggerSkill(openStation))
-    buzz(15); });
+el('btn-hire-from-station').addEventListener('click', () => { if (game.hireWorker()) {
+    buzz(10);
+    sfx.coin();
+} });
+el('btn-chef-skill').addEventListener('click', () => { if (openStation && game.triggerSkill(openStation)) {
+    buzz(15);
+    sfx.upgrade();
+} });
 const chefCards = new Map();
 const chefsListEl = el('chefs-list');
 const RARITY_LABEL = { COMMON: 'Commun', RARE: 'Rare', EPIC: 'Épique', LEGENDARY: 'Légendaire' };
@@ -256,8 +277,10 @@ for (const def of MANAGER_DEFS) {
     btn.addEventListener('click', () => {
         const s = game.getState();
         if (!s.managers[def.id]) {
-            if (game.hireManager(def.id))
+            if (game.hireManager(def.id)) {
                 buzz(15);
+                sfx.coin();
+            }
         }
         else if (openStation && s.stations[openStation].managerId === def.id) {
             game.unassignManager(openStation);
@@ -265,12 +288,14 @@ for (const def of MANAGER_DEFS) {
         else if (openStation) {
             game.assignManager(def.id, openStation);
             buzz(8);
+            sfx.click();
         }
         renderChefs();
     });
     alt.addEventListener('click', () => { if (openStation) {
         game.assignManager(def.id, openStation);
         buzz(8);
+        sfx.click();
         renderChefs();
     } });
     chefsListEl.appendChild(card);
@@ -316,6 +341,7 @@ function renderChefs() {
 const tabButtons = Array.from(document.querySelectorAll('nav button[data-tab]'));
 for (const btn of tabButtons) {
     btn.addEventListener('click', () => {
+        sfx.click();
         for (const o of tabButtons)
             o.classList.toggle('active', o === btn);
         for (const s of document.querySelectorAll('section.tab')) {
@@ -329,8 +355,10 @@ for (const btn of tabButtons) {
 el('btn-fix-bottleneck').addEventListener('click', () => {
     const s = game.getState();
     const id = FactoryEngine.bottleneck(s, Date.now());
-    if (game.upgradeStation(id, manageMode) > 0)
+    if (game.upgradeStation(id, manageMode) > 0) {
         buzz(12);
+        sfx.upgrade();
+    }
 });
 const rushBtn = el('btn-rush');
 rushBtn.addEventListener('click', async () => {
@@ -339,11 +367,14 @@ rushBtn.addEventListener('click', async () => {
     await new Promise((r) => setTimeout(r, 400));
     game.startRush();
     buzz(20);
+    sfx.jackpot();
     rushBtn.disabled = false;
 });
 // --- Prestige ----------------------------------------------------------------
-el('btn-prestige').addEventListener('click', () => { if (game.prestige() > 0)
-    buzz(30); });
+el('btn-prestige').addEventListener('click', () => { if (game.prestige() > 0) {
+    buzz(30);
+    sfx.jackpot();
+} });
 // --- Modals ------------------------------------------------------------------
 let pendingOfflineCash = 0;
 let pendingDaily = null;
@@ -373,6 +404,7 @@ el('btn-daily-claim').addEventListener('click', () => {
     pendingDaily = null;
     el('daily-modal').classList.remove('visible');
     buzz(15);
+    sfx.coin();
 });
 el('btn-offline-ok').addEventListener('click', () => {
     el('offline-modal').classList.remove('visible');
@@ -391,6 +423,19 @@ el('btn-offline-x2').addEventListener('click', async () => {
 el('btn-settings').addEventListener('click', () => el('settings-modal').classList.add('visible'));
 el('btn-settings-close').addEventListener('click', () => el('settings-modal').classList.remove('visible'));
 // Graphics quality toggle (Ultra post-processing ↔ Performance).
+// Sound toggle (persisted by Sfx).
+const soundBtn = el('btn-sound');
+function refreshSoundBtn() {
+    soundBtn.textContent = sfx.isMuted() ? '🔇 Son : coupé' : '🔊 Son : activé';
+}
+soundBtn.addEventListener('click', () => {
+    sfx.unlock();
+    sfx.setMuted(!sfx.isMuted());
+    refreshSoundBtn();
+    if (!sfx.isMuted())
+        sfx.coin();
+});
+refreshSoundBtn();
 const qualityBtn = el('btn-quality');
 function refreshQualityBtn() {
     const q = scene?.getQuality() ?? 'basic';
@@ -451,6 +496,16 @@ function render(s) {
     // Rush button label.
     const remain = game.rushRemainingMs();
     rushBtn.textContent = remain > 0 ? `🔥 Coup de feu actif · ${Math.ceil(remain / 1000)}s` : '🚀 Coup de feu ×3 (pub · 60s)';
+    if (firstRender) {
+        // First real frame: hold the splash a beat, then fade it away.
+        const splash = document.getElementById('splash');
+        if (splash) {
+            window.setTimeout(() => {
+                splash.classList.add('done');
+                window.setTimeout(() => splash.remove(), 700);
+            }, 550);
+        }
+    }
     firstRender = false;
 }
 function isActive(id) {

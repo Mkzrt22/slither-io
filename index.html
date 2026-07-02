@@ -25,6 +25,16 @@
   </script>
 </head>
 <body>
+  <!-- Boot splash (never intercepts input; fades out once the app renders). -->
+  <div id="splash" aria-hidden="true">
+    <div class="splash-inner">
+      <div class="splash-logo">🍳</div>
+      <div class="splash-name">CHEF&nbsp;FACTORY</div>
+      <div class="splash-sub">T Y C O O N</div>
+      <div class="splash-bar"><i></i></div>
+    </div>
+  </div>
+
   <div id="app">
     <!-- ============================= TOP HUD ============================= -->
     <header class="hud">
@@ -194,12 +204,13 @@
     <div class="modal-card">
       <div class="modal-ic">⚙️</div>
       <h2>Réglages</h2>
+      <button id="btn-sound" class="btn-modal">🔊 Son : activé</button>
       <button id="btn-quality" class="btn-modal">✨ Graphismes : Ultra</button>
       <button id="btn-buy-cash" class="btn-modal">💎 Échanger 10 gemmes → cash</button>
       <button id="btn-export" class="btn-modal">📤 Exporter la sauvegarde</button>
       <button id="btn-import" class="btn-modal">📥 Importer une sauvegarde</button>
       <button id="btn-reset" class="btn-modal btn-danger">🗑️ Réinitialiser</button>
-      <p class="settings-version">Chef Factory Tycoon · v34</p>
+      <p class="settings-version">Chef Factory Tycoon · v35</p>
       <button id="btn-settings-close" class="btn-modal-ghost">Fermer</button>
     </div>
   </div>
