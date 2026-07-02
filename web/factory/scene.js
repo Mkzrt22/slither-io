@@ -144,6 +144,7 @@ export class FactoryScene {
         this.buildProps();
         this.buildDistricts();
         this.buildScenery();
+        this.buildInfill();
         this.buildCenterpiece();
         this.buildStars();
         this.spawnRoamers(26);
@@ -585,7 +586,7 @@ export class FactoryScene {
     spawnVehicle(leg) {
         let v = leg.pool.find((x) => !x.active);
         if (!v) {
-            if (leg.pool.length >= 5)
+            if (leg.pool.length >= 8)
                 return;
             // Speed is per-road so world-speed stays constant on the bigger map.
             const len = Math.max(4, leg.from.distanceTo(leg.to));
@@ -740,6 +741,7 @@ export class FactoryScene {
             }
             g.position.set(x, 0, z);
             g.rotation.y = Math.random() * Math.PI;
+            g.scale.setScalar(1.5); // read at campus scale
             this.world.add(g);
         }
         // Trees and planters lining the wider campus.
@@ -772,20 +774,26 @@ export class FactoryScene {
         tower.position.set(38, 0, -24);
         this.world.add(tower);
     }
-    makeTree(x, z) {
+    makeTree(x, z, s = 1.7) {
+        const g = new THREE.Group();
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 1.0, 8), new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 0.9 }));
-        trunk.position.set(x, 0.5, z);
+        trunk.position.y = 0.5;
         trunk.castShadow = true;
-        this.world.add(trunk);
-        const leafMat = new THREE.MeshStandardMaterial({ color: 0x4e8a3c, roughness: 0.9, flatShading: true });
+        g.add(trunk);
+        const hue = 0.3 + Math.random() * 0.06;
+        const leafMat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(hue, 0.42, 0.34), roughness: 0.9, flatShading: true });
         const l1 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9, 0), leafMat);
-        l1.position.set(x, 1.5, z);
+        l1.position.y = 1.5;
         l1.castShadow = true;
-        this.world.add(l1);
+        g.add(l1);
         const l2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), leafMat);
-        l2.position.set(x + 0.3, 1.9, z - 0.2);
+        l2.position.set(0.3, 1.9, -0.2);
         l2.castShadow = true;
-        this.world.add(l2);
+        g.add(l2);
+        g.position.set(x, 0, z);
+        g.scale.setScalar(s * (0.85 + Math.random() * 0.35));
+        g.rotation.y = Math.random() * Math.PI * 2;
+        this.world.add(g);
     }
     makeBench(x, z, ry) {
         const mat = new THREE.MeshStandardMaterial({ color: 0x7a5a36, roughness: 0.85 });
@@ -990,6 +998,137 @@ export class FactoryScene {
         }
     }
     /**
+     * Interior + perimeter infill so the huge campus never reads empty:
+     * radial walkways with hedges, green islands, food kiosks, flower beds
+     * inside the ring; background warehouses and a tree line outside it.
+     */
+    buildInfill() {
+        const [cx, cz] = PLAZA_C;
+        // Radial walkways from the roundabout out to each building dock.
+        const pathMat = new THREE.MeshStandardMaterial({ color: 0x6d727b, roughness: 0.95 });
+        const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x3e6e32, roughness: 0.95, flatShading: true });
+        for (const id of STATION_IDS) {
+            const d = this.buildings.get(id).door;
+            const dx = d.x - cx, dz = d.z - cz;
+            const len = Math.hypot(dx, dz);
+            const ux = dx / len, uz = dz / len;
+            const start = 8.4, inner = len - 2.6; // from the roundabout kerb to the dock pad
+            const mid = (start + inner) / 2, plen = inner - start;
+            if (plen <= 2)
+                continue;
+            const walk = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.045, plen), pathMat);
+            walk.position.set(cx + ux * mid, 0.04, cz + uz * mid);
+            walk.rotation.y = Math.atan2(dx, dz);
+            walk.receiveShadow = true;
+            this.world.add(walk);
+            // Low hedges flanking the walkway.
+            for (const side of [-1, 1]) {
+                const hedge = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.55, plen * 0.55), hedgeMat);
+                hedge.position.set(cx + ux * mid + -uz * side * 1.5, 0.28, cz + uz * mid + ux * side * 1.5);
+                hedge.rotation.y = Math.atan2(dx, dz);
+                hedge.castShadow = true;
+                this.world.add(hedge);
+            }
+        }
+        // Green islands between the walkways: lawn, trees, bench, flowers.
+        const lawnMat = new THREE.MeshStandardMaterial({ map: this.texGround(), color: 0x5f7048, roughness: 1 });
+        for (let k = 0; k < 5; k++) {
+            const a = (k / 5) * Math.PI * 2 + Math.PI / 5 + 0.32;
+            const ix = cx + Math.cos(a) * 16.5, iz = cz + Math.sin(a) * 14.5;
+            const lawn = new THREE.Mesh(new THREE.CircleGeometry(4.2, 28), lawnMat);
+            lawn.rotation.x = -Math.PI / 2;
+            lawn.position.set(ix, 0.04, iz);
+            lawn.receiveShadow = true;
+            this.world.add(lawn);
+            const kerb = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.16, 8, 28), new THREE.MeshStandardMaterial({ color: 0x7d828b, roughness: 0.9 }));
+            kerb.rotation.x = -Math.PI / 2;
+            kerb.position.set(ix, 0.05, iz);
+            this.world.add(kerb);
+            this.makeTree(ix - 1.4, iz - 1.0);
+            this.makeTree(ix + 1.6, iz + 1.2, 1.3);
+            this.makeBench(ix + 1.2, iz - 1.8, a + Math.PI / 2);
+            for (let f = 0; f < 4; f++) {
+                const fa = (f / 4) * Math.PI * 2;
+                const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshStandardMaterial({ color: [0xff5a5a, 0xffd24a, 0xff8ec2, 0xffffff][f], roughness: 0.7 }));
+                bloom.position.set(ix + Math.cos(fa) * 3.1, 0.24, iz + Math.sin(fa) * 3.1);
+                this.world.add(bloom);
+            }
+        }
+        // Food kiosks dotted around the inner plaza (lunch stands for the staff).
+        const kioskCols = [0xe8533a, 0x3aa06e, 0x3a7fb6, 0xd0b54a];
+        const kioskSpots = [
+            [cx - 10, cz - 9, 0.6], [cx + 10, cz - 9, -0.6], [cx - 13, cz + 8, 1.2], [cx + 13, cz + 8, -1.2],
+        ];
+        kioskSpots.forEach(([kx, kz, rot], i) => {
+            const k = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.7, 1.7), new THREE.MeshStandardMaterial({ color: kioskCols[i], roughness: 0.55 }));
+            body.position.y = 0.95;
+            body.castShadow = true;
+            k.add(body);
+            const counter = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.14, 0.5), new THREE.MeshStandardMaterial({ color: 0xe9edf2, roughness: 0.5 }));
+            counter.position.set(0, 1.1, 1.05);
+            k.add(counter);
+            const awning = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.1, 1.2), new THREE.MeshStandardMaterial({ color: 0xf3ede0, roughness: 0.7 }));
+            awning.position.set(0, 2.0, 1.0);
+            awning.rotation.x = -0.28;
+            awning.castShadow = true;
+            k.add(awning);
+            const signMat = new THREE.MeshStandardMaterial({ color: 0x14181f, emissive: 0xffce7a, emissiveIntensity: 0.5, roughness: 0.4 });
+            this.nightReactive(signMat, 0.3, 1.3);
+            const sign = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.4, 0.1), signMat);
+            sign.position.set(0, 2.05, -0.7);
+            k.add(sign);
+            k.position.set(kx, 0, kz);
+            k.rotation.y = rot;
+            this.world.add(k);
+        });
+        // Flower beds splashing colour across the concrete.
+        for (const [fx, fz, col] of [
+            [cx - 6, cz + 11, 0xd0489a], [cx + 6, cz + 11, 0xd0b54a], [cx - 17, cz - 2, 0xc84a4a],
+            [cx + 17, cz - 2, 0x7a5ad0], [cx - 4, cz - 12, 0xe0863a], [cx + 4, cz - 12, 0xd04a6a],
+        ]) {
+            const bed = new THREE.Mesh(new THREE.CircleGeometry(1.5, 20), new THREE.MeshStandardMaterial({ color: col, roughness: 0.85 }));
+            bed.rotation.x = -Math.PI / 2;
+            bed.position.set(fx, 0.045, fz);
+            this.world.add(bed);
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.12, 8, 20), new THREE.MeshStandardMaterial({ color: 0x7d828b, roughness: 0.9 }));
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.set(fx, 0.05, fz);
+            this.world.add(ring);
+        }
+        // Background warehouses on the outer band — the campus feels industrial.
+        const shedSpots = [
+            [-46, 8, 1.35, 0x5a6472], [46, 8, -1.35, 0x6a5f52], [14, -30, 0.1, 0x566258],
+        ];
+        for (const [sx, sz, rot, col] of shedSpots) {
+            const shed = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(9, 3.4, 5.5), new THREE.MeshStandardMaterial({ color: col, roughness: 0.8, metalness: 0.15 }));
+            body.position.y = 1.7;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            shed.add(body);
+            const roof = new THREE.Mesh(new THREE.BoxGeometry(9.4, 0.25, 5.9), new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.7 }));
+            roof.position.y = 3.5;
+            shed.add(roof);
+            for (const doorX of [-2.4, 0.6]) {
+                const door = new THREE.Mesh(new THREE.BoxGeometry(2.0, 2.4, 0.1), new THREE.MeshStandardMaterial({ color: 0x9aa1ab, roughness: 0.5, metalness: 0.5 }));
+                door.position.set(doorX, 1.2, 2.8);
+                shed.add(door);
+            }
+            const strip = new THREE.Mesh(new THREE.BoxGeometry(8.4, 0.5, 0.08), new THREE.MeshStandardMaterial({ color: 0x14181f, emissive: 0xffce7a, emissiveIntensity: 0.3, roughness: 0.4 }));
+            strip.position.set(0, 2.9, 2.79);
+            shed.add(strip);
+            shed.position.set(sx, 0, sz);
+            shed.rotation.y = rot;
+            this.world.add(shed);
+        }
+        // Perimeter tree line just inside the fence.
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 9) {
+            const rx = 52, rz = 42;
+            this.makeTree(Math.cos(a) * rx + (Math.random() - 0.5) * 4, 2 + Math.sin(a) * rz + (Math.random() - 0.5) * 4, 1.9);
+        }
+    }
+    /**
      * A landscaped roundabout filling the open plaza centre: a kerbed lawn with
      * trees, a fountain, benches, and an illuminated company sign with a waving
      * flag — so the big map doesn't read as a dead expanse of concrete.
@@ -1150,6 +1289,10 @@ export class FactoryScene {
         const { c, g } = this.paintCanvas(256);
         g.fillStyle = '#5f6e52';
         g.fillRect(0, 0, 256, 256);
+        // Mowing stripes for a groomed-campus look.
+        g.fillStyle = 'rgba(255,255,255,0.045)';
+        for (let y = 0; y < 256; y += 64)
+            g.fillRect(0, y, 256, 32);
         for (let i = 0; i < 2600; i++) {
             g.fillStyle = ['#677a56', '#566348', '#6f8060'][(Math.random() * 3) | 0];
             g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
@@ -1174,7 +1317,7 @@ export class FactoryScene {
             g.fillStyle = 'rgba(0,0,0,0.05)';
             g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
         }
-        return this.finish(c, 4, 4);
+        return this.finish(c, 10, 10);
     }
     texRoad(len) {
         const { c, g } = this.paintCanvas(64);
@@ -1355,7 +1498,7 @@ export class FactoryScene {
         const flow = this.throughput;
         for (const leg of this.legs) {
             if (flow > 0.0001) {
-                leg.accum += dt * (0.35 + flow * 0.45);
+                leg.accum += dt * (0.55 + flow * 0.6);
                 if (leg.accum >= 1) {
                     leg.accum -= 1;
                     this.spawnVehicle(leg);
