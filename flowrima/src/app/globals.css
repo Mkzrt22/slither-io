@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+/* Dark mode is driven by data-theme on <html> (set before paint by an inline script). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------------------------------------------------------------------------
+   Design tokens — « studio de nuit »
+   Contrasts checked for WCAG AA (≥ 4.5:1 for text, ≥ 3:1 for UI borders/icons).
+   --------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+  --background: #f6f6f2;
+  --foreground: #16161d;
+  --surface: #ffffff;
+  --surface-2: #eeeee8;
+  --border: #d4d4cc;
+  --muted: #55556a;            /* 7.0:1 on background */
+  --accent: #c6ff2e;           /* fills (buttons, highlights) with dark text */
+  --accent-fg: #101014;
+  --accent-text: #3d5a00;      /* accent used as text on light surfaces: 7.9:1 */
+  --danger: #b42318;
+  --danger-fg: #ffffff;
+  --success: #1f7a3a;
+  --warning: #9a6200;
+  --ring: #3d5a00;
+
+  /* Rhyme families = categorical palette, fixed order (validated for CVD in
+     both modes with the dataviz validator). Light slots 3/4/5 are < 3:1 on
+     white: the family letter is always shown as a visible label (relief rule). */
+  --rhyme-1: #2a78d6; --rhyme-2: #eb6834; --rhyme-3: #1baf7a; --rhyme-4: #eda100;
+  --rhyme-5: #e87ba4; --rhyme-6: #008300; --rhyme-7: #6250d6; --rhyme-8: #e34948;
+  --rhyme-tint: 18%;
+  /* Single-series charts use the accent text step (≥ 3:1 on surfaces in both modes) */
+  --chart-1: var(--accent-text);
+  --chart-grid: #e2e2dc;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0b0b10;
+  --foreground: #f1f1f4;
+  --surface: #14141c;
+  --surface-2: #1d1d28;
+  --border: #2e2e3d;
+  --muted: #a6a6ba;            /* 8.1:1 on background */
+  --accent: #c6ff2e;
+  --accent-fg: #0b0b10;
+  --accent-text: #c6ff2e;      /* 15:1 on background */
+  --danger: #ff6b6b;
+  --danger-fg: #0b0b10;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --ring: #c6ff2e;
+  --rhyme-1: #3987e5; --rhyme-2: #d95926; --rhyme-3: #199e70; --rhyme-4: #c98500;
+  --rhyme-5: #d55181; --rhyme-6: #008300; --rhyme-7: #9085e9; --rhyme-8: #e66767;
+  --rhyme-tint: 26%;
+  --chart-grid: #26263a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-text: var(--accent-text);
+  --color-danger: var(--danger);
+  --color-danger-fg: var(--danger-fg);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-grid: var(--chart-grid);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --animate-fade-in: fade-in 220ms ease-out both;
+  --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* Visible keyboard focus everywhere (AA) */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Lyrics typography: long-text readability */
+.lyrics {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  letter-spacing: 0.005em;
+}
+
+/* Rhyme marks — colour is never the only signal: the family letter is shown in the margin */
+.rhyme {
+  border-radius: 3px;
+  padding: 0 1px;
+  box-shadow: inset 0 -2px 0 var(--rhyme-color);
+  background: color-mix(in srgb, var(--rhyme-color) var(--rhyme-tint), transparent);
+}
+
+.prose-legal h2 { font-size: 1.25rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.5rem; }
+.prose-legal h3 { font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.25rem; }
+.prose-legal p, .prose-legal li { color: var(--foreground); line-height: 1.7; margin-bottom: 0.5rem; }
+.prose-legal ul { list-style: disc; padding-left: 1.25rem; }
+.prose-legal a { color: var(--accent-text); text-decoration: underline; }
