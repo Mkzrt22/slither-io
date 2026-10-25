@@ -22,18 +22,12 @@ if (PLACEHOLDER_SECRETS.includes(TOKEN_SECRET)) {
 const tiersRaw = (env.ARENA_TIERS || '0.25,1,5,20').split(',').map(s => Number(s.trim())).filter(n => n > 0);
 const ARENA_TIERS = tiersRaw.map((fee, i) => ({ id: 't' + (i + 1), fee: Math.round(fee * MONEY_SCALE) }));
 
-const NOWPAYMENTS = {
-  apiKey: env.NOWPAYMENTS_API_KEY || '',
-  ipnSecret: env.NOWPAYMENTS_IPN_SECRET || '',
-  sandbox: env.NOWPAYMENTS_SANDBOX === 'true',
-};
 const ADMIN_TOKEN = env.ADMIN_TOKEN || '';
 
+// demo: free demo credits. crypto: real deposits/withdrawals from players' wallets.
 let PAYMENTS_MODE = (env.PAYMENTS_MODE || 'demo').toLowerCase();
-if (PAYMENTS_MODE === 'nowpayments') {
+if (PAYMENTS_MODE === 'crypto') {
   const missing = [];
-  if (!NOWPAYMENTS.apiKey) missing.push('NOWPAYMENTS_API_KEY');
-  if (!NOWPAYMENTS.ipnSecret) missing.push('NOWPAYMENTS_IPN_SECRET');
   if (!ADMIN_TOKEN) missing.push('ADMIN_TOKEN');
   if (TOKEN_SECRET_EPHEMERAL) missing.push('TOKEN_SECRET');
   if (env.ARENA_REAL_MONEY !== 'true') missing.push('ARENA_REAL_MONEY=true');
@@ -44,6 +38,16 @@ if (PAYMENTS_MODE === 'nowpayments') {
 } else if (PAYMENTS_MODE !== 'demo') {
   warnings.push(`Unknown PAYMENTS_MODE "${PAYMENTS_MODE}", using demo.`);
   PAYMENTS_MODE = 'demo';
+}
+
+// "solana:0.1,ethereum:3" → { solana: 100000, ethereum: 3000000 } (USD micro-units)
+function feeMap(raw) {
+  const out = { solana: 0.1, ethereum: 3, bsc: 0.3, tron: 1.5 };
+  for (const part of String(raw || '').split(',')) {
+    const [k, v] = part.split(':').map(x => x && x.trim());
+    if (k && Number(v) >= 0) out[k] = Number(v);
+  }
+  return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, Math.round(v * MONEY_SCALE)]));
 }
 
 module.exports = {
@@ -65,9 +69,14 @@ module.exports = {
   PLAUSIBLE_DOMAIN: env.PLAUSIBLE_DOMAIN || '',
 
   PAYMENTS_MODE,
-  CURRENCY: PAYMENTS_MODE === 'demo' ? 'DEMO' : 'USDC',
-  NOWPAYMENTS,
+  CURRENCY: PAYMENTS_MODE === 'demo' ? 'DEMO' : 'USD',
   ADMIN_TOKEN,
+  PRICE_SPREAD_BPS: Math.max(0, Math.min(500, num(env.PRICE_SPREAD_BPS, 50))),
+  WITHDRAW_FEES: feeMap(env.WITHDRAW_FEES),
+  AUTO_WITHDRAW_MAX: Math.round(num(env.AUTO_WITHDRAW_MAX_USD, 100) * MONEY_SCALE),
+  AUTO_WITHDRAW_DAILY: Math.round(num(env.AUTO_WITHDRAW_DAILY_USD, 300) * MONEY_SCALE),
+  DEPOSIT_TIMEOUT_MINUTES: num(env.DEPOSIT_TIMEOUT_MINUTES, 120),
+  BLOCKED_COUNTRIES: (env.BLOCKED_COUNTRIES || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean),
   ARENA_TIERS,
   HOUSE_FEE_BPS: Math.max(0, Math.min(3000, num(env.HOUSE_FEE_BPS, 500))),
   ARENA_MIN_PLAYERS: Math.max(2, num(env.ARENA_MIN_PLAYERS, 2)),
@@ -77,10 +86,9 @@ module.exports = {
   ARENA_CASHOUT_SECONDS: num(env.ARENA_CASHOUT_SECONDS, 3),
   DEMO_FAUCET_AMOUNT: Math.round(num(env.DEMO_FAUCET_AMOUNT, 10) * MONEY_SCALE),
   DEMO_FAUCET_HOURS: num(env.DEMO_FAUCET_HOURS, 6),
-  MIN_DEPOSIT: Math.round(num(env.MIN_DEPOSIT, 5) * MONEY_SCALE),
-  MAX_DEPOSIT: Math.round(num(env.MAX_DEPOSIT, 500) * MONEY_SCALE),
+  MIN_DEPOSIT: Math.round(num(env.MIN_DEPOSIT, 1) * MONEY_SCALE),
+  MAX_DEPOSIT: Math.round(num(env.MAX_DEPOSIT, 2000) * MONEY_SCALE),
   MIN_WITHDRAWAL: Math.round(num(env.MIN_WITHDRAWAL, 5) * MONEY_SCALE),
-  WITHDRAW_NETWORKS: (env.WITHDRAW_NETWORKS || 'USDC-SOL,USDC-POLYGON,USDC-ERC20,USDT-TRC20').split(',').map(s => s.trim()).filter(Boolean),
 
   MAX_ROOMS: num(env.MAX_ROOMS, 40),
   MAX_PLAYERS_PER_ROOM: num(env.MAX_PLAYERS_PER_ROOM, 30),

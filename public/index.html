@@ -35,6 +35,12 @@
     </div>
     <div id="auth-err" class="err"></div>
     <div id="auth-ok" class="ok"></div>
+    <div class="wallet-login" id="wallet-login">
+      <button class="wbtn" data-wallet-login="solana">👻 Phantom<small>Solana</small></button>
+      <button class="wbtn" data-wallet-login="evm">🦊 MetaMask<small>Ethereum · BNB</small></button>
+      <button class="wbtn" data-wallet-login="tron">🔺 TronLink<small>TRON</small></button>
+    </div>
+    <div class="or-sep"><span data-i18n="auth.or">or with a username</span></div>
     <input class="inp" id="auth-user" type="text" data-i18n-ph="auth.username" placeholder="Username" maxlength="20" autocomplete="username">
     <input class="inp" id="auth-pass" type="password" data-i18n-ph="auth.password" placeholder="Password" maxlength="72" autocomplete="current-password">
     <button class="btn" id="auth-submit" data-i18n="auth.login">Log in</button>
@@ -343,6 +349,7 @@
     <button class="modal-x" data-close="wallet-modal">✕</button>
     <div class="modal-title">💰 <span data-i18n="wallet.title">Wallet</span></div>
     <div class="wallet-big" id="wallet-big">—</div>
+    <div class="w-links" id="w-links"></div>
     <div class="tabs">
       <button class="tab on" data-tab="w-deposit" data-i18n="wallet.deposit">Deposit</button>
       <button class="tab" data-tab="w-withdraw" data-i18n="wallet.withdraw">Withdraw</button>
@@ -355,16 +362,21 @@
         <button class="btn-gold" id="faucet-btn" style="width:100%"></button>
       </div>
       <div id="w-crypto">
-        <div class="modal-sub" data-i18n="wallet.depositText">Top up in crypto (BTC, ETH, USDC, USDT, SOL…). Your balance is credited in USD once the payment is confirmed.</div>
-        <div class="modal-row"><input class="inp" id="dep-amount" type="number" min="5" step="1" value="10"><button class="btn-gold" id="dep-btn" data-i18n="wallet.pay">Pay</button></div>
-        <div class="small" id="dep-limits"></div>
+        <div class="modal-sub" data-i18n="wallet.depositText">Send crypto from your connected wallet. Your balance is credited in dollars at the current price once the network confirms the transaction.</div>
+        <select class="inp" id="dep-asset"></select>
+        <div class="modal-row"><input class="inp" id="dep-amount" type="number" min="1" step="1" value="10"><span class="small">USD</span></div>
+        <div class="small" id="dep-est"></div>
+        <button class="btn-gold" id="dep-btn" style="width:100%;margin-top:8px"></button>
+        <div class="small" id="dep-status" style="margin-top:8px"></div>
+        <div class="hist" id="dep-list"></div>
       </div>
     </div>
     <div class="tabpane" id="w-withdraw">
-      <div class="modal-sub" data-i18n="wallet.withdrawText">Withdrawals are checked manually (anti-fraud) and usually sent within 24 hours.</div>
-      <input class="inp" id="wd-amount" type="number" min="5" step="0.01" data-i18n-ph="wallet.amount" placeholder="Amount">
-      <select class="inp" id="wd-network"></select>
-      <input class="inp" id="wd-address" type="text" data-i18n-ph="wallet.address" placeholder="Wallet address" autocomplete="off">
+      <div class="modal-sub" id="wd-text"></div>
+      <select class="inp" id="wd-asset"></select>
+      <div class="modal-row"><input class="inp" id="wd-amount" type="number" min="5" step="0.01" data-i18n-ph="wallet.amount" placeholder="Amount"><span class="small">USD</span></div>
+      <div class="small" id="wd-dest"></div>
+      <div class="small" id="wd-est" style="margin-bottom:8px"></div>
       <button class="btn-gold" id="wd-btn" style="width:100%" data-i18n="wallet.request">Request withdrawal</button>
       <div class="hist" id="wd-list"></div>
     </div>
@@ -378,7 +390,7 @@
         <button data-days="180" data-i18n="wallet.ex180">6 months</button>
       </div>
       <div class="small" id="exclude-status" style="margin-top:10px"></div>
-      <div class="small" style="margin-top:12px" data-i18n-html="wallet.help">Gambling can be addictive. Help in France: <a href="https://www.joueurs-info-service.fr" target="_blank" rel="noopener">Joueurs Info Service</a>, 09 74 75 13 13.</div>
+      <div class="small" style="margin-top:12px" data-i18n-html="wallet.help"></div>
     </div>
   </div>
 </div>
@@ -392,6 +404,18 @@
     <label class="chk"><input type="checkbox" id="comp-age"><span data-i18n="comp.age">I am 18 years old or older.</span></label>
     <label class="chk"><input type="checkbox" id="comp-terms"><span data-i18n-html="comp.terms">I have read and accept the <a href="/legal.html#terms" target="_blank">terms</a> and the <a href="/legal.html#responsible" target="_blank">responsible gaming rules</a>.</span></label>
     <button class="btn-gold" id="comp-btn" style="width:100%" disabled data-i18n="comp.confirm">Confirm</button>
+  </div>
+</div>
+
+<!-- RENAME (accounts created from a wallet) -->
+<div id="rename-modal" class="modal">
+  <div class="modal-box">
+    <button class="modal-x" data-close="rename-modal">✕</button>
+    <div class="modal-title" data-i18n="rename.title">Choose your name</div>
+    <div class="modal-sub" data-i18n="rename.sub">Your account is linked to your wallet. Pick the name other players will see (you can do it once).</div>
+    <div class="err" id="rename-err"></div>
+    <input class="inp" id="rename-input" type="text" maxlength="20" data-i18n-ph="auth.username" placeholder="Username" autocomplete="off">
+    <button class="btn" id="rename-btn" data-i18n="rename.save">Save</button>
   </div>
 </div>
 
@@ -415,6 +439,7 @@
 <script src="/shared/constants.js"></script>
 <script src="/js/i18n.js"></script>
 <script src="/js/core.js"></script>
+<script src="/js/wallets.js"></script>
 <script src="/js/net.js"></script>
 <script src="/js/render.js"></script>
 <script src="/js/hud.js"></script>

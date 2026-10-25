@@ -36,35 +36,60 @@ Les salles vivent en mémoire : lance **une seule instance**. Pour monter en cha
 3. Webhook : `https://ton-domaine/api/stripe-webhook`, événement `checkout.session.completed`, secret dans `STRIPE_WEBHOOK_SECRET`.
 4. Si l'acheteur est connecté, l'achat est lié à son compte (il le retrouve sur tous ses appareils).
 
-## 4. Arène avec de l'argent réel
+## 4. Arène avec de l'argent réel (wallets crypto)
 
-> ⚠️ **À lire avant d'activer quoi que ce soit.** En France, un jeu en ligne où l'on mise de l'argent pour en gagner relève en principe de la réglementation des jeux d'argent (Autorité nationale des jeux, ANJ) ; le fait de conserver les fonds des joueurs en crypto relève du statut de prestataire de services sur crypto-actifs (règlement MiCA, enregistrement AMF). Il faut aussi des vérifications d'identité (KYC), une politique anti-blanchiment et le blocage des pays où c'est interdit. **Fais valider le projet par un avocat spécialisé avant d'activer l'argent réel.** En attendant, le mode démo permet de tester et de faire connaître le jeu sans risque.
+> ⚠️ Héberger le jeu hors de France ne supprime pas les obligations : les mises en ligne sont réglementées dans la plupart des pays (licence de jeu, vérification d'identité, lutte anti-blanchiment), y compris pour les joueurs qui s'y connectent. Choisis ta juridiction avec un avocat et bloque les pays où ce n'est pas autorisé (`BLOCKED_COUNTRIES`, avec Cloudflare devant le serveur).
 
-Une fois le cadre réglé :
+### Comment ça marche
+- **Connexion** : le joueur clique sur Phantom (Solana), MetaMask (Ethereum et BNB Chain) ou TronLink (TRON) et signe un message (gratuit, aucune transaction). Son adresse devient son compte. Un compte pseudo + mot de passe peut aussi lier un wallet.
+- **Dépôt** : le serveur prépare la transaction, le wallet du joueur la signe et l'envoie vers l'adresse de la maison. Le serveur vérifie sur la blockchain (bon expéditeur, bon destinataire, bon jeton, assez de confirmations) puis crédite le solde **en dollars au cours du moment** (CoinGecko, Coinbase en secours ; les stablecoins valent 1 $). Une même transaction ne peut être utilisée qu'une fois.
+- **Retrait** : toujours vers le wallet lié du joueur. Jusqu'à `AUTO_WITHDRAW_MAX_USD` (100 $ par défaut, et `AUTO_WITHDRAW_DAILY_USD` par 24 h), le serveur envoie tout seul depuis le wallet chaud ; au-delà, la demande attend ta validation dans `/admin.html` (bouton « Envoyer »). Si un envoi automatique échoue, il passe « À vérifier » et n'est **jamais** renvoyé ou remboursé automatiquement : tu regardes l'explorateur, puis « Marquer envoyé » ou « Refuser » (remboursement).
+- **Changement de wallet** : un compte ne peut lier qu'un wallet par réseau et ne peut pas le changer seul (protection contre le vol de compte). Tu peux le délier depuis l'admin.
 
-1. Crée un compte marchand sur https://nowpayments.io, puis une clé API et un secret IPN (Store Settings).
-2. Teste d'abord en bac à sable : `NOWPAYMENTS_SANDBOX=true` avec des clés sandbox.
-3. Variables :
+### Cryptos prises en charge
 
-```
-PAYMENTS_MODE=nowpayments
-ARENA_REAL_MONEY=true
-NOWPAYMENTS_API_KEY=...
-NOWPAYMENTS_IPN_SECRET=...
-NOWPAYMENTS_SANDBOX=false
-TOKEN_SECRET=...      # obligatoire
-ADMIN_TOKEN=...       # obligatoire
-```
+| Actif | Réseau | Remarque |
+|---|---|---|
+| SOL, USDC | Solana | USDC officiel de Circle |
+| ETH, USDC | Ethereum | frais de réseau élevés : dépôt minimum conseillé 20 $ |
+| BNB, USDC | BNB Chain | l'USDC y est émis par Binance (Binance-Peg, 18 décimales) |
+| TRX, USDT | TRON | Circle n'émet plus d'USDC sur TRON : c'est l'USDT qui le remplace |
 
-Si une de ces variables manque, le serveur reste en mode démo et l'indique dans les logs.
+`CRYPTO_ASSETS` permet de n'en garder qu'une partie.
 
-**Fonctionnement :**
-- **Dépôt** : le joueur choisit un montant, il est redirigé vers une facture NOWPayments (il paie avec la crypto de son choix). Quand NOWPayments notifie `finished` sur `/api/payments/nowpayments/ipn` (signature HMAC-SHA512 vérifiée), le solde est crédité en USD. Les paiements partiels ou dont le montant ne correspond pas passent en statut `review` et se règlent à la main avec un ajustement.
-- **Retrait** : le joueur indique montant, réseau et adresse ; le montant est bloqué tout de suite. Tu l'envoies depuis ton portefeuille ou le tableau de bord NOWPayments, puis tu le marques « Envoyé » avec le txid dans `/admin.html`. « Refuser » rembourse le joueur.
-- **Commission** : `HOUSE_FEE_BPS` (500 = 5 %) prélevé à chaque départ de partie, visible dans l'admin (« Caisse maison »).
-- **Auto-exclusion** : les joueurs peuvent se bloquer 24 h, 7 j, 30 j ou 6 mois depuis Portefeuille → Limites.
+### Mise en place
+1. **Teste d'abord sur les réseaux de test** : `CRYPTO_NETWORK=testnet` (Solana devnet, Sepolia, BNB testnet, TRON Nile). Des robinets gratuits donnent des jetons de test (faucet Solana, faucet Circle pour l'USDC de test, etc.).
+2. Génère les wallets chauds de la maison sur une machine sûre :
+   ```bash
+   node scripts/new-wallets.js
+   ```
+   Copie les trois clés dans les variables de ton hébergeur (`SOLANA_HOT_WALLET_SECRET`, `EVM_HOT_WALLET_KEY`, `TRON_HOT_WALLET_KEY`) et garde une copie hors ligne. Sans clé (seulement `*_HOUSE_ADDRESS`), les dépôts marchent mais chaque retrait est à envoyer à la main.
+3. Alimente les wallets chauds : un peu de SOL, d'ETH, de BNB et de TRX pour les frais réseau, plus de quoi payer les retraits automatiques. **Garde-y le minimum** et transfère le surplus vers un wallet froid : une clé sur un serveur peut être volée.
+4. Prends des RPC fiables pour la production (les RPC publics sont limités) : Helius ou QuickNode pour Solana, Alchemy ou Infura pour Ethereum, NodeReal pour BNB Chain, TronGrid (`TRON_API_KEY`).
+5. Variables à ajouter :
+   ```
+   PAYMENTS_MODE=crypto
+   ARENA_REAL_MONEY=true
+   CRYPTO_NETWORK=mainnet
+   TOKEN_SECRET=...          # obligatoire
+   ADMIN_TOKEN=...           # obligatoire
+   SOLANA_HOT_WALLET_SECRET=...
+   EVM_HOT_WALLET_KEY=...
+   TRON_HOT_WALLET_KEY=...
+   ```
+   S'il manque quelque chose, le serveur reste en mode démo et l'écrit dans les logs. Au démarrage il affiche les actifs activés, par exemple : `payments: crypto · mainnet: SOL, USDC_SOL, ETH, …`.
 
-Les conditions (`public/legal.html`) sont un **modèle** : complète les passages surlignés (identité de l'éditeur, hébergeur, contact, durées) et fais-les relire.
+### Réglages utiles
+- `PRICE_SPREAD_BPS` (0,5 % par défaut) : marge appliquée aux cryptos volatiles, au dépôt comme au retrait.
+- `WITHDRAW_FEES` : frais facturés au joueur par réseau (couvrent le gas que paie la maison).
+- `HOUSE_FEE_BPS` : commission sur chaque entrée d'arène.
+- `MIN_DEPOSIT`, `MAX_DEPOSIT`, `MIN_WITHDRAWAL` : en dollars.
+
+### Ce qui n'est pas inclus
+- Vérification d'identité (KYC) : à brancher selon ta licence (Sumsub, Veriff…).
+- WalletConnect : sur mobile, les joueurs ouvrent le jeu dans le navigateur intégré de Phantom ou MetaMask (le jeu propose le lien automatiquement).
+
+Les conditions (`public/legal.html`) sont un **modèle** : complète les passages surlignés et fais-les relire.
 
 ## 5. Sécurité
 - `TOKEN_SECRET` et `ADMIN_TOKEN` ne doivent jamais être commités (`.env` est ignoré par git).

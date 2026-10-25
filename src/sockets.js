@@ -5,7 +5,7 @@ const { makeSessionToken, verifySessionToken, verifySupporterToken } = require('
 const { getDailyChallenge } = require('./game/challenges');
 
 // Socket.io event handlers. Every payload from the client is untrusted.
-function attachSockets({ io, config, manager, accounts, stats, arena, payments, publicConfig }) {
+function attachSockets({ io, config, manager, accounts, stats, arena, payments, siw, publicConfig }) {
   const limiter = new U.RateLimiter();
   setInterval(() => limiter.sweep(), 60000).unref();
   const sessions = new Map(); // socketId -> session
@@ -13,9 +13,12 @@ function attachSockets({ io, config, manager, accounts, stats, arena, payments, 
 
   const sendTo = (socketId, ev, data) => { const s = io.sockets.sockets.get(socketId); if (s) s.emit(ev, data); };
 
-  function walletChanged(userId) {
+  function walletChanged(userId, event) {
     const info = payments.walletInfo(userId);
-    for (const sid of userSockets.get(userId) || []) sendTo(sid, 'wallet', info);
+    for (const sid of userSockets.get(userId) || []) {
+      sendTo(sid, 'wallet', info);
+      if (event) sendTo(sid, 'walletEvent', event);
+    }
   }
 
   // ── Room services (called by Room) ────────────────────────────────────────
@@ -189,6 +192,8 @@ function attachSockets({ io, config, manager, accounts, stats, arena, payments, 
       excludedUntil: user.excluded_until ? user.excluded_until * 1000 : 0,
       elo: st ? { elo: st.elo || 1000, rank: stats.getRank(st.elo || 1000) } : null,
       wallet: payments.walletInfo(user.id),
+      links: accounts.links(user.id),
+      autoName: !!user.auto_name,
     };
   }
 
@@ -223,7 +228,10 @@ function attachSockets({ io, config, manager, accounts, stats, arena, payments, 
   // ── Handlers ───────────────────────────────────────────────────────────────
   io.on('connection', socket => {
     const ip = U.clientIp(socket);
-    const session = { userId: null, roomId: null, pid: null, view: { w: 1280, h: 800 }, ip };
+    const h = socket.handshake.headers;
+    // Country from the CDN / proxy in front of the server (Cloudflare, Vercel…), if any.
+    const country = String(h['cf-ipcountry'] || h['x-vercel-ip-country'] || h['x-country-code'] || '').toUpperCase().slice(0, 2);
+    const session = { userId: null, roomId: null, pid: null, view: { w: 1280, h: 800 }, ip, country };
     sessions.set(socket.id, session);
 
     // Wraps a handler with a rate limit and an exception guard.
@@ -264,6 +272,39 @@ function attachSockets({ io, config, manager, accounts, stats, arena, payments, 
       if (!r.ok) return socket.emit('authResult', r);
       bindUser(socket, session, r.user);
       socket.emit('authResult', authPayload(r.user, makeSessionToken(r.user.id)));
+    });
+    // ── Sign in with wallet (Phantom / MetaMask / TronLink) ──
+    on('siw:nonce', 6, 0.5, payload => {
+      const { family, address } = payload || {};
+      if (!['solana', 'evm', 'tron'].includes(family)) return notice('wallet_invalid');
+      const r = siw.issue(family, address);
+      if (!r) return notice('wallet_invalid');
+      socket.emit('siw:challenge', { family, address, ...r });
+    });
+    on('siw:verify', 6, 0.5, async payload => {
+      if (!limiter.allow('auth:' + ip, 8, 0.1)) return socket.emit('authResult', { ok: false, error: 'too_many_attempts' });
+      const { family, address, nonce, signature } = payload || {};
+      const addr = await siw.verify({ family, address, nonce, signature });
+      if (!addr) return socket.emit('authResult', { ok: false, error: 'wallet_signature_invalid' });
+      if (session.userId) {
+        // Already logged in with a username: link this wallet to the account.
+        const r = accounts.linkWallet(session.userId, family, addr);
+        if (!r.ok) return notice(r.error);
+        const user = accounts.getUser(session.userId);
+        socket.emit('authResult', { ...authPayload(user, makeSessionToken(user.id)), linked: family });
+        return walletChanged(user.id);
+      }
+      const r = accounts.walletLogin(family, addr);
+      if (!r.ok) return socket.emit('authResult', r);
+      if (stats.enabled) stats.getStats(r.user.id);
+      bindUser(socket, session, r.user);
+      socket.emit('authResult', { ...authPayload(r.user, makeSessionToken(r.user.id)), walletCreated: r.created });
+    });
+    on('account:rename', 3, 0.2, name => {
+      if (!session.userId) return;
+      const r = accounts.rename(session.userId, name);
+      if (!r.ok) return notice(r.error);
+      socket.emit('authResult', { ...authPayload(r.user, makeSessionToken(r.user.id)), renamed: true });
     });
     on('logout', 3, 0.5, () => { leaveCurrent(socket, session); unbindUser(socket, session); });
 
@@ -359,6 +400,7 @@ function attachSockets({ io, config, manager, accounts, stats, arena, payments, 
     on('arena:queue', 3, 0.5, payload => {
       payload = payload || {};
       const user = session.userId ? accounts.getUser(session.userId) : null;
+      if (session.country && config.BLOCKED_COUNTRIES.includes(session.country)) return notice('region_blocked');
       if (user && session.roomId) leaveCurrent(socket, session);
       const r = arena.queue({ user, tierId: String(payload.tierId || ''), socketId: socket.id, profile: buildProfile(session, payload.profile) });
       if (!r.ok) return notice(r.error);
@@ -371,22 +413,31 @@ function attachSockets({ io, config, manager, accounts, stats, arena, payments, 
       if (r.ok) walletChanged(session.userId);
     });
     on('wallet:get', 4, 1, () => { if (session.userId) socket.emit('wallet', payments.walletInfo(session.userId)); });
+    const me = () => (session.userId ? accounts.getUser(session.userId) : null);
     on('wallet:faucet', 2, 0.2, () => {
-      const r = payments.faucet(session.userId ? accounts.getUser(session.userId) : null);
+      const r = payments.faucet(me(), session.country);
       if (!r.ok) notice(r.error);
     });
-    on('wallet:deposit', 2, 0.2, async payload => {
-      const amount = Math.round(Number(payload && payload.amount) * S.MONEY_SCALE);
-      const r = await payments.createDeposit(session.userId ? accounts.getUser(session.userId) : null, amount);
-      if (!r.ok) return notice(r.error);
-      socket.emit('depositUrl', { url: r.url });
+    on('wallet:depositPrepare', 4, 0.5, async payload => {
+      payload = payload || {};
+      const usd = Math.round(Number(payload.amount) * S.MONEY_SCALE);
+      const r = await payments.prepareDeposit(me(), session.country, String(payload.assetId || ''), usd);
+      if (!r.ok) return notice(r.error, { family: r.family });
+      socket.emit('depositPrepared', r);
+    });
+    on('wallet:depositSubmit', 6, 0.5, payload => {
+      payload = payload || {};
+      const r = payments.submitDeposit(me(), session.country, String(payload.assetId || ''), payload.txHash);
+      if (!r.ok) return notice(r.error, { family: r.family });
+      notice('deposit_submitted');
+      walletChanged(session.userId);
     });
     on('wallet:withdraw', 2, 0.1, payload => {
       payload = payload || {};
-      const amount = Math.round(Number(payload.amount) * S.MONEY_SCALE);
-      const r = payments.requestWithdrawal(session.userId ? accounts.getUser(session.userId) : null, amount, String(payload.network || ''), payload.address);
-      if (!r.ok) return notice(r.error);
-      notice('withdrawal_requested');
+      const usd = Math.round(Number(payload.amount) * S.MONEY_SCALE);
+      const r = payments.requestWithdrawal(me(), session.country, String(payload.assetId || ''), usd);
+      if (!r.ok) return notice(r.error, { family: r.family });
+      notice(r.auto ? 'withdrawal_auto' : 'withdrawal_requested', { units: r.units });
     });
     on('account:compliance', 3, 0.5, payload => {
       if (!session.userId || !payload || payload.age !== true || payload.terms !== true) return;

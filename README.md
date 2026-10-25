@@ -35,7 +35,7 @@ Pour tester le multijoueur, ouvre plusieurs onglets ou partage `http://TON_IP:30
 
 Chaque mouvement d'argent est écrit dans un registre SQLite (`ledger`) au moment où il se produit. En cas d'arrêt propre (SIGTERM) ou de crash, les parties sont soldées au redémarrage et les files d'attente remboursées. Les tests vérifient qu'aucun centime n'est créé ni perdu.
 
-Par défaut l'arène utilise des **crédits démo** (aucune valeur). Le passage à l'argent réel est décrit dans [DEPLOY.md](DEPLOY.md) et demande d'abord de régler le cadre légal.
+Par défaut l'arène utilise des **crédits démo** (aucune valeur). En mode réel, les joueurs se connectent avec **Phantom, MetaMask ou TronLink**, déposent et retirent **SOL, ETH, BNB, USDC, TRX ou USDT** depuis leur wallet ; le solde est tenu en dollars. Voir [DEPLOY.md](DEPLOY.md).
 
 ## Commandes
 
@@ -59,8 +59,9 @@ src/
   auth.js              comptes, sessions signées
   stats.js             stats, succès, classements, Battle Pass, Elo
   sockets.js           événements Socket.io (validation, limites de débit)
-  http.js              routes HTTP (Stripe, NOWPayments, admin, santé)
-  payments.js          dépôts/retraits (démo, NOWPayments)
+  http.js              routes HTTP (Stripe, admin, santé)
+  payments.js          dépôts/retraits (démo ou crypto), retraits auto sous plafond
+  crypto/              connexion par wallet (signatures), adaptateurs Solana / EVM / TRON, cours en USD
   economy/ledger.js    registre des soldes
   economy/arena.js     files, parties à mise, règlement, reprise après crash
   game/room.js         simulation d'une salle (25 ticks/s), manches, envoi réseau par zone visible
@@ -70,6 +71,7 @@ public/
   index.html, css/, js/ client (rendu interpolé, HUD, lobby, arène, FR/EN)
   admin.html           administration (retraits, ajustements)
   legal.html           modèle de mentions légales / CGU / confidentialité / jeu responsable
+scripts/new-wallets.js génère les wallets chauds de la maison
 test/                  tests unitaires
 ```
 

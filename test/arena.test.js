@@ -49,12 +49,20 @@ test('eligibility checks', () => {
   assert.equal(w.arena.queue({ user: w.db.prepare('SELECT * FROM users WHERE id=?').get(ex.id), tierId: 't1' }).error, 'self_excluded');
 });
 
-test('equal start: same length, same value, protected spawn', () => {
+test('equal start: same length, same value, same distance to the centre, no bots', () => {
   const w = arenaWorld();
-  const { room } = startMatch(w, ['a', 'b', 'c']);
+  for (const n of ['a', 'b', 'c']) {
+    const u = w.user(n, usd(10));
+    w.arena.queue({ user: u, tierId: 't1', socketId: null, profile: profile(n) });
+  }
+  w.arena.tick();
+  const room = w.rooms[0];
   const humans = room.humans();
+  assert.equal(room.phase, 'countdown');
   assert.equal(new Set(humans.map(p => p.segs.length)).size, 1);
-  assert.ok(humans.every(p => p.value === usd(0.95)));
+  const dists = humans.map(p => Math.round(Math.hypot(p.segs[0].x - room.W / 2, p.segs[0].y - room.H / 2)));
+  assert.equal(new Set(dists).size, 1);
+  assert.ok(humans.every(p => p.value === usd(0.95) && p.protect > 0));
   assert.equal(room.bots.size, 0, 'no bots in paid matches');
   assert.equal(room.powerups.length, 0, 'no random power-ups in paid matches');
 });

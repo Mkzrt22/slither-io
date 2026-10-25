@@ -15,6 +15,7 @@ h2{font-size:1rem;margin:22px 0 8px;color:var(--acc)}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 input,select,button{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);background:#0f1430;color:var(--text)}
 button{cursor:pointer;border-color:var(--acc);color:var(--acc)}
+a{color:var(--acc)}
 button.danger{border-color:var(--a2);color:var(--a2)}
 table{border-collapse:collapse;width:100%;min-width:640px;font-size:.88rem}
 td,th{padding:6px 8px;border-bottom:1px solid var(--bdr);text-align:left;vertical-align:top}
@@ -36,17 +37,21 @@ th{color:var(--dim);font-weight:600}
 
 <div class="card"><div class="stats" id="overview"></div></div>
 
+<h2>Wallets chauds (adresses de la maison)</h2>
+<div class="card"><table><thead><tr><th>Actif</th><th>Réseau</th><th>Adresse</th><th>Solde on-chain</th><th>Retraits auto</th></tr></thead><tbody id="hot"></tbody></table>
+<p style="color:var(--dim);font-size:.85rem">Garde sur ces wallets seulement de quoi payer les retraits automatiques ; transfère le surplus vers un wallet froid.</p></div>
+
 <h2>Retraits</h2>
 <div class="card">
   <div class="row" style="margin-bottom:8px">
-    <select id="wd-status"><option value="pending">En attente</option><option value="sent">Envoyés</option><option value="rejected">Refusés</option><option value="all">Tous</option></select>
+    <select id="wd-status"><option value="pending">En attente</option><option value="review">À vérifier</option><option value="processing">En cours</option><option value="sent">Envoyés</option><option value="rejected">Refusés</option><option value="all">Tous</option></select>
   </div>
-  <table><thead><tr><th>#</th><th>Joueur</th><th>Montant</th><th>Réseau</th><th>Adresse</th><th>Statut</th><th>Date</th><th>Action</th></tr></thead><tbody id="wd"></tbody></table>
-  <p style="color:var(--dim);font-size:.85rem">Envoie les fonds depuis ton portefeuille ou le tableau de bord NOWPayments, puis colle l'identifiant de transaction (txid) et clique « Envoyé ». « Refuser » rembourse le joueur.</p>
+  <table><thead><tr><th>#</th><th>Joueur</th><th>Montant</th><th>Crypto</th><th>Adresse</th><th>Statut</th><th>Date</th><th>Action</th></tr></thead><tbody id="wd"></tbody></table>
+  <p style="color:var(--dim);font-size:.85rem">« Envoyer » paie depuis le wallet chaud. « À vérifier » = l'envoi automatique a échoué ou a expiré : regarde l'adresse du wallet chaud sur l'explorateur avant d'agir ; si le paiement est parti, colle le txid et clique « Marquer envoyé », sinon « Refuser » rembourse le joueur.</p>
 </div>
 
 <h2>Dépôts</h2>
-<div class="card"><table><thead><tr><th>#</th><th>Joueur</th><th>Montant</th><th>Statut</th><th>Réf. prestataire</th><th>Date</th></tr></thead><tbody id="dep"></tbody></table></div>
+<div class="card"><table><thead><tr><th>#</th><th>Joueur</th><th>Crédité</th><th>Reçu</th><th>Statut</th><th>Transaction</th><th>Date</th><th></th></tr></thead><tbody id="dep"></tbody></table></div>
 
 <h2>Ajustement manuel</h2>
 <div class="card row">
@@ -61,6 +66,8 @@ th{color:var(--dim);font-weight:600}
   <input id="ban-user" placeholder="Pseudo">
   <button class="danger" id="ban-btn">Bannir</button>
   <button id="unban-btn">Débannir</button>
+  <select id="unlink-family"><option value="solana">Solana</option><option value="evm">Ethereum · BNB</option><option value="tron">TRON</option></select>
+  <button class="danger" id="unlink-btn">Délier le wallet</button>
 </div>
 
 <script>
@@ -90,20 +97,31 @@ async function load() {
     const o = await api('/overview');
     currency = o.currency;
     $('overview').innerHTML = [
-      ['Mode', o.mode], ['Caisse maison', money(o.house, o.currency)], ['Commissions', money(o.rake, o.currency)],
-      ['Dépôts', money(o.deposits, o.currency)], ['Retraits', money(o.withdrawals, o.currency)], ['Retraits en attente', o.pendingWithdrawals],
+      ['Mode', o.mode + (o.network ? ' · ' + o.network : '')], ['Caisse maison', money(o.house, o.currency)], ['Commissions arène', money(o.rake, o.currency)], ['Frais de retrait', money(o.withdrawalFees, o.currency)],
+      ['Dépôts', money(o.deposits, o.currency)], ['Retraits', money(o.withdrawals, o.currency)], ['Retraits en attente', o.pendingWithdrawals], ['À vérifier', o.reviewWithdrawals],
       ['Joueurs en ligne', o.players], ['Salles', o.rooms],
     ].map(([k, v]) => `<div class="stat">${esc(k)}<b>${esc(v)}</b></div>`).join('');
     await loadWithdrawals();
     const deps = await api('/deposits');
-    $('dep').innerHTML = deps.map(d => `<tr><td>${d.id}</td><td>${esc(d.username)}</td><td>${money(d.amount, d.currency)}</td><td>${esc(d.status)}</td><td class="mono">${esc(d.provider_ref)}</td><td>${date(d.created_at)}</td></tr>`).join('');
+    $('dep').innerHTML = deps.map(d => `<tr><td>${d.id}</td><td>${esc(d.username)}</td><td>${money(d.amount, d.currency)}</td><td>${esc(d.tokens || d.asset)}</td><td>${esc(d.status)}${d.note ? '<br><small>' + esc(d.note) + '</small>' : ''}</td>
+      <td class="mono">${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc((d.tx_hash || '').slice(0, 14))}…</a>` : ''}</td><td>${date(d.created_at)}</td>
+      <td>${['expired', 'failed'].includes(d.status) ? `<button data-recheck="${d.id}">Revérifier</button>` : ''}</td></tr>`).join('');
+    document.querySelectorAll('[data-recheck]').forEach(b => b.onclick = async () => { const r = await api(`/deposits/${b.dataset.recheck}/recheck`, {}); msg(r.ok ? 'Revérification lancée' : r.error); setTimeout(load, 3000); });
+    api('/hot-wallets').then(list => {
+      $('hot').innerHTML = list.map(h => `<tr><td>${esc(h.asset)}</td><td>${esc(h.chain)}</td><td class="mono">${esc(h.address)}</td><td>${esc(h.balance)}</td><td>${h.autoSend ? 'oui' : 'non (adresse seule)'}</td></tr>`).join('') || '<tr><td colspan="5">Mode démo</td></tr>';
+    }).catch(() => {});
   } catch (e) { msg('Erreur : ' + e.message); }
 }
 async function loadWithdrawals() {
   const list = await api('/withdrawals?status=' + $('wd-status').value);
-  $('wd').innerHTML = list.map(w => `<tr><td>${w.id}</td><td>${esc(w.username)}</td><td>${money(w.amount, w.currency)}</td><td>${esc(w.network)}</td>
-    <td class="mono">${esc(w.address)}</td><td>${esc(w.status)}${w.txid ? '<br><span class="mono">' + esc(w.txid) + '</span>' : ''}${w.admin_note ? '<br>' + esc(w.admin_note) : ''}</td><td>${date(w.created_at)}</td>
-    <td>${w.status === 'pending' ? `<div class="row"><input placeholder="txid" data-txid="${w.id}" style="width:130px"><button data-sent="${w.id}">Envoyé</button><button class="danger" data-reject="${w.id}">Refuser</button></div>` : ''}</td></tr>`).join('');
+  $('wd').innerHTML = list.map(w => `<tr><td>${w.id}${w.auto ? ' <small>auto</small>' : ''}</td><td>${esc(w.username)}</td><td>${money(w.amount, w.currency)}<br><small>frais ${money(w.fee, w.currency)}</small></td><td>${esc(w.tokens || w.network)}</td>
+    <td class="mono">${esc(w.address)}</td><td>${esc(w.status)}${w.txid ? '<br>' + (w.url ? `<a class="mono" href="${esc(w.url)}" target="_blank" rel="noopener">${esc(w.txid.slice(0, 16))}…</a>` : '<span class="mono">' + esc(w.txid) + '</span>') : ''}${w.admin_note ? '<br><small>' + esc(w.admin_note) + '</small>' : ''}</td><td>${date(w.created_at)}</td>
+    <td>${['pending', 'review', 'processing'].includes(w.status) ? `<div class="row">${w.status === 'pending' ? `<button data-send="${w.id}">Envoyer</button>` : ''}<input placeholder="txid" data-txid="${w.id}" style="width:120px"><button data-sent="${w.id}">Marquer envoyé</button>${w.status !== 'processing' ? `<button class="danger" data-reject="${w.id}">Refuser</button>` : ''}</div>` : ''}</td></tr>`).join('');
+  document.querySelectorAll('[data-send]').forEach(b => b.onclick = async () => {
+    if (!confirm('Envoyer ce retrait depuis le wallet chaud ?')) return;
+    b.disabled = true;
+    const r = await api(`/withdrawals/${b.dataset.send}/send`, {}); msg(r.ok ? 'Envoyé : ' + r.txid : 'Erreur : ' + r.error); load();
+  });
   document.querySelectorAll('[data-sent]').forEach(b => b.onclick = async () => {
     const txid = document.querySelector(`[data-txid="${b.dataset.sent}"]`).value.trim();
     if (!txid) return msg('Indique le txid');
@@ -127,6 +145,11 @@ async function ban(banned) {
   if (!username || (banned && !confirm(`Bannir ${username} ?`))) return;
   try { const r = await api('/ban', { username, banned }); msg(r.ok ? (banned ? 'Banni' : 'Débanni') : r.error); } catch (e) { msg(e.message); }
 }
+$('unlink-btn').onclick = async () => {
+  const username = $('ban-user').value.trim();
+  if (!username || !confirm(`Délier le wallet ${$('unlink-family').value} de ${username} ? Il pourra en connecter un autre.`)) return;
+  try { const r = await api('/unlink-wallet', { username, family: $('unlink-family').value }); msg(r.ok ? 'Wallet délié' : r.error); } catch (e) { msg(e.message); }
+};
 $('ban-btn').onclick = () => ban(true);
 $('unban-btn').onclick = () => ban(false);
 if ($('token').value) load();

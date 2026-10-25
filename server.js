@@ -8,11 +8,23 @@ const { createStats } = require('./src/stats');
 const { createLedger } = require('./src/economy/ledger');
 const { createArena } = require('./src/economy/arena');
 const { createPayments } = require('./src/payments');
+const { createSiw } = require('./src/crypto/siw');
 const { createManager } = require('./src/game/manager');
 const { attachSockets } = require('./src/sockets');
 const { createApp } = require('./src/http');
 const pkg = require('./package.json');
 
+// Real-money mode needs at least one configured chain; otherwise stay in demo.
+let crypto = null;
+if (config.PAYMENTS_MODE === 'crypto') {
+  crypto = require('./src/crypto').createCrypto({ warnings: config.warnings });
+  if (!crypto.enabled) {
+    config.warnings.push('PAYMENTS_MODE=crypto but no chain is configured (house address or hot wallet key). Falling back to demo.');
+    config.PAYMENTS_MODE = 'demo';
+    config.CURRENCY = 'DEMO';
+    crypto = null;
+  }
+}
 for (const w of config.warnings) console.warn('⚠️ ', w);
 
 const db = initDb();
@@ -22,14 +34,19 @@ const ledger = createLedger(db);
 const manager = createManager({ config });
 const arena = createArena({ db, ledger, config, stats });
 let sockets = null;
-const payments = createPayments({ db, ledger, config, getUser: accounts.getUser, onWalletChange: uid => sockets && sockets.walletChanged(uid) });
+const payments = createPayments({
+  db, ledger, config, crypto, getUser: accounts.getUser, getLinks: uid => accounts.links(uid),
+  onWalletChange: (uid, event) => sockets && sockets.walletChanged(uid, event),
+});
+const siw = createSiw({ domain: new URL(config.PUBLIC_URL).host });
 
 // Settings the browser needs (never secrets).
 function publicConfig() {
   return {
     version: pkg.version,
     accounts: accounts.enabled,
-    payments: { mode: config.PAYMENTS_MODE, currency: config.CURRENCY },
+    payments: { mode: config.PAYMENTS_MODE, currency: config.CURRENCY, network: crypto ? crypto.network : null },
+    wallets: accounts.enabled,
     arena: arena.enabled,
     stripe: !!(config.STRIPE_SECRET_KEY && config.STRIPE_PRICE_ID),
     adsense: { client: config.ADSENSE_CLIENT, slotLobby: config.ADSENSE_SLOT_LOBBY, slotDeath: config.ADSENSE_SLOT_DEATH },
@@ -41,7 +58,8 @@ const app = createApp({ config, accounts, payments, manager, publicConfig });
 const server = http.createServer(app);
 const io = new Server(server, { maxHttpBufferSize: 64 * 1024, pingInterval: 20000, pingTimeout: 20000 });
 
-sockets = attachSockets({ io, config, manager, accounts, stats, arena, payments, publicConfig });
+sockets = attachSockets({ io, config, manager, accounts, stats, arena, payments, siw, publicConfig });
+payments.start();
 
 const recovered = arena.recover();
 if (recovered.refunded || recovered.settled) console.log(`💰 Arena recovery: ${recovered.refunded} queued entries refunded, ${recovered.settled} matches settled`);
@@ -51,7 +69,8 @@ const sweepTimer = setInterval(() => manager.sweep(), 10000);
 const arenaTimer = setInterval(() => { try { arena.tick(); } catch (e) { console.error('Arena tick failed', e); } }, 1000);
 
 server.listen(config.PORT, () => {
-  console.log(`🐍 NeonSlither v${pkg.version} → http://localhost:${config.PORT} (payments: ${config.PAYMENTS_MODE})`);
+  const chains = crypto ? ` · ${crypto.network}: ${Object.keys(crypto.assets).join(', ')}` : '';
+  console.log(`🐍 NeonSlither v${pkg.version} → http://localhost:${config.PORT} (payments: ${config.PAYMENTS_MODE}${chains})`);
 });
 
 // Graceful shutdown: refund queued arena players and settle running matches before exiting.
@@ -61,6 +80,7 @@ function shutdown(signal) {
   shuttingDown = true;
   console.log(`${signal} received, shutting down…`);
   try { arena.shutdown(); } catch (e) { console.error('Arena shutdown failed', e); }
+  payments.stop();
   manager.stop();
   clearInterval(sweepTimer);
   clearInterval(arenaTimer);

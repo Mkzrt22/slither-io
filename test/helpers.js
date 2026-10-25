@@ -13,8 +13,9 @@ function testConfig(overrides = {}) {
     CURRENCY: 'DEMO', PAYMENTS_MODE: 'demo', HOUSE_FEE_BPS: 500,
     ARENA_TIERS: [{ id: 't1', fee: usd(1) }],
     ARENA_MIN_PLAYERS: 2, ARENA_MAX_PLAYERS: 4, ARENA_COUNTDOWN_SECONDS: 0, ARENA_MATCH_SECONDS: 300, ARENA_CASHOUT_SECONDS: 1,
-    DEMO_FAUCET_AMOUNT: usd(10), DEMO_FAUCET_HOURS: 6, MIN_DEPOSIT: usd(5), MAX_DEPOSIT: usd(500), MIN_WITHDRAWAL: usd(5),
-    WITHDRAW_NETWORKS: ['USDC-SOL'], PUBLIC_URL: 'http://localhost', NOWPAYMENTS: { apiKey: 'k', ipnSecret: 'ipn-secret', sandbox: true },
+    DEMO_FAUCET_AMOUNT: usd(10), DEMO_FAUCET_HOURS: 6, MIN_DEPOSIT: usd(1), MAX_DEPOSIT: usd(2000), MIN_WITHDRAWAL: usd(5),
+    PUBLIC_URL: 'http://localhost', PRICE_SPREAD_BPS: 100, WITHDRAW_FEES: { solana: usd(0.1), ethereum: usd(3) },
+    AUTO_WITHDRAW_MAX: usd(100), AUTO_WITHDRAW_DAILY: usd(150), DEPOSIT_TIMEOUT_MINUTES: 120, BLOCKED_COUNTRIES: ['XX'],
     ...overrides,
   };
 }

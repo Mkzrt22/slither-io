@@ -75,12 +75,6 @@ function createApp({ config, accounts, payments, manager, publicConfig }) {
     res.json({ valid, product: valid ? 'supporter_pack' : null });
   });
 
-  // ── Crypto payments ────────────────────────────────────────────────────────
-  app.post('/api/payments/nowpayments/ipn', (req, res) => {
-    const code = payments.handleNowpaymentsIpn(req.body, req.headers['x-nowpayments-sig']);
-    res.sendStatus(code);
-  });
-
   // ── Admin ──────────────────────────────────────────────────────────────────
   const admin = express.Router();
   admin.use((req, res, next) => {
@@ -90,9 +84,16 @@ function createApp({ config, accounts, payments, manager, publicConfig }) {
   });
   admin.get('/overview', (req, res) => res.json({ ...payments.admin.overview(), ...manager.stats() }));
   admin.get('/withdrawals', (req, res) => res.json(payments.admin.withdrawals(String(req.query.status || 'pending'))));
+  admin.post('/withdrawals/:id/send', async (req, res, next) => { try { res.json(await payments.admin.approve(Number(req.params.id))); } catch (e) { next(e); } });
   admin.post('/withdrawals/:id/sent', (req, res) => res.json(payments.admin.markSent(Number(req.params.id), req.body && req.body.txid)));
   admin.post('/withdrawals/:id/reject', (req, res) => res.json(payments.admin.reject(Number(req.params.id), req.body && req.body.note)));
   admin.get('/deposits', (req, res) => res.json(payments.admin.deposits()));
+  admin.post('/deposits/:id/recheck', (req, res) => res.json(payments.admin.recheckDeposit(Number(req.params.id))));
+  admin.get('/hot-wallets', async (req, res, next) => { try { res.json(await payments.admin.hotWallets()); } catch (e) { next(e); } });
+  admin.post('/unlink-wallet', (req, res) => {
+    const b = req.body || {};
+    res.json(accounts.enabled ? accounts.unlinkWallet(String(b.username || ''), String(b.family || '')) : { ok: false, error: 'accounts_disabled' });
+  });
   admin.post('/adjust', (req, res) => {
     const b = req.body || {};
     res.json(payments.admin.adjust(b.username, Math.round(Number(b.amount) * 1000000), b.note));
@@ -106,6 +107,11 @@ function createApp({ config, accounts, payments, manager, publicConfig }) {
 
   // ── Static files ───────────────────────────────────────────────────────────
   app.use('/shared', express.static(path.join(__dirname, '..', 'shared'), { maxAge: '10m' }));
+  // Solana web3 bundle for Phantom deposits, served locally instead of a third-party CDN.
+  app.get('/vendor/solana-web3.js', (req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(require.resolve('@solana/web3.js/lib/index.iife.min.js'));
+  });
   app.use(express.static(path.join(__dirname, '..', 'public'), {
     maxAge: '10m',
     setHeaders(res, file) { if (file.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); },

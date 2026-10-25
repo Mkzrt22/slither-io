@@ -90,10 +90,11 @@ function notify(msg, kind = 'warn', ms = 4200) {
   while (box.children.length > 3) box.firstChild.remove();
   setTimeout(() => el.remove(), ms);
 }
-function notifyCode(code) {
+function notifyCode(code, params) {
   const key = 'err.' + code;
-  const msg = t(key);
-  notify(msg === key ? t('err.generic') + ' (' + code + ')' : msg, code === 'withdrawal_requested' ? 'gold' : 'warn');
+  const msg = t(key, params);
+  const info = ['withdrawal_requested', 'withdrawal_auto', 'deposit_submitted'].includes(code);
+  notify(msg === key ? t('err.generic') + ' (' + code + ')' : msg, info ? 'gold' : 'warn', info ? 6500 : 4200);
 }
 
 // ── Modals ───────────────────────────────────────────────────────────────────

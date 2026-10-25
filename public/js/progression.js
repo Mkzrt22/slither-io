@@ -65,8 +65,9 @@ const Progress = {
     const u = this.user;
     $('acct-av').textContent = u ? u.username[0].toUpperCase() : '?';
     $('acct-name').textContent = u ? u.username : t('acct.guest');
+    const link = u && u.links && (u.links.solana || u.links.evm || u.links.tron);
     $('acct-tagline').textContent = u
-      ? t('acct.achCount', { n: (u.achievements || []).length, total: this.achievements.length || 20 })
+      ? (link ? '🔗 ' + shortAddr(link) + ' · ' : '') + t('acct.achCount', { n: (u.achievements || []).length, total: this.achievements.length || 20 })
       : t('acct.click');
     $('auth-logout-btn').style.display = u ? '' : 'none';
     const name = $('nameInput');
@@ -292,6 +293,8 @@ $('auth-submit').addEventListener('click', () => {
 });
 ['auth-user', 'auth-pass'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('auth-submit').click(); }));
 $('auth-guest-btn').addEventListener('click', () => { settings.guestChosen = true; saveSettings(); closeModal('auth-modal'); });
+$('rename-btn').addEventListener('click', () => socket.emit('account:rename', $('rename-input').value.trim()));
+$('rename-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('rename-btn').click(); });
 $('auth-logout-btn').addEventListener('click', () => {
   lsDel(AUTH_KEY);
   socket.emit('logout');
@@ -311,16 +314,19 @@ socket.on('authResult', r => {
     return;
   }
   lsSet(AUTH_KEY, r.token);
-  Progress.user = { userId: r.userId, username: r.username, stats: r.stats, achievements: r.achievements || [], supporter: r.supporter, compliance: r.compliance, excludedUntil: r.excludedUntil, elo: r.elo };
+  Progress.user = { userId: r.userId, username: r.username, stats: r.stats, achievements: r.achievements || [], supporter: r.supporter, compliance: r.compliance, excludedUntil: r.excludedUntil, elo: r.elo, links: r.links || {}, autoName: r.autoName };
   if (r.bp) Progress.setBpFromServer(r.bp);
   if (r.supporter) { Progress.supporter = true; refreshSupporterUI(); }
   // Link a browser-stored supporter purchase to the account.
   const supTok = lsGet(SUPPORTER_KEY);
   if (supTok && !r.supporter) socket.emit('supporter:link', supTok);
+  if (r.linked) notify(t('wallet.linked', { wallet: t('fam.' + r.linked) }), 'info');
+  if (r.renamed) closeModal('rename-modal');
   if ($('auth-modal').classList.contains('show')) {
     $('auth-ok').textContent = t('auth.welcome', { name: r.username });
     setTimeout(() => closeModal('auth-modal'), 700);
   }
+  if (r.walletCreated) setTimeout(() => { $('rename-err').textContent = ''; $('rename-input').value = ''; openModal('rename-modal'); }, 800);
   Progress.renderBadge(); Progress.renderStats(); Progress.renderAchievements();
   Arena.onAuth(r);
 });

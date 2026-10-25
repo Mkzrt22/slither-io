@@ -40,10 +40,12 @@ socket.on('hello', h => {
   }
 });
 
-socket.on('notice', ({ code }) => {
-  notifyCode(code);
+socket.on('notice', ({ code, units }) => {
+  notifyCode(code, { units });
   if (code === 'insufficient_funds' && Progress.user) { socket.emit('wallet:get'); Arena.renderWallet(); openModal('wallet-modal'); }
   if (code === 'login_required' && !Progress.user) { switchAuthTab('register'); openModal('auth-modal'); }
+  if (['username_invalid', 'username_taken'].includes(code) && $('rename-modal').classList.contains('show')) $('rename-err').textContent = t('err.' + code);
+  if (code === 'deposit_submitted') $('dep-status').textContent = t('wallet.waitingConfirm');
 });
 
 // ── Entering / leaving a room ────────────────────────────────────────────────
@@ -187,8 +189,9 @@ socket.on('died', d => {
     $('replay-overlay').classList.add('show');
     const start = performance.now();
     const step = now => {
-      const k = Math.min((now - start) / 2500, 1);
-      const pos = replay[Math.max(0, Math.floor((1 - k) * (replay.length - 1)))];
+      // rAF timestamps can be slightly earlier than `start`: clamp to stay inside the buffer.
+      const k = Math.max(0, Math.min((now - start) / 2500, 1));
+      const pos = replay[Math.min(replay.length - 1, Math.max(0, Math.floor((1 - k) * (replay.length - 1))))];
       Game.replayCam = { x: pos.x, y: pos.y };
       if (k < 1 && Game.inGame && !Game.alive) requestAnimationFrame(step); else showDeath();
     };

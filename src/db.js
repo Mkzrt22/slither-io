@@ -164,6 +164,24 @@ const MIGRATIONS = [
   },
 ];
 
+// 3: wallet sign-in and on-chain deposits / withdrawals
+MIGRATIONS.push(db => {
+  addColumn(db, 'users', 'auto_name', 'INTEGER DEFAULT 0');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wallet_links (
+      user_id INTEGER NOT NULL,
+      family TEXT NOT NULL,
+      address TEXT NOT NULL,
+      created_at INTEGER DEFAULT (strftime('%s','now')),
+      PRIMARY KEY (family, address),
+      UNIQUE (user_id, family)
+    );
+  `);
+  for (const [col, def] of [['chain', 'TEXT'], ['asset', 'TEXT'], ['tx_hash', 'TEXT'], ['from_address', 'TEXT'], ['token_units', 'TEXT'], ['price_micros', 'INTEGER'], ['note', 'TEXT']]) addColumn(db, 'deposits', col, def);
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_deposits_tx ON deposits(chain, tx_hash) WHERE tx_hash IS NOT NULL');
+  for (const [col, def] of [['asset', 'TEXT'], ['chain', 'TEXT'], ['fee', 'INTEGER DEFAULT 0'], ['token_units', 'TEXT'], ['price_micros', 'INTEGER'], ['auto', 'INTEGER DEFAULT 0']]) addColumn(db, 'withdrawals', col, def);
+});
+
 function migrate(db) {
   const current = db.pragma('user_version', { simple: true });
   for (let v = current; v < MIGRATIONS.length; v++) {
