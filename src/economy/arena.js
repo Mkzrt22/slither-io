@@ -266,6 +266,8 @@ function createArena({ db, ledger, config, stats }) {
       const lastSeq = Math.max(0, ...rows.map(r => r.died_seq));
       recipients = rows.filter(r => r.died_seq === lastSeq && (r.status === 'dead' || r.status === 'cashed_out')).sort((a, b) => a.user_id - b.user_id);
     }
+    // Never let pooled money vanish.
+    if (!recipients.length && match.orb_pool > 0) recipients = rows.slice().sort((a, b) => a.user_id - b.user_id);
     const shares = splitEvenly(match.orb_pool, recipients);
     const payouts = new Map(alive.map(r => [r.user_id, r.value]));
     recipients.forEach((r, i) => payouts.set(r.user_id, (payouts.get(r.user_id) || 0) + shares[i]));
