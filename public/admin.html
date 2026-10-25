@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>NeonSlither · Admin</title>
+<style>
+:root{--bg:#050714;--panel:#0a0e24;--text:#d6e6ff;--dim:#7d93b5;--acc:#00f5d4;--a2:#ff2d6b;--gold:#f0c040;--bdr:rgba(255,255,255,.1)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+h1{font-size:1.3rem;margin:0 0 12px}
+h2{font-size:1rem;margin:22px 0 8px;color:var(--acc)}
+.card{background:var(--panel);border:1px solid var(--bdr);border-radius:12px;padding:14px;margin-bottom:12px;overflow-x:auto}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select,button{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);background:#0f1430;color:var(--text)}
+button{cursor:pointer;border-color:var(--acc);color:var(--acc)}
+button.danger{border-color:var(--a2);color:var(--a2)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:.88rem}
+td,th{padding:6px 8px;border-bottom:1px solid var(--bdr);text-align:left;vertical-align:top}
+th{color:var(--dim);font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.stat{background:#0f1430;border-radius:10px;padding:10px}
+.stat b{display:block;font-size:1.15rem;color:var(--gold)}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:.8rem;word-break:break-all}
+#msg{min-height:1.4em;color:var(--gold)}
+</style>
+</head>
+<body>
+<h1>NeonSlither · Administration</h1>
+<div class="card row">
+  <input id="token" type="password" placeholder="ADMIN_TOKEN" style="flex:1;min-width:220px" autocomplete="off">
+  <button id="load">Charger</button>
+  <span id="msg"></span>
+</div>
+
+<div class="card"><div class="stats" id="overview"></div></div>
+
+<h2>Retraits</h2>
+<div class="card">
+  <div class="row" style="margin-bottom:8px">
+    <select id="wd-status"><option value="pending">En attente</option><option value="sent">Envoyés</option><option value="rejected">Refusés</option><option value="all">Tous</option></select>
+  </div>
+  <table><thead><tr><th>#</th><th>Joueur</th><th>Montant</th><th>Réseau</th><th>Adresse</th><th>Statut</th><th>Date</th><th>Action</th></tr></thead><tbody id="wd"></tbody></table>
+  <p style="color:var(--dim);font-size:.85rem">Envoie les fonds depuis ton portefeuille ou le tableau de bord NOWPayments, puis colle l'identifiant de transaction (txid) et clique « Envoyé ». « Refuser » rembourse le joueur.</p>
+</div>
+
+<h2>Dépôts</h2>
+<div class="card"><table><thead><tr><th>#</th><th>Joueur</th><th>Montant</th><th>Statut</th><th>Réf. prestataire</th><th>Date</th></tr></thead><tbody id="dep"></tbody></table></div>
+
+<h2>Ajustement manuel</h2>
+<div class="card row">
+  <input id="adj-user" placeholder="Pseudo">
+  <input id="adj-amount" type="number" step="0.01" placeholder="Montant (+/-)">
+  <input id="adj-note" placeholder="Raison (ex. paiement partiel #12)" style="flex:1;min-width:200px">
+  <button id="adj-btn">Appliquer</button>
+</div>
+
+<h2>Modération</h2>
+<div class="card row">
+  <input id="ban-user" placeholder="Pseudo">
+  <button class="danger" id="ban-btn">Bannir</button>
+  <button id="unban-btn">Débannir</button>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const money = (u, c) => ((u || 0) / 1e6).toFixed(2) + ' ' + (c || '');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const date = s => s ? new Date(s * 1000).toLocaleString() : '';
+let currency = '';
+try { $('token').value = sessionStorage.getItem('ns_admin') || ''; } catch (e) { /* ignore */ }
+
+async function api(path, body) {
+  const res = await fetch('/api/admin' + path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'x-admin-token': $('token').value, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.status);
+  return data;
+}
+function msg(t) { $('msg').textContent = t; setTimeout(() => { if ($('msg').textContent === t) $('msg').textContent = ''; }, 4000); }
+
+async function load() {
+  try { sessionStorage.setItem('ns_admin', $('token').value); } catch (e) { /* ignore */ }
+  try {
+    const o = await api('/overview');
+    currency = o.currency;
+    $('overview').innerHTML = [
+      ['Mode', o.mode], ['Caisse maison', money(o.house, o.currency)], ['Commissions', money(o.rake, o.currency)],
+      ['Dépôts', money(o.deposits, o.currency)], ['Retraits', money(o.withdrawals, o.currency)], ['Retraits en attente', o.pendingWithdrawals],
+      ['Joueurs en ligne', o.players], ['Salles', o.rooms],
+    ].map(([k, v]) => `<div class="stat">${esc(k)}<b>${esc(v)}</b></div>`).join('');
+    await loadWithdrawals();
+    const deps = await api('/deposits');
+    $('dep').innerHTML = deps.map(d => `<tr><td>${d.id}</td><td>${esc(d.username)}</td><td>${money(d.amount, d.currency)}</td><td>${esc(d.status)}</td><td class="mono">${esc(d.provider_ref)}</td><td>${date(d.created_at)}</td></tr>`).join('');
+  } catch (e) { msg('Erreur : ' + e.message); }
+}
+async function loadWithdrawals() {
+  const list = await api('/withdrawals?status=' + $('wd-status').value);
+  $('wd').innerHTML = list.map(w => `<tr><td>${w.id}</td><td>${esc(w.username)}</td><td>${money(w.amount, w.currency)}</td><td>${esc(w.network)}</td>
+    <td class="mono">${esc(w.address)}</td><td>${esc(w.status)}${w.txid ? '<br><span class="mono">' + esc(w.txid) + '</span>' : ''}${w.admin_note ? '<br>' + esc(w.admin_note) : ''}</td><td>${date(w.created_at)}</td>
+    <td>${w.status === 'pending' ? `<div class="row"><input placeholder="txid" data-txid="${w.id}" style="width:130px"><button data-sent="${w.id}">Envoyé</button><button class="danger" data-reject="${w.id}">Refuser</button></div>` : ''}</td></tr>`).join('');
+  document.querySelectorAll('[data-sent]').forEach(b => b.onclick = async () => {
+    const txid = document.querySelector(`[data-txid="${b.dataset.sent}"]`).value.trim();
+    if (!txid) return msg('Indique le txid');
+    const r = await api(`/withdrawals/${b.dataset.sent}/sent`, { txid }); msg(r.ok ? 'Marqué envoyé' : r.error); load();
+  });
+  document.querySelectorAll('[data-reject]').forEach(b => b.onclick = async () => {
+    const note = prompt('Raison du refus ?') || '';
+    const r = await api(`/withdrawals/${b.dataset.reject}/reject`, { note }); msg(r.ok ? 'Refusé et remboursé' : r.error); load();
+  });
+}
+$('load').onclick = load;
+$('wd-status').onchange = () => loadWithdrawals().catch(e => msg(e.message));
+$('adj-btn').onclick = async () => {
+  const amount = Number($('adj-amount').value);
+  if (!amount || !confirm(`Ajuster le solde de ${$('adj-user').value} de ${amount} ${currency} ?`)) return;
+  try { const r = await api('/adjust', { username: $('adj-user').value, amount, note: $('adj-note').value }); msg(r.ok ? 'Nouveau solde : ' + r.balance : r.error); load(); }
+  catch (e) { msg(e.message); }
+};
+async function ban(banned) {
+  const username = $('ban-user').value.trim();
+  if (!username || (banned && !confirm(`Bannir ${username} ?`))) return;
+  try { const r = await api('/ban', { username, banned }); msg(r.ok ? (banned ? 'Banni' : 'Débanni') : r.error); } catch (e) { msg(e.message); }
+}
+$('ban-btn').onclick = () => ban(true);
+$('unban-btn').onclick = () => ban(false);
+if ($('token').value) load();
+</script>
+</body>
+</html>

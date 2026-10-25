@@ -93,6 +93,8 @@ function createArena({ db, ledger, config, stats }) {
   function notifyQueue(tierId) {
     const f = forming.get(tierId);
     if (!f) return;
+    if (!bridge) return;
+    if (!bridge) return;
     for (const e of f.entries.values()) if (e.socketId) bridge.toSocket(e.socketId, 'arena:status', statusFor(e.userId));
   }
 
@@ -208,7 +210,7 @@ function createArena({ db, ledger, config, stats }) {
           parts.forEach((v, i) => {
             if (v <= 0) return;
             const s = victim.segs[Math.min(victim.segs.length - 1, i * step)] || victim.lastPos;
-            room.orbs.push({ id: 'o' + m.matchId + '_' + room.tickCount + '_' + i, x: s.x + (Math.random() - 0.5) * 30, y: s.y + (Math.random() - 0.5) * 30, v });
+            room.orbs.push({ id: 'o' + m.matchId + '_' + room.tickCount + '_' + i, x: U.wrap(s.x + (Math.random() - 0.5) * 90, room.W), y: U.wrap(s.y + (Math.random() - 0.5) * 90, room.H), v });
           });
           db.transaction(() => {
             q.setPlayer.run('dead', 0, victim.killCount, m.seq, m.matchId, victim.userId);
@@ -243,7 +245,7 @@ function createArena({ db, ledger, config, stats }) {
         stats.addArenaResult(p.userId, payout - m.tier.fee);
         userState.delete(p.userId);
         room.emitTo(p, 'arena:result', { matchId: m.matchId, payout, fee: m.tier.fee, profit: payout - m.tier.fee, reason: 'cashout', currency: m.currency });
-        bridge.walletChanged(p.userId);
+        if (bridge) bridge.walletChanged(p.userId);
       },
       onEnd(room, reason) { return settle(m, reason); },
     };
@@ -290,7 +292,7 @@ function createArena({ db, ledger, config, stats }) {
           reason, ranking, currency: match.currency, final: true,
         });
       }
-      bridge.walletChanged(r.user_id);
+      if (bridge) bridge.walletChanged(r.user_id);
     }
     running.delete(m.matchId);
     return { reason, ranking };

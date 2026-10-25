@@ -97,6 +97,11 @@ function createApp({ config, accounts, payments, manager, publicConfig }) {
     const b = req.body || {};
     res.json(payments.admin.adjust(b.username, Math.round(Number(b.amount) * 1000000), b.note));
   });
+  admin.post('/ban', (req, res) => {
+    const b = req.body || {};
+    if (!accounts.enabled) return res.json({ ok: false, error: 'accounts_disabled' });
+    res.json(accounts.setBanned(String(b.username || ''), b.banned !== false));
+  });
   app.use('/api/admin', admin);
 
   // ── Static files ───────────────────────────────────────────────────────────

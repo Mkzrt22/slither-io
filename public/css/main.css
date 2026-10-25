@@ -497,6 +497,10 @@ select.inp{appearance:none;cursor:pointer}
 .float-gain{position:absolute;font-family:'Orbitron',monospace;font-weight:900;color:var(--gold);font-size:1rem;pointer-events:none;text-shadow:0 0 12px rgba(240,192,64,.7);animation:floatup 1.4s ease-out forwards;z-index:9;left:50%;top:45%;transform:translateX(-50%)}
 @keyframes floatup{0%{opacity:0;transform:translate(-50%,10px) scale(.8)}15%{opacity:1;transform:translate(-50%,0) scale(1.1)}100%{opacity:0;transform:translate(-50%,-70px) scale(1)}}
 
+/* ─ FIRST GAME HINT ─ */
+#hint{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);background:rgba(5,7,20,.82);border:1px solid var(--bdr);border-radius:12px;padding:12px 18px;font-size:.95rem;text-align:center;line-height:1.7;pointer-events:none;opacity:0;transition:opacity .5s;max-width:min(90vw,520px)}
+#hint.show{opacity:1}
+
 /* ─ PHASE / ROUND OVERLAY ─ */
 #phase-banner{position:absolute;top:110px;left:50%;transform:translateX(-50%);display:none;background:rgba(0,0,0,.7);border:1px solid var(--bdr);border-radius:8px;padding:8px 18px;font-family:'Orbitron',monospace;font-size:.62rem;letter-spacing:2px;color:var(--text);white-space:nowrap;pointer-events:none;text-align:center}
 #phase-banner.show{display:block}

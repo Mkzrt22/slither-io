@@ -1,63 +1,78 @@
-# 🐍 Slither.io Clone — Multiplayer
+# 🐍 NeonSlither
 
-A real-time multiplayer snake game built with Node.js, Socket.io and Canvas.
+Jeu de serpent multijoueur néon en temps réel (Node.js, Socket.io, Canvas), avec une **arène à mise** où tout le monde part à égalité.
 
-## Quick Start
+## Démarrage rapide
 
-### 1. Install dependencies
 ```bash
 npm install
+npm start          # http://localhost:3000
+npm run dev        # rechargement automatique (nodemon)
+npm test           # tests (node:test)
 ```
 
-### 2. Start the server
-```bash
-npm start
-```
+Pour tester le multijoueur, ouvre plusieurs onglets ou partage `http://TON_IP:3000` sur le réseau local.
 
-### 3. Open in browser
-Go to → **http://localhost:3000**
+## Modes de jeu
 
-To test multiplayer: open the same URL in multiple browser tabs or share your local IP (`http://YOUR_IP:3000`) with others on the same network.
-
----
-
-## How to Play
-
-| Control | Action |
+| Mode | Principe |
 |---|---|
-| **Move mouse** | Steer your snake |
-| **Hold left click** | Boost (uses your tail) |
+| **Classique** | Partie libre sans fin avec des bots, réapparition à volonté. Bouton **JOUER** = salle publique de la carte choisie. |
+| **Score** | Premier à 200 : la manche se termine puis recommence. |
+| **Équipes** | Rouges contre bleus, première équipe à 600. |
+| **Royale** | Départ commun, pas de réapparition, la zone rétrécit, dernier serpent en vie. |
+| **Classé (Elo)** | Royale entre vrais joueurs connectés ; l'Elo est enregistré sur le compte. |
+| **Arène à mise** | Entrée payante par palier, départ simultané à taille égale, la valeur des serpents éliminés revient au tueur, encaissement à tout moment. |
 
-- **Eat glowing pellets** to grow and increase your score
-- **Kill other snakes** by making them crash into your body
-- **Avoid** running into other snakes' bodies (you'll die!)
-- Dead snakes burst into food — be there to collect it
+### L'arène à mise
 
----
+1. Le joueur choisit un palier (par défaut 0,25 / 1 / 5 / 20) et paie l'entrée depuis son solde.
+2. Dès qu'il y a assez de joueurs (2 à 10), un compte à rebours démarre ; tout le monde apparaît **au même moment, avec la même longueur, à égale distance du centre**. Pas de bots, pas de bonus aléatoires, pas de capacités de niveau.
+3. La maison prélève `HOUSE_FEE_BPS` (5 % par défaut) ; le reste est la **valeur** du joueur.
+4. Éliminer un serpent transfère **toute sa valeur** au tueur. Un serpent qui meurt seul (zone, mur, lui-même) lâche sa valeur en pièces d'or que tout le monde peut manger.
+5. **Maintenir C (3 s)** encaisse la valeur et quitte la partie.
+6. La partie s'arrête quand il reste un serpent ou au bout du temps imparti ; les survivants sont payés.
 
-## Project Structure
+Chaque mouvement d'argent est écrit dans un registre SQLite (`ledger`) au moment où il se produit. En cas d'arrêt propre (SIGTERM) ou de crash, les parties sont soldées au redémarrage et les files d'attente remboursées. Les tests vérifient qu'aucun centime n'est créé ni perdu.
+
+Par défaut l'arène utilise des **crédits démo** (aucune valeur). Le passage à l'argent réel est décrit dans [DEPLOY.md](DEPLOY.md) et demande d'abord de régler le cadre légal.
+
+## Commandes
+
+| Action | Souris / clavier | Mobile |
+|---|---|---|
+| Diriger | Souris, ou ← → / Q D | Joystick |
+| Accélérer | Clic, Espace, ↑ | Bouton BOOST |
+| Emotes | 1 à 9 | Boutons à droite |
+| Chat | Entrée | — |
+| Menu | Échap / P | ⏸ |
+| Encaisser (arène) | Maintenir C | Maintenir ENCAISSER |
+
+## Structure
 
 ```
-slither-game/
-├── server.js         ← Game server (Node.js + Socket.io)
-├── package.json
-└── public/
-    └── index.html    ← Game client (HTML5 Canvas)
+server.js              point d'entrée (assemble les modules, arrêt propre)
+shared/constants.js    constantes partagées serveur + navigateur
+src/
+  config.js            variables d'environnement
+  db.js                SQLite + migrations
+  auth.js              comptes, sessions signées
+  stats.js             stats, succès, classements, Battle Pass, Elo
+  sockets.js           événements Socket.io (validation, limites de débit)
+  http.js              routes HTTP (Stripe, NOWPayments, admin, santé)
+  payments.js          dépôts/retraits (démo, NOWPayments)
+  economy/ledger.js    registre des soldes
+  economy/arena.js     files, parties à mise, règlement, reprise après crash
+  game/room.js         simulation d'une salle (25 ticks/s), manches, envoi réseau par zone visible
+  game/bots.js         IA des bots
+  game/manager.js      salles publiques, boucle de jeu
+public/
+  index.html, css/, js/ client (rendu interpolé, HUD, lobby, arène, FR/EN)
+  admin.html           administration (retraits, ajustements)
+  legal.html           modèle de mentions légales / CGU / confidentialité / jeu responsable
+test/                  tests unitaires
 ```
 
-## Features
+## Réseau
 
-- ⚡ 25 TPS server-side game loop
-- 🌍 4000×4000 world with wrapping
-- 🚀 Boost mechanic (shrinks your tail)
-- 🍎 500 food pellets + burst food on death
-- 🏆 Live leaderboard
-- 🗺️ Minimap
-- 💥 Kill detection & death screen
-- 🎨 Colorful neon aesthetic
-
-## Dev Mode (auto-restart)
-```bash
-npm run dev
-```
-Requires `nodemon` (included in devDependencies).
+Chaque joueur ne reçoit que ce qui est proche de lui (environ 1,5 Ko par paquet au lieu de 50 Ko), et le client interpole entre deux paquets pour un mouvement fluide à 60 i/s. La caméra dézoome quand le serpent grandit.

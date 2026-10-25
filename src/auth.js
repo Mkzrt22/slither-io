@@ -64,6 +64,10 @@ function createAccounts(db) {
     // Self-exclusion can only be extended, never shortened.
     setExcludedUntil: (id, untilSec) => db.prepare('UPDATE users SET excluded_until=MAX(COALESCE(excluded_until,0), ?) WHERE id=?').run(untilSec, id),
     setSupporter: id => db.prepare('UPDATE users SET supporter=1 WHERE id=?').run(id),
+    setBanned(username, banned) {
+      const r = db.prepare('UPDATE users SET banned=? WHERE username=?').run(banned ? 1 : 0, username);
+      return r.changes ? { ok: true } : { ok: false, error: 'user_not_found' };
+    },
     async register(username, password) {
       if (!enabled) return { ok: false, error: 'auth_unavailable' };
       const u = String(username || '').trim();

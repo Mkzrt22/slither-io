@@ -264,12 +264,12 @@ class Room {
     return true;
   }
 
-  addBot() {
+  addBot(pos) {
     const used = new Set([...this.bots.values()].map(b => b.name));
     const name = (BOT_NAMES.find(n => !used.has(n + '_AI')) || U.pick(BOT_NAMES)) + '_AI';
     const b = this.baseSnake('bot', { name });
     this.bots.set(b.id, b);
-    this.spawn(b);
+    this.spawn(b, pos);
     return b;
   }
 
@@ -657,7 +657,8 @@ class Room {
         x: Math.round(head.x), y: Math.round(head.y), a: amount || 0,
       });
     }
-    if (this.isRoundMode() && p.kind === 'human') this.deathOrder.push(p.id);
+    // Snapshot so players who quit mid-round still get ranked (no rage-quit escape).
+    if (this.isRoundMode() && p.kind === 'human') this.deathOrder.push({ id: p.id, userId: p.userId, socketId: p.socketId });
     if (p.kind === 'bot') { p.respawnTick = 0; return; }
 
     const life = {
@@ -735,15 +736,10 @@ class Room {
     const n = this.rules.bots === 'royale' ? Math.max(humans.length, ROYALE_PARTICIPANTS) : humans.length;
     const spots = this.circleSpawnPoints(n);
     humans.forEach((p, i) => this.spawn(p, spots[i]));
-    for (let i = humans.length; i < n; i++) this.spawn(this.addBotRaw(), spots[i]);
+    for (let i = humans.length; i < n; i++) this.addBot(spots[i]);
     this.setPhase('countdown', seconds * SEC);
     this.emitAll('roundStart', { round: this.round, mode: this.mode, countdown: seconds });
   }
-  addBotRaw() {
-    const b = this.addBot();
-    return b;
-  }
-
   // Arena start: called by the arena controller once every paid player has joined.
   startArena(seconds = 3) {
     this.round = 1;
@@ -807,8 +803,9 @@ class Room {
       if (alive.length <= 1 || aliveHumans.length === 0 || timeout) {
         const winner = alive.sort((a, b) => b.score - a.score)[0] || null;
         if (this.rules.elo && this.svc.onRankedEnd) {
-          const order = [...aliveHumans.sort((a, b) => b.score - a.score).map(p => p.id), ...this.deathOrder.slice().reverse()];
-          const placements = order.map(id => this.players.get(id)).filter(p => p && p.userId);
+          const order = [...aliveHumans.sort((a, b) => b.score - a.score), ...this.deathOrder.slice().reverse()];
+          const seen = new Set();
+          const placements = order.filter(p => p.userId && !seen.has(p.userId) && seen.add(p.userId)).map(p => ({ userId: p.userId, socketId: p.socketId }));
           if (placements.length >= 2) this.svc.onRankedEnd(this, placements);
         }
         this.endRound(winner ? { name: winner.name, score: winner.score, id: winner.id, bot: winner.kind === 'bot' } : null);

@@ -1,22 +1,35 @@
 services:
   - type: web
-    name: slither-io
+    name: neonslither
     env: node
-    buildCommand: npm install
+    plan: starter
+    buildCommand: npm ci
     startCommand: npm start
-    healthCheckPath: /
+    healthCheckPath: /health
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
-      - key: PORT
-        value: 3000
       - key: NODE_ENV
         value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: TOKEN_SECRET
+        generateValue: true
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: PAYMENTS_MODE
+        value: demo
+      - key: PUBLIC_URL
+        sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
       - key: STRIPE_PRICE_ID
         sync: false
-      - key: TOKEN_SECRET
-        generateValue: true
-      - key: PUBLIC_URL
+      - key: ADSENSE_SLOT_LOBBY
+        sync: false
+      - key: ADSENSE_SLOT_DEATH
         sync: false

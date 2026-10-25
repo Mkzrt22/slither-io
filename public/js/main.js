@@ -40,7 +40,11 @@ socket.on('hello', h => {
   }
 });
 
-socket.on('notice', ({ code }) => notifyCode(code));
+socket.on('notice', ({ code }) => {
+  notifyCode(code);
+  if (code === 'insufficient_funds' && Progress.user) { socket.emit('wallet:get'); Arena.renderWallet(); openModal('wallet-modal'); }
+  if (code === 'login_required' && !Progress.user) { switchAuthTab('register'); openModal('auth-modal'); }
+});
 
 // ── Entering / leaving a room ────────────────────────────────────────────────
 socket.on('joined', info => {
@@ -87,7 +91,21 @@ socket.on('joined', info => {
   buildEmoteBar();
   sendView();
   if (info.reconnected) notify(t('net.reconnectedArena'), 'info');
+  showHint(info.mode);
 });
+
+// Short controls reminder for the first games.
+function showHint(mode) {
+  const seen = settings.hints || 0;
+  const key = mode === 'arena' ? 'hint.arena' : seen < 3 ? (isTouch ? 'hint.touch' : 'hint.mouse') : null;
+  if (!key) return;
+  settings.hints = seen + 1; saveSettings();
+  const el = $('hint');
+  el.innerHTML = t(key);
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 7000);
+}
 
 function buildEmoteBar() {
   const el = $('emotes');
