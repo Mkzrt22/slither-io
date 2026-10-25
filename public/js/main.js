@@ -44,6 +44,7 @@ socket.on('notice', ({ code, units }) => {
   notifyCode(code, { units });
   if (code === 'insufficient_funds' && Progress.user) { socket.emit('wallet:get'); Arena.renderWallet(); openModal('wallet-modal'); }
   if (code === 'login_required' && !Progress.user) { switchAuthTab('register'); openModal('auth-modal'); }
+  if (code === 'compliance_required' && Progress.user) { $('comp-age').checked = false; $('comp-terms').checked = false; $('comp-btn').disabled = true; openModal('compliance-modal'); }
   if (['username_invalid', 'username_taken'].includes(code) && $('rename-modal').classList.contains('show')) $('rename-err').textContent = t('err.' + code);
   if (code === 'deposit_submitted') $('dep-status').textContent = t('wallet.waitingConfirm');
 });

@@ -5,10 +5,11 @@
   "main": "server.js",
   "private": true,
   "engines": {
-    "node": ">=18"
+    "node": ">=20.6"
   },
   "scripts": {
     "start": "node server.js",
+    "start:env": "node --env-file=.env server.js",
     "dev": "nodemon server.js",
     "test": "node --test test/*.test.js",
     "check": "node --check server.js && for f in src/*.js src/*/*.js shared/*.js public/js/*.js; do node --check \"$f\" || exit 1; done"
